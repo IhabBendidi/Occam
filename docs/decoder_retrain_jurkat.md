@@ -199,21 +199,76 @@ optimisation is healthy. They say nothing about whether arm B beats arm A.
 
 ## Results
 
-Not yet measured. Arm A lands in ~5 h, arm B in ~18 h (≈12 h training + ≈5 h
-cell-eval).
+**Arm A is measured. Arm B is not.** Arm A: job `18006756`, COMPLETED in
+2:57:37, cell-eval 0.6.0 `--profile full`, 28 metrics parsed.
 
 | metric | A: released (rect_sigmoid + smooth_l1) | B: retrain (softplus + nb) | B − A |
 |---|---|---|---|
-| `pearson_delta` | — | — | — |
-| `discrimination_score_l2` | — | — | — |
-| `discrimination_score_l1` | — | — | — |
-| `overlap_at_N` *(do not rank on this)* | — | — | — |
-| `de_direction_match` | — | — | — |
-| `mse` *(error: lower is better)* | — | — | — |
-| `mae` *(error: lower is better)* | — | — | — |
+| `pearson_delta` | **0.1985** | — | — |
+| `discrimination_score_l2` | **0.9652** | — | — |
+| `discrimination_score_l1` | 0.9655 | — | — |
+| `discrimination_score_cosine` | 0.9365 | — | — |
+| `de_direction_match` | 0.8212 | — | — |
+| `overlap_at_N` *(do not rank on this)* | 0.0155 | — | — |
+| `mse` *(error: lower is better)* | 0.0169 | — | — |
+| `mae` *(error: lower is better)* | 0.0678 | — | — |
 
-Both arms: `injctrl`, quantile calibration, present genes only, jurkat,
-cell-eval 0.6.0 `--profile full`.
+Both arms: `injctrl`, quantile calibration, present genes only (8,873/44,728),
+jurkat, cell-eval 0.6.0 `--profile full`, 16 threads, `--batch-size 2000`.
+
+### The diagnostic that matters most
+
+| | value |
+|---|---|
+| `de_nsig_counts_real` (ground truth) | **262.2** significant genes per perturbation |
+| `de_nsig_counts_pred` (released decoder) | **3,871.0** |
+| inflation | **14.8x** |
+
+This is the `rectified_sigmoid` + smooth-L1 signature, and it reproduces the
+base/768 measurement closely: 3,361 predicted significant genes there against a
+ground truth of 262.2, versus 3,871 here. **It is also the specific quantity
+softplus + NB was reported to fix** — 3,361 -> 1,572 on the base encoder. So
+arm B has a pre-registered prediction on this number, not only on
+`pearson_delta`: if the mechanism transfers, arm B's `de_nsig_counts_pred`
+should fall by roughly half.
+
+That prediction is worth more than the headline, because it is mechanistic. A
+head that is exactly 0 for every non-positive pre-activation produces
+near-zero within-group variance on rarely-detected genes, a Wilcoxon test reads
+near-zero variance as strong evidence, and the significant-gene count inflates.
+`softplus` removes the exact-zero floor. If `pearson_delta` improves while
+`de_nsig_counts_pred` does not, the gain did not come from the stated mechanism
+and should be treated as unexplained.
+
+### Reading arm A against the anchors
+
+| arm | panel | encoder | calibrated `pearson_delta` |
+|---|---|---|---|
+| rect_sigmoid + smooth_l1 | nadig (base/768 anchor) | base/768 | 0.2285 |
+| **rect_sigmoid + smooth_l1** | **jurkat (measured here)** | **small/512** | **0.1985** |
+| softplus + nb | nadig (base/768 anchor) | base/768 | 0.6009 |
+
+0.1985 against the 0.2285 anchor is the expected order of magnitude for the
+same head on a different encoder and a different panel, which is mild evidence
+that the port measures what the research tree measured. It is not a
+replication: two axes moved at once.
+
+**The bar for arm B is 0.1985**, not 0.2285, and not 0.6009.
+
+### Secondary observations, recorded but not ranked on
+
+- `overlap_at_N` 0.0155 and `precision_at_N` 0.0388 are near the floor. Expected
+  given the 14.8x DE inflation: N is set by the prediction's own significant-gene
+  count, so an inflated N dilutes the overlap. This is exactly the metric the
+  project has twice been warned not to rank decoders on.
+- `discrimination_score_l2` 0.9652 is high, i.e. the reconstruction does tell
+  perturbations apart even while its DE calls are inflated. Discrimination and
+  DE calibration are separable properties, and this run separates them.
+- `de_spearman_lfc_sig` is `nan`. Not investigated; not one of the promoted
+  metrics.
+- `clustering_agreement` 0.6311 and `pearson_edistance` 0.9282 are panel-level,
+  not per-perturbation, so they are reported for the `all` panel only and are
+  not re-aggregable to sub-panels.
 
 ⚠️ **n = 1 per arm, no seed replicates.** Arm B is a single training run at seed
 42. A difference smaller than the run-to-run spread — which has not been
