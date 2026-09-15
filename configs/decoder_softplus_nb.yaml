@@ -194,6 +194,37 @@ stages:
       eval_data:
         - ${paths.eval_dir}/nadig_2024_jurkat.h5ad
 
+      # ⚠️ nadig_2024_jurkat has NO `gene` column -- the perturbation is in
+      #    obs['gene_name'] (2,394 perturbations, 12,013 'non-targeting'
+      #    control cells of 262,956). The trainer's default pert col is
+      #    `gene`, and a missing column makes cell-eval SKIP the file with a
+      #    printed line rather than fail, so the run would finish looking
+      #    healthy with no metrics. Set it explicitly.
+      celleval_pert_col: gene_name
+      celleval_control_label: non-targeting
+
+      # REQUIRED for this arm to be interpretable. Per-gene quantile
+      # calibration fit on control cells only -- it cannot manufacture
+      # perturbation signal, only remove the decoder's per-gene shift, but it
+      # IS fit on real data and must be declared next to any number it
+      # produces. Uncalibrated, softplus+nb scores pearson_delta 0.2336, i.e.
+      # no better than the released decoder (0.2285). Calibrated, 0.6009.
+      celleval_calibrate: quantile
+
+      # injctrl only. `reconctrl` keeps the decoder's own reconstructed
+      # controls, so the decoder's bias cancels in the delta and the number is
+      # inflated (0.87 vs 0.59 on replogle_test). It costs a second full
+      # cell-eval run -- hours -- to produce a number that cannot be compared
+      # to anything published.
+      celleval_modes: injctrl
+
+      # 2,394 perturbations x 8,882 present genes is ~4.6x the DE work of the
+      # 255-perturbation H1 panel, which takes ~60 min at 16 threads. cell-eval
+      # is KILLED at the timeout, not paused, so this is set well above the
+      # ~5 h estimate rather than near it.
+      celleval_num_threads: 32
+      celleval_timeout: 36000
+
       # ⚠️ REQUIRED for this arm, and the reason the released checkpoint's own
       #    epoch-185 selection is untrustworthy.
       #
@@ -205,7 +236,14 @@ stages:
       # only removes the artifact.
       eval_present_genes_only: true
 
-      # Selection metric. Do NOT rank on overlap_at_N: a zero-signal predictor
-      # beat the real model on it (TREK 0.3360 vs 0.2030) with chance-level
-      # discrimination.
-      select_on: pearson_delta
+      # NOTE ON CHECKPOINT SELECTION. `best_decoder.pth` is chosen by the mean
+      # reconstruction combined score (Pearson + Spearman + 0.1 * mse_inv)
+      # across eval files, made trustworthy here by eval_present_genes_only
+      # above. It is NOT chosen on cell-eval: one cell-eval run takes hours, so
+      # a per-epoch selection on it was never implementable, and a `select_on`
+      # key that claimed otherwise would be a knob wired to nothing.
+      #
+      # When READING the result, use pearson_delta and
+      # discrimination_score_l2. Do NOT rank on overlap_at_N: a zero-signal
+      # predictor beat the real model on it (TREK 0.3360 vs 0.2030) at
+      # chance-level discrimination.

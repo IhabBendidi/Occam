@@ -247,7 +247,17 @@ DECODER_SCHEMA: Dict[str, Dict[str, Optional[str]]] = {
         "cell_eval_enabled": "cell_eval_enabled",
         "eval_data": "eval_data",
         "eval_present_genes_only": "eval_present_genes_only",
-        "select_on": None,          # consumed by the trainer's selection logic
+        # cell-eval settings. `celleval_pert_col` in particular has no usable
+        # default: it is the obs column naming the perturbation, it differs per
+        # dataset, and a wrong value makes cell-eval SKIP the file with a
+        # printed message rather than fail -- which reads as "no metrics" hours
+        # later. Set it explicitly for every eval file.
+        "celleval_pert_col": "celleval_pert_col",
+        "celleval_control_label": "celleval_control_label",
+        "celleval_calibrate": "celleval_calibrate",
+        "celleval_modes": "celleval_modes",
+        "celleval_num_threads": "celleval_num_threads",
+        "celleval_timeout": "celleval_timeout",
     },
     # Flags added after the released run, listed at their no-op values so a
     # reader can see they were not in play. Applied like any other field.

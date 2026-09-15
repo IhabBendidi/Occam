@@ -49,3 +49,6 @@ venv/
 .ruff_cache/
 .ipynb_checkpoints/
 .DS_Store
+
+# The corpus in h5ad form: a machine-local symlink, see configs/paths.yaml
+data/corpus/

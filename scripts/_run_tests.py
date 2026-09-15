@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import importlib.util
 import os
+import re
 import sys
 
 
@@ -42,8 +43,16 @@ class _Approx:
 
 
 class _Raises:
-    def __init__(self, exc):
+    """``pytest.raises``, including ``.value`` -- tests assert on the message.
+
+    A refusal is only worth testing if the message tells the reader what to do
+    instead, so the caught exception has to be reachable.
+    """
+
+    def __init__(self, exc, match=None):
         self.exc = exc
+        self.match = match
+        self.value = None
 
     def __enter__(self):
         return self
@@ -51,7 +60,14 @@ class _Raises:
     def __exit__(self, et, ev, tb):
         if et is None:
             raise AssertionError(f"DID NOT RAISE {self.exc}")
-        return issubclass(et, self.exc)
+        if not issubclass(et, self.exc):
+            return False
+        self.value = ev
+        if self.match is not None and not re.search(self.match, str(ev)):
+            raise AssertionError(
+                f"raised {et.__name__} but its message does not match "
+                f"{self.match!r}: {ev}")
+        return True
 
 
 class _Mark:

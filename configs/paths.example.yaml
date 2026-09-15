@@ -22,13 +22,19 @@ scib_dir: data/eval/scib
 # ---------------------------------------------------------------------------
 # Pretraining corpus (DiverseRNA)
 # ---------------------------------------------------------------------------
-# Needed only to TRAIN. Not required to run the evaluations or to use a
-# released checkpoint.
+# Needed only to TRAIN, and to re-run the dataset export or the source
+# fingerprinting. Not required to run the evaluations or to use a released
+# checkpoint.
+#
+# This must be the corpus in **h5ad** form -- a file, or a folder of them. It is
+# NOT data/diverserna: that directory holds the PUBLISHED form, Parquet shards,
+# which nothing in the training path can read. On the machine the release was
+# produced on, data/corpus/diverserna.h5ad is a symlink to the source file.
 #
 # 1,434,299 cells x 44,728 genes. Read data/diverserna/DATASET_CARD.md first:
 # 43.6% of its rows are NOT integer counts and 2.4% are bulk RNA-seq, despite
 # the "raw_counts" in the source filename.
-train_corpus: data/diverserna
+train_corpus: data/corpus/diverserna.h5ad
 
 # ---------------------------------------------------------------------------
 # Perturbation knowledge graphs  (occam.vcell)

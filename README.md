@@ -93,6 +93,10 @@ occam-benchmark   --checkpoint checkpoints/release/occam_small_encoder_decoder.p
 occam-scib        --checkpoint checkpoints/release/occam_small_encoder_decoder.pth
 occam-speed       --checkpoint checkpoints/release/occam_small_encoder_decoder.pth
 occam-verify
+occam-celleval    --checkpoint checkpoints/release/occam_small_encoder_decoder.pth \
+                  --eval-data data/eval/pert/nadig_2024_jurkat.h5ad \
+                  --output-dir runs/celleval/released --pert-col gene_name \
+                  --calibrate quantile --output-activation rectified_sigmoid
 ```
 
 ## The published recipe

@@ -58,6 +58,7 @@ occam-benchmark   = "occam.cli.benchmark:main"
 occam-scib        = "occam.cli.scib:main"
 occam-speed       = "occam.cli.speed:main"
 occam-verify      = "occam.cli.verify:main"
+occam-celleval    = "occam.cli.celleval:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/occam"]

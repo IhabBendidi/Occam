@@ -190,3 +190,51 @@ TREK at 1.4% padding loses 0.69 Spearman; nadig at 80.2% loses 90.46; Pearson an
 MAE barely move. **The released decoder's own epoch-185 selection was made on
 this criterion.** Set `eval_present_genes_only: true`, as
 `configs/decoder_softplus_nb.yaml` does.
+
+### Scoring a decoder checkpoint that already exists
+
+`occam-celleval` is the eval-only path: the same measurement the pipeline makes
+at the end of training, for a checkpoint that already exists. It calls
+`DecoderTrainer.run_cell_eval_on_file`, so a released checkpoint and a freshly
+trained one are comparable without an "is it the same code?" caveat.
+
+```bash
+occam-celleval \
+    --checkpoint checkpoints/release/occam_small_encoder_decoder.pth \
+    --eval-data data/eval/pert/nadig_2024_jurkat.h5ad \
+    --output-dir runs/celleval/released_jurkat \
+    --pert-col gene_name --calibrate quantile --modes injctrl \
+    --output-activation rectified_sigmoid \
+    --num-threads 32 --timeout 36000
+```
+
+Or on the cluster, where the defaults already score the release:
+
+```bash
+sbatch scripts/slurm/celleval_decoder.sbatch
+CKPT=runs/.../best_decoder.pth ACT=softplus sbatch scripts/slurm/celleval_decoder.sbatch
+```
+
+Four things this command refuses to guess:
+
+| | |
+|---|---|
+| **geometry** | read from the checkpoint's `decoder_config`, never from a flag, so it cannot disagree with the weights |
+| **output activation** | required explicitly when the checkpoint does not record one. A softplus decoder loads `strict=True` under `rectified_sigmoid` and emits ~99% exact zeros — a dead model that looks healthy. `occam-verify` determines it from a forward pass; pass what it reports |
+| **the perturbation column** | `--pert-col` has no safe default across datasets, and a wrong one makes cell-eval *skip* the file with a printed line rather than fail. nadig uses `gene_name`, not `gene` |
+| **calibration** | off unless asked for, and printed when on |
+
+⚠️ **Per-gene quantile calibration is the dominant term in this measurement** —
+0.23 → 0.60 `pearson_delta` on nadig, 0.21 → 0.81 on TREK, against ~0.02 for the
+head/loss choice. It is fit on the eval file's *control* cells, so it cannot
+manufacture perturbation signal, only remove the decoder's per-gene shift. State
+it next to any number it produced; `metrics.json` records it either way.
+
+Two modes, both against the same real target: `injctrl` (control rows replaced
+by the real preprocessed controls — the virtual-cell convention and the harder
+number) and `reconctrl` (the decoder's own reconstructed controls, inflated
+because its bias cancels in the delta: 0.87 vs 0.59 on replogle_test). Each mode
+is a full cell-eval run, so `--modes injctrl` is the default.
+
+A worked comparison of two decoders on jurkat is in
+[decoder_retrain_jurkat.md](decoder_retrain_jurkat.md).
