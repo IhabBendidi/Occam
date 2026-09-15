@@ -76,8 +76,8 @@ of from the corpus. Anyone reproducing the chain runs `occam train` from
 |---|---|---|
 | released checkpoint + manifest + card | 3 | 0.93 GB |
 | evaluation bundle (3 perturbation + 3 scIB `.h5ad`) | 8 | 5.60 GB |
-| DiverseRNA shards + `genes.parquet` + card | 22 | ~8.8 GB |
-| **total** | | **~15.3 GB** |
+| DiverseRNA shards + `genes.parquet` + card + `sources/` | 27 | 8.83 GB |
+| **total** | 39 | **15.36 GB** |
 
 DiverseRNA is **29× smaller than its source** (239.1 GiB dense `.h5ad` → ~8.8 GB Parquet+zstd
 over 5.20 G nonzeros; true density 8.11%). A tuned encoding was measured at ~6.6 GB (39×, a
@@ -110,4 +110,20 @@ seconds.
 |---|---|---|
 | 2026-09-15 | repo created | `private: True` |
 | 2026-09-15 | pass 1: checkpoint + eval bundle | 11 files, **6.53 GB**, re-read from the Hub with `files_metadata=True` and every size matched |
-| 2026-09-15 | pass 2: DiverseRNA | see below |
+| 2026-09-15 | pass 2: DiverseRNA | 27 files, **8.83 GB**, all 20 shards present |
+| 2026-09-15 | whole repo re-read from the Hub | **39 files, 15.36 GB, `private: True`**, every size matched |
+
+The corpus export is self-consistent against the source, checked after the fact from
+`shards.json` rather than trusted from the exporter's own exit code:
+
+| check | value |
+|---|---|
+| `partial` | `False` — the export ran to completion |
+| rows | 1,434,299 — **exactly** the source `n_obs` |
+| genes | 44,728, of which 44,560 are Ensembl IDs |
+| nonzeros | 5,172,820,437 (8.07% density) |
+| rows per `original_dataset_idx` block | 502,080 / 102,205 / 99,300 / 71,585 / 88,399 / 31,542 / 504,929 / 10,526 / 23,733 — matches the nine-block table in the dataset card exactly |
+| shard boundaries | 20 shards, **no shard crosses a block boundary**, so a consumer can skip a whole block on licensing grounds |
+
+Each shard carries its own `sha256`, `nnz` and `sum` in `shards.json`, so a download can be
+verified without the source.
