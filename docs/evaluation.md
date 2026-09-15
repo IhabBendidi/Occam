@@ -285,7 +285,10 @@ is a full cell-eval run, so `--modes injctrl` is the default.
 differential expression for the real data, and that depends only on the target
 file — not on the decoder, the calibration or the mode. `--de-real-cache DIR`
 stores it keyed by the **target file's own sha256**, so every arm scored against
-the same target shares one: ~1.5 h of a ~2.5 h run on jurkat.
+the same target shares one. Measured on jurkat: it removes a **56-minute** step
+from a ~2:50 run. Net wall-clock saving can be smaller — a decoder whose output
+has no exact-zero floor produces denser predictions, and its own
+prediction-side DE runs longer.
 
 Keying on content rather than on a panel name is what makes the reuse safe. A
 target built from different data, different transforms or a different gene

@@ -199,77 +199,101 @@ optimisation is healthy. They say nothing about whether arm B beats arm A.
 
 ## Results
 
-**Arm A is measured. Arm B is not.** Arm A: job `18006756`, COMPLETED in
-2:57:37, cell-eval 0.6.0 `--profile full`, 28 metrics parsed.
+**Arm B at epoch 49 of 200 already beats arm A on every promoted metric**, and
+the pre-registered mechanistic prediction held. Arm A: job `18006756`,
+COMPLETED 2:57:37. Arm B early read: job `18009517`, COMPLETED 2:49:17, the
+epoch-49 `best_decoder.pth` snapshot.
 
-| metric | A: released (rect_sigmoid + smooth_l1) | B: retrain (softplus + nb) | B − A |
+| metric | A: released (rect_sigmoid + smooth_l1) | B: retrain @ ep49 (softplus + nb) | B − A |
 |---|---|---|---|
-| `pearson_delta` | **0.1985** | — | — |
-| `discrimination_score_l2` | **0.9652** | — | — |
-| `discrimination_score_l1` | 0.9655 | — | — |
-| `discrimination_score_cosine` | 0.9365 | — | — |
-| `de_direction_match` | 0.8212 | — | — |
-| `overlap_at_N` *(do not rank on this)* | 0.0155 | — | — |
-| `mse` *(error: lower is better)* | 0.0169 | — | — |
-| `mae` *(error: lower is better)* | 0.0678 | — | — |
+| `pearson_delta` | 0.1985 | **0.5636** | **+0.3651** |
+| `discrimination_score_l2` | 0.9652 | **0.9849** | +0.0197 |
+| `discrimination_score_cosine` | 0.9365 | **0.9986** | +0.0621 |
+| `de_direction_match` | 0.8212 | **0.8664** | +0.0452 |
+| `overlap_at_N` *(do not rank on this)* | 0.0155 | 0.0501 | +0.0346 |
+| `mse` *(error: lower better)* | 0.0169 | **0.0015** | −0.0154 |
+| `mae` *(error: lower better)* | 0.0678 | **0.0249** | −0.0429 |
 
 Both arms: `injctrl`, quantile calibration, present genes only (8,873/44,728),
-jurkat, cell-eval 0.6.0 `--profile full`, 16 threads, `--batch-size 2000`.
+jurkat, cell-eval 0.6.0 `--profile full`, 16 threads, `--batch-size 2000`,
+identical target file (sha256 `cea6dd49b29b0566`).
 
-### The diagnostic that matters most
+### The pre-registered prediction, and it held
 
-| | value |
-|---|---|
-| `de_nsig_counts_real` (ground truth) | **262.2** significant genes per perturbation |
-| `de_nsig_counts_pred` (released decoder) | **3,871.0** |
-| inflation | **14.8x** |
+Before arm B was scored, this document predicted that if the stated mechanism
+transfers, `de_nsig_counts_pred` should **roughly halve**. It did:
 
-This is the `rectified_sigmoid` + smooth-L1 signature, and it reproduces the
-base/768 measurement closely: 3,361 predicted significant genes there against a
-ground truth of 262.2, versus 3,871 here. **It is also the specific quantity
-softplus + NB was reported to fix** — 3,361 -> 1,572 on the base encoder. So
-arm B has a pre-registered prediction on this number, not only on
-`pearson_delta`: if the mechanism transfers, arm B's `de_nsig_counts_pred`
-should fall by roughly half.
-
-That prediction is worth more than the headline, because it is mechanistic. A
-head that is exactly 0 for every non-positive pre-activation produces
-near-zero within-group variance on rarely-detected genes, a Wilcoxon test reads
-near-zero variance as strong evidence, and the significant-gene count inflates.
-`softplus` removes the exact-zero floor. If `pearson_delta` improves while
-`de_nsig_counts_pred` does not, the gain did not come from the stated mechanism
-and should be treated as unexplained.
-
-### Reading arm A against the anchors
-
-| arm | panel | encoder | calibrated `pearson_delta` |
+| | A: released | B @ ep49 | base/768 anchor |
 |---|---|---|---|
-| rect_sigmoid + smooth_l1 | nadig (base/768 anchor) | base/768 | 0.2285 |
-| **rect_sigmoid + smooth_l1** | **jurkat (measured here)** | **small/512** | **0.1985** |
-| softplus + nb | nadig (base/768 anchor) | base/768 | 0.6009 |
+| ground-truth significant genes | 262.2 | 262.2 | 262.2 |
+| predicted significant genes | 3,871.0 | **1,972.7** | 3,361 → 1,572 |
+| over-call factor | 14.8x | **7.5x** | 12.8x → 6.0x |
+| reduction | — | **−49.0%** | −53.2% |
 
-0.1985 against the 0.2285 anchor is the expected order of magnitude for the
-same head on a different encoder and a different panel, which is mild evidence
-that the port measures what the research tree measured. It is not a
-replication: two axes moved at once.
+−49.0% here against −53.2% on the base/768 encoder. **The gain arrives through
+the mechanism it was attributed to**, not merely alongside it: removing the
+exact-zero floor removes the near-zero within-group variance that a Wilcoxon
+test reads as strong evidence. A `pearson_delta` gain with a flat significant-
+gene count would have been unexplained; this is not that.
 
-**The bar for arm B is 0.1985**, not 0.2285, and not 0.6009.
+### The trade-off, stated because it is real
 
-### Secondary observations, recorded but not ranked on
+| | A: released | B @ ep49 |
+|---|---|---|
+| `de_sig_genes_recall` | **0.6341** | 0.5166 |
+| `precision_at_N` | 0.0388 | **0.0596** |
 
-- `overlap_at_N` 0.0155 and `precision_at_N` 0.0388 are near the floor. Expected
-  given the 14.8x DE inflation: N is set by the prediction's own significant-gene
-  count, so an inflated N dilutes the overlap. This is exactly the metric the
-  project has twice been warned not to rank decoders on.
-- `discrimination_score_l2` 0.9652 is high, i.e. the reconstruction does tell
-  perturbations apart even while its DE calls are inflated. Discrimination and
-  DE calibration are separable properties, and this run separates them.
-- `de_spearman_lfc_sig` is `nan`. Not investigated; not one of the promoted
-  metrics.
-- `clustering_agreement` 0.6311 and `pearson_edistance` 0.9282 are panel-level,
-  not per-perturbation, so they are reported for the `all` panel only and are
-  not re-aggregable to sub-panels.
+Calling 1,899 fewer genes significant means recovering fewer of the true ones:
+recall drops 0.117 while precision rises. That is the expected shape of a
+reduction in over-calling and it is the right trade here — the decoder still
+over-calls by 7.5x — but a use case that needs recall over precision should
+know the released decoder scores higher on it, for the uninteresting reason
+that it calls nearly everything significant.
 
-⚠️ **n = 1 per arm, no seed replicates.** Arm B is a single training run at seed
-42. A difference smaller than the run-to-run spread — which has not been
-measured on this panel — is not a result.
+### Against the anchors
+
+| arm | encoder | panel | calibrated `pearson_delta` |
+|---|---|---|---|
+| rect_sigmoid + smooth_l1 | base/768 | nadig | 0.2285 |
+| rect_sigmoid + smooth_l1 | **small/512** | **jurkat** | **0.1985** |
+| softplus + nb | base/768 | nadig | 0.6009 |
+| **softplus + nb @ ep49** | **small/512** | **jurkat** | **0.5636** |
+
+Both rows of the port land just below their base/768 counterparts, by 0.030 and
+0.037. The head/loss effect reproduces at nearly its full measured size on a
+different encoder and a different panel.
+
+### Verdict against the pre-registered criterion
+
+The criterion was: *B clearly above A's measured value -> the change survives
+the move to small/512 and the retrained decoder supersedes the released one.*
+**0.5636 against 0.1985 meets it, at epoch 49 of 200.** The final checkpoint can
+only confirm or refine this; a reversal would itself be a finding and is not
+expected, since reconstruction has been flat since epoch 50.
+
+⚠️ **n = 1 per arm, no seed replicates**, one panel, and the geometry differs
+(2048x5 released, 2048x4 retrained). The geometry confound is small next to a
++0.365 effect but it is not zero, and nothing here speaks to unseen-context
+transfer: the decoder never sees perturbation labels, so this measures whether
+a reconstruction PRESERVES perturbation deltas, not whether a model predicts
+them.
+
+### Cost, measured — and a corrected claim
+
+The DE-reuse saving was overstated when it was introduced. Measured artifact
+timings:
+
+| step | A (no cache) | B (cache hit) |
+|---|---|---|
+| forward pass + two ~9.3 GB h5ad | ~35 min | ~35 min |
+| **real-side DE** | **56 min** | **0 — reused** |
+| prediction-side DE | 58 min | 76 min |
+| metric computation | 56 min | 81 min |
+| **total** | **2:57:37** | **2:49:17** |
+
+The cache removed a measured 56-minute step, but net wall clock fell only 8
+minutes: the softplus arm's own prediction-side DE and metric computation ran
+18 and 25 minutes longer, because its predictions have no exact-zero floor and
+are therefore denser to test. The earlier "~1.5 h of a ~2.5 h run" figure was
+wrong; **the cache is worth ~56 min of compute, not ~1.5 h of wall clock**, and
+on this panel a denser-prediction arm gives part of it back.
