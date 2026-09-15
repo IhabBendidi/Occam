@@ -30,12 +30,46 @@ repo root, so downloading the bundle into place is the whole of the setup. See
 
 | | |
 |---|---|
+| [Get the weights and the data](#get-the-weights-and-the-data) | one private HuggingFace repo |
 | [Quickstart](#quickstart) | embed and reconstruct with the released weights |
 | [The published recipe](#the-published-recipe) | what produced the released model |
 | [Train it yourself](#train-it-yourself) | the three-stage pipeline |
 | [Evaluation](#evaluation) | the panel, and how to read its numbers |
 | [Gotchas](#gotchas-that-will-bite-you) | read this before changing anything |
 | [What is not here](#what-is-not-here) | and where it went |
+
+## Get the weights and the data
+
+Everything is in **one private HuggingFace repo**, `bendidiihab/Occam`. Every
+path in this repo is relative, so downloading the folders to the destinations
+below is the entire setup — there is nothing to configure afterwards.
+
+```bash
+hf download bendidiihab/Occam --include 'checkpoints/*' --local-dir /tmp/occam_dl
+mv /tmp/occam_dl/checkpoints/occam_small_encoder_decoder.pth checkpoints/release/
+
+hf download bendidiihab/Occam --include 'eval/*'       --local-dir /tmp/occam_dl
+mv /tmp/occam_dl/eval/pert/* data/eval/pert/ && mv /tmp/occam_dl/eval/scib/* data/eval/scib/
+
+hf download bendidiihab/Occam --include 'diverserna/*' --local-dir /tmp/occam_dl
+mv /tmp/occam_dl/diverserna/* data/diverserna/
+```
+
+| what | size | needed for |
+|---|---|---|
+| `checkpoints/` | 0.93 GB | everything |
+| `eval/` | 5.6 GB | `occam-benchmark`, `occam-scib` |
+| `diverserna/` | ~8.8 GB | retraining from scratch only |
+
+**The repo is private, and must stay private.** Neither dataset has had its
+licensing resolved: the pretraining corpus has 7 of 9 constituent blocks
+unattributed and the two identified (GTEx, TCGA) carry redistribution
+conditions, and none of the six evaluation datasets has a recorded licence.
+`scripts/check_upload_gate.py` gates *public* release and currently refuses,
+which is the correct state. `scripts/publish_hf.py` refuses to upload to a repo
+that is not private.
+
+See [docs/hf_release.md](docs/hf_release.md).
 
 ## Quickstart
 
@@ -188,7 +222,7 @@ src/occam/   mae/ decoder_train/ vcell/ evaluation/ inference/ config/ pipeline/
 scripts/     bootstrap, verification, panel building, dataset export, porting tools
 data/        diverserna/ (dataset card + export) and panels/
 golden/      numerical fixtures; the release must reproduce them
-docs/        architecture, training, evaluation, checkpoints, provenance
+docs/        architecture, training, evaluation, checkpoints, provenance, hf_release
 ```
 
 ## Citation
