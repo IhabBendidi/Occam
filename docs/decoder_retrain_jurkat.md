@@ -156,6 +156,40 @@ and `best_decoder.pth` is unaffected, so arm B's number will come from
 is unproven until arm A completes, and arm B has ~15 h of training left, which
 is more than enough time to decide.
 
+## Arm B training, in progress (epoch 51/200 at 3 h)
+
+Recorded because it answers a question the final cell-eval cannot: does
+`softplus` x `nb` train stably on this corpus at lr 5e-5? It does.
+
+| | |
+|---|---|
+| train loss, epochs 1 -> 51 | 0.070599 -> 0.055293, **monotone decreasing at every logged epoch** |
+| val loss | min 0.053982, max 0.065348, last 0.053982 (the current minimum) |
+| worst val excursion above the running best | **10.1%** |
+| `nan` anywhere in the log | **no** |
+| throughput | ~3.5 min/epoch -> ~11.7 h for 200 epochs |
+
+The 10.1% figure is the one that matters: `softplus` x `smooth_l1` showed ~38%
+validation-loss spikes at the two lower learning rates, which is the stated
+reason the NB likelihood was paired with the unbounded head rather than
+shipping softplus alone. On this corpus and this encoder that pairing behaves
+as claimed.
+
+Reconstruction eval on jurkat (present genes only), the checkpoint-selection
+metric:
+
+| epoch | Pearson | Spearman | MAE | MSE | combined |
+|---|---|---|---|---|---|
+| 25 | 85.44 | 40.14 | 0.0950 | 0.0218 | 64.46 |
+| 50 | 85.83 | 40.80 | 0.0958 | 0.0211 | **64.96** |
+
+`best_decoder.pth` was rewritten at both evals, so selection is still moving.
+
+⚠️ These are **reconstruction** numbers, not perturbation numbers, and the two
+have already been shown to rank decoders differently on this project (3072x10
+wins decoder-only cell-eval and loses virtual-cell transfer 6/6). They say the
+optimisation is healthy. They say nothing about whether arm B beats arm A.
+
 ## Results
 
 Not yet measured. Arm A lands in ~5 h, arm B in ~18 h (≈12 h training + ≈5 h
