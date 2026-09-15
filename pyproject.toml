@@ -67,6 +67,10 @@ packages = ["src/occam"]
 # Ship the BMDB gene-relationship databases inside the wheel so the benchmark
 # works on a fresh `pip install` and the database LICENSE travels with it.
 "assets/bmdb_database" = "occam/assets/bmdb_database"
+# The Ensembl -> symbol map the BMDB benchmark needs: its databases are keyed by
+# symbols, the released vocabulary is Ensembl IDs. Built by
+# scripts/build_gene_id_map.py; see its PROVENANCE.json.
+"assets/gene_ids" = "occam/assets/gene_ids"
 
 [tool.ruff]
 line-length = 100

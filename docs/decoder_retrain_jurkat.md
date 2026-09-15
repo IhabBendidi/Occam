@@ -185,6 +185,13 @@ metric:
 
 `best_decoder.pth` was rewritten at both evals, so selection is still moving.
 
+⚠️ Arm B's in-run **BMDB numbers are meaningless** and should be ignored: it
+runs the pre-fix code, in which the Ensembl-to-symbol translation was missing,
+so it reports `valid_pairs: 1`. Fixed in `occam.gene_ids` (1 pair -> 142,856 on
+the released decoder; see [evaluation.md](evaluation.md)). Checkpoint selection
+and cell-eval are unaffected — selection reads the reconstruction combined
+score, not BMDB.
+
 ⚠️ These are **reconstruction** numbers, not perturbation numbers, and the two
 have already been shown to rank decoders differently on this project (3072x10
 wins decoder-only cell-eval and loses virtual-cell transfer 6/6). They say the

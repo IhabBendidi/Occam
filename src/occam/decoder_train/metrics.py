@@ -198,11 +198,26 @@ def _extract_decoder_map(
     weights: np.ndarray,
     gene_names: List[str],
     n_components: int = 128,
+    symbol_mapping: Optional[Dict[str, str]] = None,
 ) -> Tuple[np.ndarray, np.ndarray, List[str]]:
-    """Extract decoder map: PCA on weights → cosine similarity matrix."""
+    """Extract decoder map: PCA on weights → cosine similarity matrix.
+
+    ``symbol_mapping`` translates an Ensembl-ID vocabulary to the gene symbols
+    the BMDB databases are keyed by. Rows with no symbol are dropped, and the
+    weight matrix is subset with the SAME indices -- the gene axis and the
+    weight rows are only meaningful together.
+    """
     from sklearn.preprocessing import StandardScaler
     from sklearn.decomposition import PCA
     from sklearn.metrics.pairwise import cosine_similarity
+
+    if symbol_mapping:
+        from occam.gene_ids import to_symbols
+
+        before = len(gene_names)
+        gene_names, keep = to_symbols(gene_names, symbol_mapping)
+        weights = weights[keep]
+        print(f"  Mapped {len(gene_names)}/{before} Ensembl IDs to gene symbols")
 
     # Deduplicate
     seen = {}
@@ -381,15 +396,43 @@ def run_decoder_benchmark(
     weights = model.output_head[2].weight.detach().cpu().numpy()
     print(f"Decoder weight shape: {weights.shape}")
 
-    # The decoder's gene_names are used as-is. The research tree also supported
-    # rewriting them -- Ensembl IDs to symbols via a mapping file, then filtering
-    # to a gene panel -- both read from absolute paths on one cluster. Neither is
-    # carried here: the vocabulary a checkpoint was trained on is the vocabulary
-    # its decoder weights are indexed by, and rewriting it at benchmark time only
-    # creates a way for the two to disagree.
+    # The BMDB databases are keyed by gene SYMBOLS (CORUM.txt starts
+    # `SUB1,GTF3C3`) while the released vocabulary is 44,560 Ensembl IDs, so the
+    # two have to be translated for this benchmark. Measured on the released
+    # checkpoint: CORUM's 3,505 symbols are covered by 4 raw-vocabulary entries
+    # and by 3,500 mapped ones. Without the translation the benchmark reported
+    # `valid_pairs: 1`.
+    #
+    # Which direction to translate is decided from the data -- how many names
+    # match the map's Ensembl keys versus its symbol values -- so a checkpoint
+    # trained on symbols (e.g. an HVG panel) is used directly. The translation
+    # is confined to this function: `_extract_decoder_map` subsets the weight
+    # rows with the same indices, and no other code path sees a rewritten
+    # vocabulary.
+    from occam.gene_ids import detect_id_type, load_ensembl_to_symbol
+
+    symbol_mapping = None
+    mapping = load_ensembl_to_symbol()
+    if not mapping:
+        print("Gene-ID map not found (assets/gene_ids/ensembl_to_symbol.tsv); "
+              "using the vocabulary as-is. If it holds Ensembl IDs, BMDB will "
+              "match almost nothing -- rebuild it with "
+              "scripts/build_gene_id_map.py.")
+    else:
+        kind, ens_hits, sym_hits = detect_id_type(gene_names, mapping)
+        n = max(len(gene_names), 1)
+        if kind == "ensembl":
+            print(f"  Vocabulary is Ensembl IDs ({ens_hits}/{n} match Ensembl "
+                  f"keys vs {sym_hits}/{n} symbols) — translating for BMDB")
+            symbol_mapping = mapping
+        else:
+            print(f"  Vocabulary is already gene symbols ({sym_hits}/{n} match "
+                  f"symbols vs {ens_hits}/{n} Ensembl) — no translation")
+
     print("Extracting decoder map...")
     gene_vectors, sim_matrix, final_names = _extract_decoder_map(
         weights, list(gene_names), n_components=n_components,
+        symbol_mapping=symbol_mapping,
     )
     print(f"Gene vectors shape: {gene_vectors.shape}")
 

@@ -1,0 +1,19 @@
+{
+  "builder": "scripts/build_gene_id_map.py",
+  "built": "2026-09-15",
+  "checkpoint": "checkpoints/release/occam_small_encoder_decoder.pth",
+  "coverage": 0.979811,
+  "distinct_symbols": 43825,
+  "duplicate_symbols": 0,
+  "mapped": 43825,
+  "source": "/rxrx/data/il-tx-meth/anndatas/internal_cell-line_bulk_with_ensembl.h5ad",
+  "source_entries": 60200,
+  "source_sha256_first_256mb": "a7c7203470097c6241924dd061bcc45957dafceef3bbc80a9edf76ade49e704f",
+  "source_shape": [
+    205,
+    60200
+  ],
+  "unmapped": 903,
+  "used_for": "the BMDB gene-relationship benchmark only; never to rewrite a checkpoint's training vocabulary",
+  "vocabulary_size": 44728
+}

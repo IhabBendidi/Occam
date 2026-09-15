@@ -191,6 +191,51 @@ MAE barely move. **The released decoder's own epoch-185 selection was made on
 this criterion.** Set `eval_present_genes_only: true`, as
 `configs/decoder_softplus_nb.yaml` does.
 
+### The BMDB benchmark needs its gene IDs translated
+
+The BMDB gene-relationship databases are keyed by gene **symbols** —
+`CORUM.txt` starts `SUB1,GTF3C3` — while the released vocabulary is 44,560
+**Ensembl IDs**. Without a translation between them the benchmark matches
+almost nothing and reports it as a successful run.
+
+Measured on the released decoder, same weights, same code, the only difference
+being whether the map is present:
+
+| | sources resolved | valid pairs (`All`) | mean recall 0.05–0.95 |
+|---|---|---|---|
+| no map | 2 | **1** | 0.0000 |
+| with map | 6 | **142,856** | **0.5467** |
+
+Per source, with the map (percentile-rank recall, higher is better):
+
+| source | valid pairs | recall 0.05–0.95 | recall 0.1–0.9 |
+|---|---|---|---|
+| CORUM | 37,627 | **0.7680** | 0.8251 |
+| HuMAP | 58,423 | 0.6317 | 0.7044 |
+| StringDB | 57,928 | 0.5959 | 0.6665 |
+| Reactome | 18,420 | 0.4055 | 0.5054 |
+| SIGNOR | 11,591 | 0.3323 | 0.4348 |
+
+The map ships as `assets/gene_ids/ensembl_to_symbol.tsv` (43,825 of 44,728
+entries, 98.0%), built by `scripts/build_gene_id_map.py`, which records its
+source and coverage in `PROVENANCE.json`. It is inside the wheel, so this works
+on a bare `pip install`.
+
+Two properties worth knowing:
+
+- **The direction is detected from the data**, by counting how many names match
+  the map's Ensembl keys versus its symbol values — not by pattern-matching
+  `ENSG`. A checkpoint trained on symbols (an HVG panel) is used directly.
+- **The translation is confined to this benchmark.** A decoder's output rows are
+  indexed by the vocabulary it was trained on, so `to_symbols` returns the kept
+  row indices and the weight matrix is subset with the same ones. No training,
+  inference or reconstruction path ever sees a rewritten vocabulary.
+
+⚠️ This was broken in the port, not in the research tree: the original read its
+mapping from an absolute path on one cluster, and the absolute-path sweep
+removed it with a comment claiming the vocabulary should be used as-is. That
+comment was wrong for symbol-keyed databases.
+
 ### Scoring a decoder checkpoint that already exists
 
 `occam-celleval` is the eval-only path: the same measurement the pipeline makes
