@@ -121,6 +121,21 @@ sbatch scripts/slurm/retrain_decoder.sbatch      # arm B
 Arm A writes `runs/celleval/occam_small_encoder_decoder__nadig_2024_jurkat__quantile/metrics.json`.
 Arm B writes `runs/occam_small_decoder_softplus_nb/decoder/`.
 
+⚠️ **Memory: cell-eval on this file needs ~700 GB, not the 200 GB the launchers
+originally asked for.** The first arm A (job 18006458) was killed
+OUT_OF_MEMORY at a 188 GB peak. `run_cell_eval_on_file` holds two dense
+`(262,956 x 44,728)` float32 arrays — predictions and targets, ~47 GB each —
+plus the 43.8 GB in-memory dataset, and `np.concatenate` transiently doubles
+one of them. Restriction to the 8,873 present genes happens *after* the forward
+pass, so it does not bound the peak. Arm B was cancelled 6 minutes in and
+resubmitted for the same reason: its end-of-training cell-eval would have hit
+the identical wall after ~12 h of training. Both launchers now request 700 GB
+(the nodes have 2 TB).
+
+The obvious fix — slicing to present genes inside the forward loop, which is
+numerically identical and would cut the peak ~5x — was deliberately NOT applied
+while this comparison is in flight, so both arms run byte-identical code.
+
 ## Results
 
 Not yet measured. Arm A lands in ~5 h, arm B in ~18 h (≈12 h training + ≈5 h

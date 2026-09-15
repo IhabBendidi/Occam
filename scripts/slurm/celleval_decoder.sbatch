@@ -52,7 +52,13 @@
 #SBATCH --wckey=hooke-predict
 #SBATCH --gres=gpu:h100:1
 #SBATCH --cpus-per-task=32
-#SBATCH --mem=200G
+# cell-eval on a large eval file holds TWO dense (n_cells x 44,728) float32
+# arrays -- predictions and targets -- plus the in-memory dataset, and
+# np.concatenate doubles one of them transiently. On nadig_2024_jurkat
+# (262,956 cells) that peaked at 188 GB and was killed at a 200 GB request.
+# Restriction to present genes happens after the forward pass, so it does not
+# bound the peak.
+#SBATCH --mem=700G
 #SBATCH --time=12:00:00
 #SBATCH --output=runs/slurm/occam_celleval_%j.out
 #SBATCH --error=runs/slurm/occam_celleval_%j.err
