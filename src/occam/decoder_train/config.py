@@ -124,6 +124,11 @@ class DecoderTrainConfig:
     celleval_sample_predictive: bool = False
     celleval_sample_seed: int = 42
     celleval_num_threads: int = 16
+    # cell-eval's --batch-size: (perturbation, gene) pairs per DE task. None =
+    # cell-eval's own default of 100, which on a panel with thousands of
+    # perturbations becomes hundreds of thousands of pool tasks and trips a
+    # shared-memory race in its DE backend. See metrics.run_cell_eval.
+    celleval_de_batch_size: Optional[int] = None
     celleval_timeout: int = 3600
     # Disable AMP (mixed precision) — train/eval in fp32.
     no_amp: bool = False

@@ -39,8 +39,17 @@
 #    it is fit on real data and is the dominant term in this measurement
 #    (0.23 -> 0.60 on nadig). State CAL next to any number this produces.
 #
-# Cost: ~15 min on GPU for the forward pass, then ~5 h of CPU for cell-eval
-# (2,394 perturbations x 8,882 genes at 32 threads).
+# Cost: ~15 min on GPU for the forward pass, ~25 min to write the two ~9 GB
+# h5ad, then a few hours of CPU for cell-eval itself.
+#
+# ⚠️ --de-batch-size is not a tuning knob here, it is load-bearing.
+#    cell-eval's default of 100 (perturbation, gene) pairs per DE task turns
+#    2,394 perturbations x 8,873 genes into ~212,000 pool tasks, each
+#    re-attaching to the single POSIX shared-memory segment holding the
+#    expression matrix. That run died with FileNotFoundError: /psm_... --
+#    CPython unlinks shared-memory segments early (fixed in 3.13; cell-eval
+#    runs under 3.10). Threads are back to 16, which is what every successful
+#    cell-eval run on this cluster has used.
 
 #SBATCH --job-name=occam_celleval
 #SBATCH --partition=hopper
@@ -119,7 +128,8 @@ python -m occam.cli.celleval \
     --eval-gene-col ensembl_gene_id \
     --calibrate "$CALIBRATE" \
     --modes injctrl \
-    --num-threads 32 \
+    --num-threads 16 \
+    --de-batch-size 2000 \
     --timeout 36000 \
     ${ACT:+--output-activation "$ACT"}
 

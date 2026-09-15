@@ -133,6 +133,7 @@ def build_config(checkpoint: Dict[str, Any], args) -> Any:
     config.celleval_modes = args.modes
     config.celleval_num_threads = args.num_threads
     config.celleval_timeout = args.timeout
+    config.celleval_de_batch_size = args.de_batch_size
     config.celleval_present_genes_only = not args.all_genes
     return config
 
@@ -173,6 +174,12 @@ def main(argv=None) -> int:
                          "top-N ranking and dilute overlap@N.")
     ap.add_argument("--batch-size", type=int, default=1024)
     ap.add_argument("--num-threads", type=int, default=16)
+    ap.add_argument("--de-batch-size", type=int, default=None,
+                    help="cell-eval --batch-size: (perturbation, gene) pairs "
+                         "per DE task. cell-eval's default of 100 turns a "
+                         "2,394-perturbation panel into ~212,000 pool tasks "
+                         "and trips a shared-memory race in its DE backend. "
+                         "Raise it for large panels; 2000 is a good start.")
     ap.add_argument("--timeout", type=int, default=3600,
                     help="seconds for one cell-eval subprocess. A panel with "
                          "thousands of perturbations needs far more than the "
@@ -228,6 +235,8 @@ def main(argv=None) -> int:
             "pert_col": args.pert_col,
             "control_label": args.control_label,
             "calibrate": args.calibrate,
+            "num_threads": args.num_threads,
+            "de_batch_size": args.de_batch_size,
             "present_genes_only": not args.all_genes,
             "epoch": trainer.current_epoch,
         },

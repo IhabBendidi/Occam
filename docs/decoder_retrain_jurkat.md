@@ -136,6 +136,26 @@ The obvious fix — slicing to present genes inside the forward loop, which is
 numerically identical and would cut the peak ~5x — was deliberately NOT applied
 while this comparison is in flight, so both arms run byte-identical code.
 
+## Run log — two infrastructure failures, both fixed
+
+| job | outcome | cause | fix |
+|---|---|---|---|
+| A `18006458` | OUT_OF_MEMORY at 4:46, 188 GB peak | two dense `262,956 x 44,728` float32 arrays (~47 GB each) plus the 43.8 GB in-memory dataset; `np.concatenate` doubles one transiently. Present-gene restriction happens *after* the forward pass, so it does not bound the peak | request 700 GB (nodes have 2 TB) |
+| A `18006462` | COMPLETED in 2:20:05, but **cell-eval exited 1** | `FileNotFoundError: /psm_...` inside `pdex`, cell-eval's DE backend. 2,394 perturbations x 8,873 genes at cell-eval's default `--batch-size 100` is **~212,000 pool tasks**, each re-attaching to the single POSIX shared-memory segment holding the expression matrix. CPython's shared-memory resource tracker unlinks segments early — fixed in 3.13, and cell-eval runs under 3.10 | pass `--batch-size 2000` (a ~20x cut in task count) and drop to 16 threads, the value every successful cell-eval run on this cluster has used |
+
+Everything upstream of cell-eval worked on `18006462`, which is what makes the
+diagnosis safe: 8,873/44,728 genes present, quantile calibration fit on 12,013
+control cells and applied to 8,205 of 8,873 genes (668 degenerate, skipped),
+predicted zero-fraction 0.4661 against the target's 0.6060.
+
+⚠️ Arm B (`18006463`) is still training and its process holds the pre-fix code
+in memory, so its own end-of-training cell-eval will hit the same
+shared-memory failure. That is non-fatal — it prints and returns no metrics —
+and `best_decoder.pth` is unaffected, so arm B's number will come from
+`occam-celleval` on its checkpoint. Arm B was **not** restarted again: the fix
+is unproven until arm A completes, and arm B has ~15 h of training left, which
+is more than enough time to decide.
+
 ## Results
 
 Not yet measured. Arm A lands in ~5 h, arm B in ~18 h (≈12 h training + ≈5 h

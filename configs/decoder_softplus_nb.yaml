@@ -222,8 +222,18 @@ stages:
       # 255-perturbation H1 panel, which takes ~60 min at 16 threads. cell-eval
       # is KILLED at the timeout, not paused, so this is set well above the
       # ~5 h estimate rather than near it.
-      celleval_num_threads: 32
+      celleval_num_threads: 16
       celleval_timeout: 36000
+
+      # ⚠️ Load-bearing, not tuning. cell-eval's default of 100
+      #    (perturbation, gene) pairs per differential-expression task turns
+      #    2,394 perturbations x 8,873 genes into ~212,000 pool tasks, each
+      #    re-attaching to the one POSIX shared-memory segment holding the
+      #    expression matrix. Measured: that run died with
+      #    `FileNotFoundError: /psm_...` -- CPython's shared-memory resource
+      #    tracker unlinks segments early (fixed in 3.13; cell-eval runs under
+      #    3.10). Raising the batch size cuts the task count proportionally.
+      celleval_de_batch_size: 2000
 
       # ⚠️ REQUIRED for this arm, and the reason the released checkpoint's own
       #    epoch-185 selection is untrustworthy.

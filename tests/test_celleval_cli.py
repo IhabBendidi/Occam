@@ -27,6 +27,7 @@ def _args(**overrides):
         checkpoint="/nonexistent.pth", output_activation=None, loss_type=None,
         pert_col="gene_name", control_label="non-targeting", calibrate="none",
         modes="injctrl", num_threads=16, timeout=3600, all_genes=False,
+        de_batch_size=None,
     )
     base.update(overrides)
     return argparse.Namespace(**base)
@@ -82,12 +83,16 @@ def test_celleval_settings_are_passed_through():
     cfg = build_config(
         _checkpoint(activation="softplus"),
         _args(pert_col="gene_name", calibrate="quantile", modes="injctrl",
-              num_threads=32, timeout=36000, all_genes=False))
+              num_threads=16, timeout=36000, all_genes=False,
+              de_batch_size=2000))
     assert cfg.celleval_pert_col == "gene_name"
     assert cfg.celleval_calibrate == "quantile"
     assert cfg.celleval_modes == "injctrl"
-    assert cfg.celleval_num_threads == 32
+    assert cfg.celleval_num_threads == 16
     assert cfg.celleval_timeout == 36000
+    # cell-eval's default DE batch size trips a shared-memory race on panels
+    # with thousands of perturbations, so this has to reach the runner.
+    assert cfg.celleval_de_batch_size == 2000
     assert cfg.celleval_present_genes_only is True
     assert cfg.freeze_encoder is True
 

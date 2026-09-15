@@ -1466,10 +1466,13 @@ class DecoderTrainer:
             ce_out = os.path.join(output_dir, f"cell_eval_{eval_name}_{mode}")
             _nthr = int(getattr(self.config, "celleval_num_threads", 16))
             _tmo = int(getattr(self.config, "celleval_timeout", 3600))
+            _dbs = getattr(self.config, "celleval_de_batch_size", None)
             print(f"  [{mode}] running cell-eval "
-                  f"(threads={_nthr}, timeout={_tmo/3600:.1f}h)...")
+                  f"(threads={_nthr}, timeout={_tmo/3600:.1f}h"
+                  + (f", de_batch_size={_dbs}" if _dbs else "") + ")...")
             results[mode] = run_cell_eval(
                 pred_path, gt_path, ce_out, num_threads=_nthr, timeout=_tmo,
+                de_batch_size=_dbs,
             )
 
         del preds_np, tgts_np, preds_inj

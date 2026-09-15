@@ -292,11 +292,24 @@ def run_cell_eval(
     num_threads: int = 16,
     profile: str = "full",
     timeout: int = 3600,
+    de_batch_size: Optional[int] = None,
 ) -> Dict[str, float]:
     """Run ARC Institute cell-eval via subprocess (jupyter pyenv); parse agg_results.csv.
 
     Returns {metric_name: mean_value} or {} on any failure (non-fatal). Mirrors the
     helper in virtual_cell/pipeline.py. The cell-eval CLI auto-detects log1p input.
+
+    ``de_batch_size`` is cell-eval's ``--batch-size``: how many
+    (perturbation, gene) pairs one differential-expression task covers. It
+    matters more than it looks. cell-eval's default is 100, and the work is
+    perturbations x genes, so a panel with 2,394 perturbations over 8,873
+    genes becomes ~212,000 pool tasks -- each of which re-attaches to the one
+    POSIX shared-memory segment holding the expression matrix. On a panel that
+    size that run died with ``FileNotFoundError: /psm_...``: the segment was
+    gone before a task could attach (CPython's shared-memory resource tracker
+    unlinks segments early, fixed only in 3.13, and cell-eval runs under 3.10).
+    Raising the batch size cuts the task count proportionally. Left at None,
+    cell-eval's own default applies.
     """
     os.makedirs(output_dir, exist_ok=True)
     cmd = [
@@ -307,6 +320,8 @@ def run_cell_eval(
         "--num-threads", str(num_threads),
         "--profile", profile,
     ]
+    if de_batch_size:
+        cmd += ["--batch-size", str(de_batch_size)]
     env = os.environ.copy()
     env["PYENV_VERSION"] = "jupyter"
     try:
