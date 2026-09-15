@@ -1,0 +1,225 @@
+{
+  "assets": {
+    "stage1_pretrain": {
+      "best_val_loss": 0.8786115260685191,
+      "bytes": 2514356859,
+      "current_epoch": 99,
+      "model_state_dict": {
+        "n_params": 209445088,
+        "n_tensors": 22
+      },
+      "n_genes": 44728,
+      "path": "checkpoints/reference/occam_small_stage1_pretrain.pth",
+      "top_level_keys": [
+        "best_val_loss",
+        "config",
+        "current_epoch",
+        "dataset_info",
+        "gene_names",
+        "model_state_dict",
+        "optimizer_state_dict",
+        "scheduler_state_dict",
+        "training_history"
+      ],
+      "verified_config": {
+        "batch_size": 1024,
+        "clamp_max_log1p": 5.5,
+        "data_mode": "optim",
+        "epochs": 100,
+        "hidden_size": null,
+        "learning_rate": 0.0004,
+        "lr_scheduler": "cosine",
+        "mask_loss_weight": 0.7,
+        "mask_probability": 0.1,
+        "masked_data_weight": 0.75,
+        "mlw_schedule_cooldown": 0.0,
+        "mlw_schedule_end": 0.9,
+        "mlw_schedule_start": 0.7,
+        "mlw_schedule_warmup": 0.1,
+        "model_size": "small",
+        "reconstruction_loss": "nb_softplus",
+        "target_sum": 2000.0,
+        "val_split": 0.1,
+        "wandb_run_name": "mlw_nb_softplus_s0.7_e0.9_cd0.0",
+        "warmup_epochs": 15,
+        "weight_decay": 1.81890136e-09
+      }
+    },
+    "stage2_finetune": {
+      "best_val_loss": 0.05102195278467501,
+      "bytes": 2513814729,
+      "current_epoch": 99,
+      "model_state_dict": {
+        "n_params": 209400360,
+        "n_tensors": 21
+      },
+      "n_genes": 44728,
+      "path": "checkpoints/reference/occam_small_stage2_finetune.pth",
+      "top_level_keys": [
+        "best_val_loss",
+        "config",
+        "current_epoch",
+        "dataset_info",
+        "finetuning_config",
+        "gene_names",
+        "is_finetuned",
+        "model_state_dict",
+        "optimizer_state_dict",
+        "scheduler_state_dict",
+        "training_epochs",
+        "training_history"
+      ],
+      "verified_config": {
+        "batch_size": 1024,
+        "epochs": 100,
+        "learning_rate": 0.0006,
+        "mask_loss_weight": 0.7,
+        "mask_probability": 0.0,
+        "masked_data_weight": 0.0,
+        "mlw_schedule_end": 0.0,
+        "mlw_schedule_start": 0.7,
+        "wandb_run_name": "ft_mlw_B_ramp_lr0.0006"
+      },
+      "verified_finetuning_config": {
+        "batch_size": 1024,
+        "checkpoint": "final_model.pth",
+        "clamp_max_log1p": 5.5,
+        "data_mode": "optim",
+        "early_stopping": 3500,
+        "enabled": false,
+        "epochs": 100,
+        "eval_freq": 5,
+        "extended_eval": false,
+        "gradient_clip": 1.0,
+        "learning_rate": 0.0006,
+        "lr_scheduler": "cosine",
+        "mask_loss_weight": 0.7,
+        "mask_probability": 0.0,
+        "masked_data_weight": 0.0,
+        "mlw_schedule_cooldown": 0.1,
+        "mlw_schedule_end": 0.0,
+        "mlw_schedule_start": 0.7,
+        "mlw_schedule_warmup": 0.1,
+        "optimizer": "adam",
+        "recon_loss": "poisson",
+        "unmasking_final_ratio": 0.5,
+        "unmasking_mode": "gradual",
+        "unmasking_zero_at": 0.9,
+        "use_wandb": true,
+        "validation_freq": 1,
+        "wandb_run_name": "ft_mlw_B_ramp_lr0.0006",
+        "warmup_epochs": 0,
+        "warmup_start_factor": 0.001,
+        "weight_decay": 1.81890136e-09
+      }
+    },
+    "stage3_release": {
+      "best_val_loss": 0.0011785769730683088,
+      "bytes": 928212950,
+      "decoder_config": {
+        "dropout_rate": 0.3,
+        "hidden_dim": 2048,
+        "input_dim": 512,
+        "num_blocks": 5,
+        "output_dim": 44728,
+        "se_reduction": 16
+      },
+      "decoder_state_dict": {
+        "n_params": 137393859,
+        "n_tensors": 99
+      },
+      "encoder_config": {
+        "hidden_size": 512,
+        "model_size": "small",
+        "num_genes": 44728
+      },
+      "encoder_state_dict": {
+        "n_params": 94279864,
+        "n_tensors": 13
+      },
+      "epoch": 185,
+      "is_unified_checkpoint": true,
+      "model_state_dict": {
+        "n_params": 137393859,
+        "n_tensors": 99
+      },
+      "model_state_dict_is_decoder": true,
+      "n_genes": 44728,
+      "path": "checkpoints/release/occam_small_encoder_decoder.pth",
+      "target_sum": 2000.0,
+      "top_level_keys": [
+        "best_val_loss",
+        "decoder_config",
+        "decoder_state_dict",
+        "encoder_config",
+        "encoder_state_dict",
+        "epoch",
+        "gene_names",
+        "gene_to_index",
+        "ihabnet_checkpoint_path",
+        "is_unified_checkpoint",
+        "model_state_dict",
+        "target_sum",
+        "training_config"
+      ],
+      "verified_config": {
+        "batch_size": 1024,
+        "decoder_dropout": 0.3,
+        "decoder_hidden_dim": 2048,
+        "decoder_num_blocks": 5,
+        "decoder_se_reduction": 16,
+        "epochs": 200,
+        "eta_min": 1e-07,
+        "freeze_encoder": true,
+        "gradient_clip": 0.5,
+        "loss_type": "smooth_l1",
+        "lr": 3e-06,
+        "seed": 42,
+        "smooth_l1_beta": 2.0,
+        "wandb_run_name": "decoder_lr_sweep_3e-6_ep200",
+        "weight_decay": 0.01
+      }
+    }
+  },
+  "bmdb_database": {
+    "All.txt": {
+      "bytes": 1746478,
+      "sha256": null
+    },
+    "CORUM.txt": {
+      "bytes": 928150,
+      "sha256": null
+    },
+    "CORUM_clusters.tsv": {
+      "bytes": 140353,
+      "sha256": null
+    },
+    "HuMAP.txt": {
+      "bytes": 1452420,
+      "sha256": null
+    },
+    "LICENSE": {
+      "bytes": 731,
+      "sha256": null
+    },
+    "Reactome.txt": {
+      "bytes": 267969,
+      "sha256": null
+    },
+    "SIGNOR.txt": {
+      "bytes": 141437,
+      "sha256": null
+    },
+    "StringDB.txt": {
+      "bytes": 1412650,
+      "sha256": null
+    },
+    "compound_gene_interactions.csv": {
+      "bytes": 132593,
+      "sha256": null
+    }
+  },
+  "generated": "2026-09-15T09:04:43.469762+00:00",
+  "provenance_warning": "Stage 1 and stage 3 were written by colliding SLURM array tasks. The 'verified_config' blocks below come from each checkpoint's own embedded config, which is the only primary record. Do not trust outputs/experiments/*/metadata.json or decoder_results/*/run_config.json in the source tree. See docs/reproducing_chain_a.md.",
+  "schema": 1
+}

@@ -1,0 +1,47 @@
+# Machine-local dataset registry.
+#
+# Copy to configs/paths.yaml (gitignored) and point the keys at your own data.
+#
+# **Every path here is relative and resolves against the repo root**, not the
+# working directory. Nothing in this repository contains an absolute path, so a
+# config behaves the same on any machine and wherever a command is run from.
+#
+# Referenced from configs/*.yaml as ${paths.<key>}.
+# Override any key from the environment as OCCAM_<KEY>, e.g. OCCAM_EVAL_DIR.
+# An absolute value is accepted if you set one, it is simply never shipped.
+
+# ---------------------------------------------------------------------------
+# Evaluation bundle  (scripts/export_eval_data.py; data/eval/DATASET_CARD.md)
+# ---------------------------------------------------------------------------
+# Perturbation benchmark: nadig_2024_hepg2, nadig_2024_jurkat, replogle_2022_rpe1_e
+eval_dir: data/eval/pert
+
+# scIB batch integration: pancreas_scib, pbmc_12k, pbmc_68k
+scib_dir: data/eval/scib
+
+# ---------------------------------------------------------------------------
+# Pretraining corpus (DiverseRNA)
+# ---------------------------------------------------------------------------
+# Needed only to TRAIN. Not required to run the evaluations or to use a
+# released checkpoint.
+#
+# 1,434,299 cells x 44,728 genes. Read data/diverserna/DATASET_CARD.md first:
+# 43.6% of its rows are NOT integer counts and 2.4% are bulk RNA-seq, despite
+# the "raw_counts" in the source filename.
+train_corpus: data/diverserna
+
+# ---------------------------------------------------------------------------
+# Perturbation knowledge graphs  (occam.vcell)
+# ---------------------------------------------------------------------------
+# Prior-knowledge graphs for the perturbation embedding: subdirectories named
+# after each graph (go/, string/, pxmap/, txmap/) plus
+# master_gene_set_sorted.csv. Only needed for the virtual-cell stage.
+kg_graph_dir: data/graphs
+
+# ---------------------------------------------------------------------------
+# BMDB gene-relationship databases
+# ---------------------------------------------------------------------------
+# Leave blank: the databases ship inside the wheel at occam/assets/bmdb_database
+# and in a source checkout at assets/bmdb_database, so this resolves with no
+# configuration. Set it only to use a different snapshot.
+bmdb_dir: ""

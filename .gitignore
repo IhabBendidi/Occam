@@ -1,0 +1,51 @@
+# Machine-local path registry; configs/paths.example.yaml is the tracked template
+configs/paths.yaml
+
+# Runtime outputs
+runs/
+wandb/
+wandb_runs/
+*.out
+*.err
+*.log
+
+# Large binary artifacts, populated by scripts/bootstrap_assets.sh
+checkpoints/**/*.pth
+checkpoints/**/*.pt
+
+# DiverseRNA shards, populated by scripts/export_dataset_hf.py
+data/diverserna/data/
+data/diverserna/*.parquet
+
+# Evaluation bundle, populated by scripts/export_eval_data.py.
+# manifest.json and DATASET_CARD.md stay tracked -- they are the record of what
+# the bundle contains and where it came from.
+data/eval/**/*.h5ad
+
+# Panel sources are symlinks to 36 GB of h5ad; see data/panels/*/SOURCES.md
+data/panels/**/src/*.h5ad
+data/panels/**/*.h5ad
+
+# Golden fixtures are large; regenerate with scripts/porting/capture_goldens.py
+golden/*.npz
+
+# Verification output and the untrusted config copied beside the release.
+# Both are machine-specific run artifacts, not part of the repo.
+golden/verify_report.json
+checkpoints/**/*.UNTRUSTED
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+
+# Caches
+.pytest_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+.DS_Store

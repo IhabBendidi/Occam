@@ -1,0 +1,5 @@
+Copyright (c) 2026 Recursion Pharmaceuticals / Valence Labs
+
+Licence to be confirmed before publication. See docs/reproducing_chain_a.md and
+data/diverserna/UPLOAD_GATE.md -- the pretraining corpus contains third-party
+data (GTEx, TCGA) with redistribution constraints that must be reviewed first.

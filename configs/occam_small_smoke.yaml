@@ -1,0 +1,209 @@
+# Smoke config: runs all three stages end to end in a couple of minutes on CPU.
+#
+# NOT a scientific configuration. It exists to exercise every code path --
+# the chunked reader, both loss modules, the unmasking and MLW schedules, the
+# stage fence, the ledger, artifact hand-off and resume -- on a corpus small
+# enough to iterate on. The hyperparameters are chosen for speed, not quality.
+#
+#     python scripts/make_smoke_corpus.py --out /tmp/occam_smoke.h5ad
+#     OCCAM_SMOKE_DATA=/tmp/occam_smoke.h5ad \
+#       python -m occam.train --config configs/occam_small_smoke.yaml
+#
+# The structure below deliberately mirrors configs/occam_small.yaml key for
+# key, so a divergence between them is a real difference rather than a
+# formatting artifact.
+version: 1
+name: occam_small_smoke
+seed: 0
+device: cpu
+
+paths: !include paths.yaml
+
+run:
+  root: ./runs
+  stages: [pretrain, finetune, decoder]
+  runner: inprocess
+  resume: auto
+  wandb:
+    enabled: false
+    project: occam
+    tags: [occam, smoke]
+
+data:
+  # Override with --set data.train=<path>, or set OCCAM_TRAIN_CORPUS.
+  train: /tmp/occam_smoke.h5ad
+  val: null
+  train_gene_col: gene_symbol
+  val_gene_col: null
+  expect:
+    n_obs: 4096
+    n_genes: 512
+
+stages:
+  pretrain:
+    model:
+      model_size: small
+      hidden_size: null
+      mae_decoder_hidden: null
+      dropout: 0.0
+    optim:
+      epochs: 2
+      batch_size: 256
+      learning_rate: 0.0004
+      weight_decay: 1.81890136e-09
+      optimizer: adam
+      lr_scheduler: cosine
+      warmup_epochs: 0
+      warmup_start_factor: 0.001
+      gradient_clip_val: 1.0
+      early_stopping_patience: 3500
+      validation_freq: 1
+    masking:
+      mask_probability: 0.1
+      corruption_mode: swap
+      gaussian_sigma: 0.5
+      variable_masking: false
+      gene_presence_mask: false
+      presence_shift: 1.0
+    loss:
+      # Same loss as the released stage 1, so the log_theta parameter and the
+      # strict=False hand-off to stage 2 are both exercised.
+      reconstruction_loss: nb_softplus
+      masked_data_weight: 0.75
+      mask_loss_weight: 0.7
+      mlw_schedule_start: 0.7
+      mlw_schedule_end: 0.9
+      mlw_schedule_warmup: 0.1
+      mlw_schedule_cooldown: 0.0
+      clamp_max_log1p: 5.5
+      w_mse: 1.0
+      w_pois: 0.1
+      recon_loss_scale: 1.0
+      gpl_weight: 0.0
+      loss_diagnostics: false
+    data:
+      data_mode: optim
+      target_sum: 2000.0
+      val_split: 0.2
+      scale: false
+      skip_normalize: false
+      skip_log1p: false
+      optim_chunk_size: 512
+      optim_buffer_chunks: 2
+      min_gene_overlap_pct: null
+    runtime:
+      enable_amp: false
+      compile: false
+      use_multi_gpu: false
+      use_ddp: false
+      freeze_mask_predictor: false
+    eval:
+      enabled: false
+      frequency: 5
+      batch_size: 256
+      scib: false
+
+  finetune:
+    init_from: ${stages.pretrain.artifacts.final_model}
+    unmasking:
+      mode: gradual
+      zero_at: 0.9
+      final_ratio: 0.5
+      effective_mask_prob_source: parent_checkpoint.mask_probability
+    optim:
+      epochs: 2
+      learning_rate: 0.0006
+      weight_decay: 1.81890136e-09
+      batch_size: 256
+      optimizer: adam
+      lr_scheduler: cosine
+      warmup_epochs: 0
+      warmup_start_factor: 0.001
+      gradient_clip: 1.0
+      early_stopping: 3500
+      validation_freq: 1
+    masking:
+      mask_probability: 0.0
+      corruption_mode: null
+      gaussian_sigma: null
+    loss:
+      recon_loss: poisson
+      masked_data_weight: 0.0
+      mask_loss_weight: 0.7
+      mlw_schedule_start: 0.7
+      mlw_schedule_end: 0.0
+      mlw_schedule_warmup: 0.1
+      mlw_schedule_cooldown: 0.1
+      clamp_max_log1p: 5.5
+    runtime:
+      data_mode: optim
+      freeze_mask_predictor: null
+      enable_amp: null
+      compile: null
+    eval:
+      eval_freq: 100
+    load:
+      strict: false
+      expect_unexpected: ["_recon_loss_fn.log_theta"]
+      expect_missing: []
+
+  decoder:
+    init_from: ${stages.finetune.artifacts.final_model}
+    encoder:
+      freeze_encoder: true
+      encoder_lr: 1.0e-05
+      skip_normalize: false
+      skip_log1p: false
+    architecture:
+      decoder_size: null
+      decoder_hidden_dim: 256
+      decoder_num_blocks: 2
+      decoder_dropout: 0.3
+      decoder_se_reduction: 16
+      decoder_output_activation: rectified_sigmoid
+      decoder_weight_tie: false
+      decoder_bottleneck_k: 1
+      decoder_monarch_blocks: 0
+      decoder_kron_rank: 0
+      decoder_glu: false
+      decoder_sparsity_24: false
+    optim:
+      lr: 3.0e-06
+      eta_min: 1.0e-07
+      weight_decay: 0.01
+      gradient_clip: 0.5
+      batch_size: 256
+      epochs: 2
+      loss_type: smooth_l1
+      smooth_l1_beta: 2.0
+      weight_init: default
+      dispersion_lr: null
+    data:
+      data_mode: optim
+      val_split: 0.2
+      optim_chunk_size: 512
+      optim_buffer_chunks: 2
+      gene_presence_mask: false
+      presence_shift: 1.0
+      min_gene_overlap_pct: null
+      train_gene_col: gene_symbol
+      eval_gene_col: null
+    augmentation:
+      no_augmentation: true          # skips the GVF pass, which dominates a 2-epoch run
+      gvf_cache_dir: null
+    adversarial:
+      adv_loss: false
+      perc_loss: false
+      feature_extractor_checkpoint: null
+      adv_mode: frozen
+      perc_mode: frozen
+      lambda_adv: 0.1
+      lambda_perc: 0.1
+      disc_lr: 0.0002
+    eval:
+      decoder_eval_freq: 100
+      bmdb_eval_freq: 100
+      run_encoder_benchmark: false
+      log_interval: 1
+      cell_eval_enabled: false
+      eval_data: []

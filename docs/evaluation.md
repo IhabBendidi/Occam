@@ -1,0 +1,192 @@
+# Evaluation
+
+Two independent things are called "evaluation" here and they answer different
+questions:
+
+| | what it measures | where |
+|---|---|---|
+| **Encoder benchmark** | whether the embedding separates perturbations and integrates batches | `occam-benchmark`, `occam-scib` |
+| **Panel evaluation** | whether the model predicts a perturbation's effect in a held-out context | `occam.vcell.panel` |
+
+The second is the one the publication is about, and the one with the traps.
+
+---
+
+## Panel evaluation
+
+Single cell in, single cell out. One predicted cell per real perturbed cell,
+each generated from **one real control cell**. Nothing is averaged anywhere
+except inside the deliberately zero-signal `ctrlmean` anchor, where averaging is
+the definition of the baseline.
+
+Scored with **cell-eval v1** (`--profile full`). The count-space scorer that the
+research tree also used is deliberately absent, along with its emission
+machinery.
+
+### The panel
+
+```bash
+python scripts/build_panel.py \
+    --source corpus.h5ad \
+    --out-dir data/panels/mine \
+    --pert-col target_gene --control-label non-targeting \
+    --context-col cell_line --context K562 \
+    --cells-per-pert 400 --n-controls 18400 \
+    --thin-to-h5ad reference_depth.h5ad
+```
+
+Emits:
+
+```
+panel_real.h5ad             perturbed cells + the SCORING control pool
+panel_controls_model.h5ad   a DISJOINT pool, the only controls the model sees
+genes.csv  perts.csv  control_split.json  panel_manifest.json  seen_split.json
+```
+
+**Controls are drawn once at 2× and then halved.** Drawing the two pools
+separately, or thinning them with different random streams, would make a leaked
+cell undetectable. Depth thinning therefore happens once, before the split.
+
+Half the available controls is a hard ceiling; the builder refuses rather than
+quietly shrinking a pool.
+
+⚠️ **Never build the model-visible pool as a subset of the scoring panel.** Then
+every control-derived arm is scored against cells it was built from and the
+result looks good for the wrong reason. `load_panel` asserts disjointness in
+three tiers — source provenance, then row hashing, then refuse — and never falls
+back to comparing obs indices. (The check this replaces did exactly that, between
+files written by different scripts with different index prefixes, so it could not
+fail.)
+
+### Reading the numbers
+
+Every run scores two zero-signal arms alongside the model:
+
+| arm | what it emits | carries biology? |
+|---|---|---|
+| `ctrlmean` | the model-visible control mean, for every perturbation | no |
+| `ctrlcell` | the drawn control cell, unchanged | no |
+
+**They are mandatory.** `build_arms` raises on an empty anchor list and
+`write_report` raises if a panel has none. That is not defensive coding:
+
+> Across 41 (run, arm) pairs measured in the research tree, the model beat the
+> `ctrlmean` anchor on `pearson_delta` **0 times out of 41**, on
+> `discrimination_score_l2` 9/41, and on `overlap_at_N` **41/41**.
+
+So on this panel the field's usual headline metric is won by a predictor with no
+signal in it, and the metric the model does win is the one the research tree's
+own docs warn against — because *there*, on a different panel, the anchor won
+`overlap_at_N` instead.
+
+The lesson is not "distrust `overlap_at_N`". It is that **which metric an anchor
+wins is a property of the panel**, so establish it per panel from the anchor arms
+and never inherit the claim. The generated report states it per run.
+
+Reported metrics, with direction:
+
+| metric | direction | note |
+|---|---|---|
+| `pearson_delta` | higher better | the convention — and what the anchor wins here |
+| `discrimination_score_l2` | higher better | second convention metric |
+| `overlap_at_N` | higher better | the one the model wins; do not quietly drop it |
+| `de_direction_match` | higher better | direction only; the shrink sweep's control |
+| `mse_delta`, `mae_delta` | **lower better** | errors; collapse under shrink |
+
+`clustering_agreement` and `pearson_edistance` are panel-level, reported for
+`all` only.
+
+### Panels
+
+`all` is the headline. `seen` and `unseen` split it by whether a perturbation
+was in training, and are computed by **re-aggregating the `all` run's
+per-perturbation results** rather than re-running cell-eval.
+
+That is sound for cell-eval v1 and was not for the scorer it replaces: that one
+scaled each metric against a per-panel baseline and replicate ceiling, so a
+sub-panel needed its own reference build. v1 metrics are per perturbation and
+then averaged, so a sub-panel result *is* a restriction of the full run. It turns
+3 panels × N arms × ~60 min into 1 panel × N arms.
+
+Requesting `seen`/`unseen` without the training perturbation set is an error, not
+a silent empty panel.
+
+### Arms
+
+Beyond the anchors:
+
+* `model_nocal` — raw output.
+* `model_cal` — after control-fit per-gene quantile calibration, fitted on the
+  **model-visible controls only**. On the decoder-only panels this is worth about
+  0.37 `pearson_delta`, against about 0.02 for the loss/head choice. An
+  uncalibrated comparison of heads measures almost nothing.
+* `_aN` suffixes — delta shrink, `pred = ctrl + α(pred − ctrl)` per cell against
+  the control that cell was generated from. Worth sweeping rather than picking:
+  predictions are directionally right but far too large, so the magnitude
+  metrics collapse under shrink while the scale-invariant ones do not, and the
+  sweep separates those two failures.
+
+### Cost, and what that forces
+
+~60 min per panel at 16 threads for 255 perturbations × 400 cells. Real-side
+differential expression is the dominant term and is identical across arms within
+a panel, so it is computed once and reused — keyed on the target file's content
+so a rebuilt panel cannot silently reuse a stale one.
+
+That cost is why **checkpoint selection uses validation `pearson_delta`, not the
+panel score.** The research tree measured that criterion ranking checkpoints
+wrongly on the real panel. So: do not read the selected checkpoint as "best on
+the panel". Score the final checkpoint too and compare.
+
+### cell-eval
+
+cell-eval **0.6.0**. Resolution order:
+
+1. `OCCAM_CELLEVAL_CMD` — explicit, wins over everything
+2. `celleval_bin` plus `PYENV_VERSION=<celleval_pyenv>` — this cluster's path
+3. `celleval_bin` on `PATH`, no environment mutation (`celleval_pyenv: ""`)
+
+The pyenv step is *this machine's* resolution, not a requirement. The runner
+checks `--version` once and **raises** on a mismatch, rather than returning
+empty metrics ten arms later.
+
+---
+
+## Encoder benchmark
+
+```bash
+occam-benchmark --checkpoint checkpoints/release/occam_small_encoder_decoder.pth
+occam-scib      --checkpoint checkpoints/release/occam_small_encoder_decoder.pth
+```
+
+Six tasks across three perturbation datasets — gene-relationship recall against
+five BMDB sources, perturbation consistency, iLISI, KNN and linear separability,
+linear invertibility — plus scIB batch integration on pancreas and PBMC.
+
+Datasets come from the evaluation bundle in `data/eval/`, located through
+`configs/paths.yaml` with **relative** paths resolved against the repo root —
+so the same config works on any machine. BMDB ships inside the package.
+
+The bundle is 6 datasets and 5.6 GB, repacked from 1,031 GB of source files
+(HDF5 fragmentation plus dense storage of sparse data). All of `X`, `obs` and
+`var` is carried through, Ensembl IDs included; only `obsm` is dropped, which on
+the perturbation files was 28 arrays of precomputed baseline embeddings from
+other models. `data/eval/manifest.json` records shape, non-zero count, column
+lists, checksum and source path per dataset.
+
+⚠️ **No benchmark numbers are quoted for the released encoder.** The previously
+published figures belong to a run that claimed the same experiment directory but
+whose weights were never used downstream. Re-measure.
+
+## Decoder-stage evaluation
+
+Reconstruction Pearson/Spearman/MAE plus, optionally, cell-eval on the
+per-cell reconstruction of each eval file.
+
+⚠️ `combined_score` — which picks `best_decoder.pth` — includes Spearman over
+zero-filled padding genes, and that term collapses for any head that does not
+emit exact zeros. The collapse tracks the zero-fill fraction almost perfectly:
+TREK at 1.4% padding loses 0.69 Spearman; nadig at 80.2% loses 90.46; Pearson and
+MAE barely move. **The released decoder's own epoch-185 selection was made on
+this criterion.** Set `eval_present_genes_only: true`, as
+`configs/decoder_softplus_nb.yaml` does.
