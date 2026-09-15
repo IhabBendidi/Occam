@@ -24,6 +24,7 @@ import os
 import sys
 import json
 import csv
+import shutil
 import subprocess
 from dataclasses import dataclass, field, asdict
 from datetime import datetime
@@ -102,6 +103,7 @@ from occam.decoder_train.augment import (
 )
 from occam.decoder_train.config import DecoderTrainConfig
 from occam.decoder_train.metrics import (
+    real_de_cache_path,
     compute_all_metrics, compute_pearson_per_sample, compute_spearman_per_sample,
     run_cell_eval, run_decoder_benchmark, _pearson_torch, _spearman_torch,
 )
@@ -1453,6 +1455,28 @@ class DecoderTrainer:
         print(f"  cell-eval inputs: {preds_np.shape[0]} cells x {preds_np.shape[1]} genes "
               f"({n_ctrl} non-targeting) -> {celleval_dir}")
 
+        # --- Real-side DE reuse ------------------------------------------
+        # cell-eval spends most of its time on the ground-truth differential
+        # expression, and that depends ONLY on the target file -- not on the
+        # decoder, the calibration or the mode. So it is identical for every arm
+        # scored against the same target and for both modes within one run.
+        # Keyed by the target's own sha256, so a target built from different
+        # data, transforms or gene subset misses the cache instead of being
+        # silently reused. Measured on nadig_2024_jurkat: ~1.5 h of a ~2.5 h run.
+        _cache_dir = getattr(self.config, "celleval_de_real_cache", None)
+        _de_real = None
+        _cache_path = None
+        if _cache_dir:
+            os.makedirs(_cache_dir, exist_ok=True)
+            _cache_path, _digest = real_de_cache_path(_cache_dir, gt_path)
+            if os.path.isfile(_cache_path):
+                _de_real = _cache_path
+                print(f"  reusing real-side DE for target {_digest[:16]} "
+                      f"({os.path.getsize(_cache_path) / 1e9:.1f} GB): {_cache_path}")
+            else:
+                print(f"  no cached real-side DE for target {_digest[:16]}; "
+                      f"computing it and caching to {_cache_path}")
+
         # --- Run both modes against the shared target (injctrl = main, run first) ---
         results: Dict[str, Dict[str, float]] = {}
         _want = [m.strip() for m in
@@ -1472,8 +1496,19 @@ class DecoderTrainer:
                   + (f", de_batch_size={_dbs}" if _dbs else "") + ")...")
             results[mode] = run_cell_eval(
                 pred_path, gt_path, ce_out, num_threads=_nthr, timeout=_tmo,
-                de_batch_size=_dbs,
+                de_batch_size=_dbs, de_real=_de_real,
             )
+
+            # Populate the cache from the first mode that produced one, and
+            # reuse it for the second mode in this same run.
+            _produced = os.path.join(ce_out, "real_de.csv")
+            if _cache_path and _de_real is None and os.path.isfile(_produced):
+                try:
+                    shutil.copyfile(_produced, _cache_path)
+                    _de_real = _cache_path
+                    print(f"  cached real-side DE -> {_cache_path}")
+                except OSError as exc:
+                    print(f"  [warn] could not cache real-side DE: {exc}")
 
         del preds_np, tgts_np, preds_inj
         gc.collect()

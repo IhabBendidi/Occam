@@ -27,7 +27,7 @@ def _args(**overrides):
         checkpoint="/nonexistent.pth", output_activation=None, loss_type=None,
         pert_col="gene_name", control_label="non-targeting", calibrate="none",
         modes="injctrl", num_threads=16, timeout=3600, all_genes=False,
-        de_batch_size=None,
+        de_batch_size=None, de_real_cache=None,
     )
     base.update(overrides)
     return argparse.Namespace(**base)
@@ -115,3 +115,70 @@ def test_the_released_checkpoint_really_does_omit_the_activation():
     ck = torch.load(RELEASE, map_location="cpu", weights_only=False)
     assert "output_activation" not in ck["decoder_config"]
     assert ck["decoder_config"]["num_blocks"] == 5, "released decoder is 2048 x 5"
+
+
+def test_de_real_cache_is_keyed_by_the_target_content():
+    """Reuse must be impossible across different targets, not merely discouraged.
+
+    The ground-truth DE is reused across arms. Keying it on the target file's
+    own hash is what makes that safe: a target built from different data,
+    different transforms or a different gene subset lands on a different path
+    and misses the cache, rather than being silently scored against another
+    arm's ground truth.
+    """
+    pytest.importorskip("torch")
+    import tempfile
+
+    from occam.decoder_train.metrics import real_de_cache_path
+
+    with tempfile.TemporaryDirectory() as tmp:
+        a = os.path.join(tmp, "target_a.h5ad")
+        b = os.path.join(tmp, "target_b.h5ad")
+        c = os.path.join(tmp, "target_a_copy.h5ad")
+        with open(a, "wb") as fh:
+            fh.write(b"cells x genes A")
+        with open(b, "wb") as fh:
+            fh.write(b"cells x genes B")
+        with open(c, "wb") as fh:
+            fh.write(b"cells x genes A")
+
+        path_a, digest_a = real_de_cache_path(tmp, a)
+        path_b, digest_b = real_de_cache_path(tmp, b)
+        path_c, digest_c = real_de_cache_path(tmp, c)
+
+        assert digest_a != digest_b and path_a != path_b
+        # Same bytes anywhere on disk -> same cache entry. That is the reuse.
+        assert digest_a == digest_c and path_a == path_c
+        assert os.path.dirname(path_a) == tmp
+        assert path_a.endswith(".csv")
+
+
+def test_de_real_cache_reaches_the_config():
+    pytest.importorskip("torch")
+    from occam.cli.celleval import build_config
+
+    cfg = build_config(_checkpoint(activation="softplus"),
+                       _args(de_real_cache="/tmp/cache"))
+    assert cfg.celleval_de_real_cache == "/tmp/cache"
+
+
+def test_an_explicit_activation_may_not_contradict_the_checkpoint():
+    """The checkpoint is the authority when it records one.
+
+    A launcher carrying `ACT=rectified_sigmoid` as a default, pointed at a
+    softplus checkpoint, would otherwise score a dead model: rectified_sigmoid
+    on softplus-trained weights emits ~99% exact zeros and loads strict=True
+    without complaint.
+    """
+    pytest.importorskip("torch")
+    from occam.cli.celleval import build_config
+
+    with pytest.raises(ValueError) as exc:
+        build_config(_checkpoint(activation="softplus"),
+                     _args(output_activation="rectified_sigmoid"))
+    assert "contradicts" in str(exc.value)
+
+    # Agreeing with the record is fine.
+    cfg = build_config(_checkpoint(activation="softplus"),
+                       _args(output_activation="softplus"))
+    assert cfg.decoder_output_activation == "softplus"

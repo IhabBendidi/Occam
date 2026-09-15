@@ -101,7 +101,17 @@ def build_config(checkpoint: Dict[str, Any], args) -> Any:
     dcfg = dict(checkpoint["decoder_config"])
     tcfg = dict(checkpoint.get("training_config", {}) or {})
 
-    activation = args.output_activation or dcfg.get("output_activation")
+    recorded = dcfg.get("output_activation")
+    if recorded and args.output_activation and args.output_activation != recorded:
+        raise ValueError(
+            f"--output-activation {args.output_activation!r} contradicts the "
+            f"{recorded!r} recorded in this checkpoint's decoder_config.\n"
+            f"  The checkpoint is the authority: its weights were trained under "
+            f"{recorded!r}. Scoring them under the other head is not a variant "
+            f"of the experiment, it is a broken model -- rectified_sigmoid on "
+            f"softplus-trained weights emits ~99% exact zeros.\n"
+            f"  Drop the flag.")
+    activation = recorded or args.output_activation
     if not activation:
         raise ValueError(
             "this checkpoint does not record 'output_activation' in its "
@@ -134,6 +144,7 @@ def build_config(checkpoint: Dict[str, Any], args) -> Any:
     config.celleval_num_threads = args.num_threads
     config.celleval_timeout = args.timeout
     config.celleval_de_batch_size = args.de_batch_size
+    config.celleval_de_real_cache = args.de_real_cache
     config.celleval_present_genes_only = not args.all_genes
     return config
 
@@ -180,6 +191,13 @@ def main(argv=None) -> int:
                          "2,394-perturbation panel into ~212,000 pool tasks "
                          "and trips a shared-memory race in its DE backend. "
                          "Raise it for large panels; 2000 is a good start.")
+    ap.add_argument("--de-real-cache", default=None,
+                    help="directory of reusable ground-truth DE tables, keyed "
+                         "by the target file's sha256. The real-side DE depends "
+                         "only on the target, so arms scored against the same "
+                         "one share it -- ~1.5 h of a ~2.5 h run on jurkat. A "
+                         "target built from different data or a different gene "
+                         "subset hashes differently and misses the cache.")
     ap.add_argument("--timeout", type=int, default=3600,
                     help="seconds for one cell-eval subprocess. A panel with "
                          "thousands of perturbations needs far more than the "
@@ -237,6 +255,7 @@ def main(argv=None) -> int:
             "calibrate": args.calibrate,
             "num_threads": args.num_threads,
             "de_batch_size": args.de_batch_size,
+            "de_real_cache": args.de_real_cache,
             "present_genes_only": not args.all_genes,
             "epoch": trainer.current_epoch,
         },

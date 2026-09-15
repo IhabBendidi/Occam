@@ -129,6 +129,11 @@ class DecoderTrainConfig:
     # perturbations becomes hundreds of thousands of pool tasks and trips a
     # shared-memory race in its DE backend. See metrics.run_cell_eval.
     celleval_de_batch_size: Optional[int] = None
+    # Directory holding reusable real-side differential expression, keyed by the
+    # target file's sha256. The ground-truth DE depends only on the target, so
+    # every arm scored against the same target can share one -- about 1.5 h of a
+    # 2.5 h run on nadig_2024_jurkat. None disables reuse.
+    celleval_de_real_cache: Optional[str] = None
     celleval_timeout: int = 3600
     # Disable AMP (mixed precision) — train/eval in fp32.
     no_amp: bool = False

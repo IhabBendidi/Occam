@@ -97,13 +97,24 @@ mkdir -p runs/slurm
 
 export PYTHONPATH="$HERE/src${PYTHONPATH:+:$PYTHONPATH}"
 
-# The released decoder does not record its output activation, so it must be
-# passed explicitly -- occam-celleval refuses to guess, because a softplus
-# decoder loads cleanly under rectified_sigmoid and emits ~99% exact zeros.
-# occam-verify determines it from a forward pass. For a checkpoint trained by
-# this repo the field is recorded and ACT can be left empty.
 CKPT="${CKPT:-checkpoints/release/occam_small_encoder_decoder.pth}"
-ACT="${ACT:-rectified_sigmoid}"
+
+# Output activation. Only the RELEASED checkpoint needs this passed: it predates
+# the field, and occam-celleval refuses to guess because a softplus decoder
+# loads cleanly under rectified_sigmoid and emits ~99% exact zeros.
+# (occam-verify determined it from a forward pass; see docs/checkpoints.md.)
+#
+# Anything this repo trained records the field, and occam-celleval REFUSES a
+# flag that contradicts the record -- so the flag must be absent for those.
+# Hence `${ACT+set}`, which distinguishes "caller did not set ACT" from
+# "caller set ACT to empty on purpose"; `${ACT:-...}` would collapse the two
+# and silently reimpose rectified_sigmoid on a softplus checkpoint.
+if [ -z "${ACT+set}" ]; then
+    case "$CKPT" in
+        */occam_small_encoder_decoder.pth) ACT="rectified_sigmoid" ;;
+        *)                                 ACT="" ;;
+    esac
+fi
 EVAL_DATA="${EVAL_DATA:-data/eval/pert/nadig_2024_jurkat.h5ad}"
 PERT_COL="${PERT_COL:-gene_name}"
 CALIBRATE="${CALIBRATE:-quantile}"
@@ -130,6 +141,7 @@ python -m occam.cli.celleval \
     --modes injctrl \
     --num-threads 16 \
     --de-batch-size 2000 \
+    --de-real-cache runs/celleval/_de_real_cache \
     --timeout 36000 \
     ${ACT:+--output-activation "$ACT"}
 

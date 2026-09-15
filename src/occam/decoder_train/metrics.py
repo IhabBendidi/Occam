@@ -300,6 +300,31 @@ def _run_bmdb_benchmark(
     return pd.DataFrame(metrics_list) if metrics_list else pd.DataFrame()
 
 
+def sha256_file(path: str, chunk: int = 64 * 1024 * 1024) -> str:
+    """Full sha256 of a file, streamed."""
+    h = hashlib.sha256()
+    with open(path, "rb") as fh:
+        while True:
+            block = fh.read(chunk)
+            if not block:
+                break
+            h.update(block)
+    return h.hexdigest()
+
+
+def real_de_cache_path(cache_dir: str, target_path: str) -> Tuple[str, str]:
+    """Where this target's real-side DE lives, keyed by the target's OWN hash.
+
+    Returns ``(path, digest)``. Keying on the content hash rather than on a
+    panel name is what makes reuse safe: a target built from different data,
+    different transforms or a different gene subset hashes differently and
+    simply misses the cache. There is no way to silently score arm B against
+    arm A's ground truth.
+    """
+    digest = sha256_file(target_path)
+    return os.path.join(cache_dir, f"real_de_{digest[:16]}.csv"), digest
+
+
 def run_cell_eval(
     pred_path: str,
     gt_path: str,
@@ -308,6 +333,7 @@ def run_cell_eval(
     profile: str = "full",
     timeout: int = 3600,
     de_batch_size: Optional[int] = None,
+    de_real: Optional[str] = None,
 ) -> Dict[str, float]:
     """Run ARC Institute cell-eval via subprocess (jupyter pyenv); parse agg_results.csv.
 
@@ -337,6 +363,13 @@ def run_cell_eval(
     ]
     if de_batch_size:
         cmd += ["--batch-size", str(de_batch_size)]
+    if de_real:
+        # The real-side differential expression depends only on the target file,
+        # never on the decoder, so it is identical for every arm scored against
+        # the same target -- and it is the dominant cost. The caller is
+        # responsible for proving the target is the same one; see
+        # `real_de_cache_path`.
+        cmd += ["--de-real", de_real]
     env = os.environ.copy()
     env["PYENV_VERSION"] = "jupyter"
     try:

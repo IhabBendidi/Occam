@@ -281,5 +281,23 @@ number) and `reconctrl` (the decoder's own reconstructed controls, inflated
 because its bias cancels in the delta: 0.87 vs 0.59 on replogle_test). Each mode
 is a full cell-eval run, so `--modes injctrl` is the default.
 
+**Reusing the ground-truth DE.** cell-eval spends most of its time computing
+differential expression for the real data, and that depends only on the target
+file — not on the decoder, the calibration or the mode. `--de-real-cache DIR`
+stores it keyed by the **target file's own sha256**, so every arm scored against
+the same target shares one: ~1.5 h of a ~2.5 h run on jurkat.
+
+Keying on content rather than on a panel name is what makes the reuse safe. A
+target built from different data, different transforms or a different gene
+subset hashes differently and misses the cache; there is no path by which one
+arm is silently scored against another arm's ground truth.
+
+**The checkpoint outranks the flag.** If a checkpoint records an
+`output_activation` and `--output-activation` disagrees with it, the command
+refuses. That is not redundant with the earlier check: a launcher carrying
+`ACT=rectified_sigmoid` as a default, pointed at a softplus checkpoint, would
+otherwise score ~99% exact zeros and report it as a result. It happened here,
+and the refusal caught it.
+
 A worked comparison of two decoders on jurkat is in
 [decoder_retrain_jurkat.md](decoder_retrain_jurkat.md).

@@ -235,6 +235,13 @@ stages:
       #    3.10). Raising the batch size cuts the task count proportionally.
       celleval_de_batch_size: 2000
 
+      # The ground-truth DE depends only on the target file, never on the
+      # decoder, so every arm scored against this eval file shares one. Keyed by
+      # the target's sha256: a target built from different data, transforms or
+      # gene subset misses the cache rather than being silently reused. Worth
+      # ~1.5 h of a ~2.5 h run here.
+      celleval_de_real_cache: runs/celleval/_de_real_cache
+
       # ⚠️ REQUIRED for this arm, and the reason the released checkpoint's own
       #    epoch-185 selection is untrustworthy.
       #
