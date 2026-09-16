@@ -351,6 +351,29 @@ class StreamingDatasetV2(VirtualCellStreamingDataset):
                                      f"control-embedding pool entry")
 
     # ---- chunk order -----------------------------------------------------------------
+    def audit_eligible_perts(self) -> Dict[str, Dict[str, int]]:
+        """{file basename: {perturbation: n eligible rows}} from the REAL gate.
+
+        `_static_ok` is the only per-row eligibility mask `__iter__` consults, so this is
+        what actually trains, not a reconstruction of it. Used by
+        `scripts/verify_rhj_exclusion.py` to prove both halves of the benchmark invariant:
+        that no held-out HepG2 row is eligible, AND that the same symbols are still eligible
+        from the other two contexts -- the second of which a global name-level exclusion
+        would fail.
+
+        Row caps (`max_cells_per_pert`) and chunking can only REMOVE rows downstream of
+        this, never add an excluded one back, so a zero here is conclusive.
+        """
+        out: Dict[str, Dict[str, int]] = {}
+        for mi, fm in enumerate(self.active_metas):
+            ok = self._static_ok[mi]
+            names = np.asarray(fm.pert_gene_names, dtype=str)
+            per: Dict[str, int] = {}
+            for nm, cnt in zip(*np.unique(names[ok], return_counts=True)):
+                per[str(nm)] = int(cnt)
+            out[Path(fm.path).name] = per
+        return out
+
     def _ordered_chunks(self, rng) -> List[int]:
         if not self.balance_sources or self.interleave != "proportional":
             return super()._ordered_chunks(rng)

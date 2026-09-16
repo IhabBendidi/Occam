@@ -271,6 +271,13 @@ def main(argv=None) -> int:
     ap.add_argument("--pert-col", default="gene_name")
     ap.add_argument("--control-label", default="non-targeting")
     ap.add_argument("--out-dir", default="data/benchmarks/rhj_fewshot")
+    ap.add_argument("--benchmark-id", default=BENCHMARK_ID)
+    # The declared counts are overridable ONLY so the smoke corpus can go through this same
+    # builder. For the real benchmark they stay at the module constants, which is what makes
+    # a silent redefinition impossible.
+    ap.add_argument("--expect-val", type=int, default=None)
+    ap.add_argument("--expect-test", type=int, default=None)
+    ap.add_argument("--expect-train", type=int, default=None)
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args(argv)
 
@@ -360,9 +367,12 @@ def main(argv=None) -> int:
     print(f"  HepG2 train                     {len(hepg2_train):>4}")
     print(f"  excluded from HepG2 training    {len(held_out):>4}")
 
-    for label, got, want in (("val", len(val), EXPECT_VAL),
-                             ("test", len(test), EXPECT_TEST),
-                             ("hepg2 train", len(hepg2_train), EXPECT_HEPG2_TRAIN)):
+    exp_val = EXPECT_VAL if args.expect_val is None else args.expect_val
+    exp_test = EXPECT_TEST if args.expect_test is None else args.expect_test
+    exp_train = EXPECT_HEPG2_TRAIN if args.expect_train is None else args.expect_train
+    for label, got, want in (("val", len(val), exp_val),
+                             ("test", len(test), exp_test),
+                             ("hepg2 train", len(hepg2_train), exp_train)):
         if got != want:
             raise ValueError(
                 f"{label}: computed {got}, this builder declares {want}. Either the data or "
@@ -406,7 +416,7 @@ def main(argv=None) -> int:
         "seed": 42,
         "train_fraction": 1.0, "val_fraction": 0.0, "test_fraction": 0.0,
         "all_perts_train": False,
-        "benchmark_id": BENCHMARK_ID,
+        "benchmark_id": args.benchmark_id,
         "_note": (
             "`train` OVERLAPS `val` and `test_unseen_pert` ON PURPOSE. It is the global "
             "perturbation-name set the streaming datasets filter on, and every held-out "
@@ -418,7 +428,7 @@ def main(argv=None) -> int:
 
     exclusions = {
         "schema": 1,
-        "benchmark_id": BENCHMARK_ID,
+        "benchmark_id": args.benchmark_id,
         "semantics": ("per (FILE, perturbation); TRAINING only. Never applied by the eval "
                       "builders -- reading exactly these rows back is what makes them "
                       "val/test."),
@@ -456,7 +466,7 @@ def main(argv=None) -> int:
 
     benchmark = {
         "schema": 1,
-        "benchmark_id": BENCHMARK_ID,
+        "benchmark_id": args.benchmark_id,
         "builder_version": BUILDER_VERSION,
         "built": date.today().isoformat(),
         "command": " ".join(sys.argv),
@@ -506,8 +516,8 @@ def main(argv=None) -> int:
     checks = [
         ("gene_axis re-hashes", _sha256_text("\n".join(axis_back)) == axis_info["sha256"]),
         ("axis length", len(axis_back) == len(axis)),
-        ("val size", len(sp["val"]) == EXPECT_VAL),
-        ("test size", len(sp["test_unseen_pert"]) == EXPECT_TEST),
+        ("val size", len(sp["val"]) == exp_val),
+        ("test size", len(sp["test_unseen_pert"]) == exp_test),
         ("val and test disjoint", not set(sp["val"]) & set(sp["test_unseen_pert"])),
         ("exclusion == val + test",
          set(ex["by_file"][holdout["name"]]) == set(sp["val"]) | set(sp["test_unseen_pert"])),

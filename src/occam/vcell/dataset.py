@@ -1198,6 +1198,31 @@ class VirtualCellStreamingDataset(IterableDataset):
                 f"so they are excluded from the split, or supply controls for them."
             )
 
+    def audit_eligible_perts(self) -> Dict[str, Dict[str, int]]:
+        """{file basename: {perturbation: n eligible rows}}, applying the same predicates
+        as `__iter__`'s row loop. See StreamingDatasetV2.audit_eligible_perts."""
+        train_cl_set = set(self.train_cell_lines) if self.train_cell_lines else None
+        out: Dict[str, Dict[str, int]] = {}
+        for fmi, fm in enumerate(self.active_metas):
+            per: Dict[str, int] = {}
+            if not fm.controls_only:
+                keep = ~np.asarray(fm.is_control, dtype=bool)
+                if fm.excluded_pert_lines:
+                    keep &= ~np.isin(fm.obs_cell_lines, list(fm.excluded_pert_lines))
+                if fm.excluded_perts:
+                    keep &= ~np.isin(np.asarray(fm.pert_gene_names, dtype=str),
+                                     list(fm.excluded_perts))
+                if self.min_cells_per_pert > 0:
+                    keep &= self._row_ok[fmi]
+                if train_cl_set is not None:
+                    keep &= np.isin(fm.obs_cell_lines, list(train_cl_set))
+                names = np.asarray(fm.pert_gene_names, dtype=str)
+                keep &= np.isin(names, list(self.split_pert_names))
+                for nm, cnt in zip(*np.unique(names[keep], return_counts=True)):
+                    per[str(nm)] = int(cnt)
+            out[Path(fm.path).name] = per
+        return out
+
     def _count_pert_cells(self) -> int:
         """Vectorised row count. The previous Python loop ran once per row, which is
         ~20 M iterations with the T-cell screen — minutes of dead time at __init__

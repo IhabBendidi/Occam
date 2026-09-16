@@ -1,0 +1,168 @@
+# =====================================================================
+# RPE1 / HepG2 / Jurkat few-shot benchmark — the reference arm.
+#
+# WHAT THIS ANSWERS
+# -----------------
+# Overall goal: predict a perturbation's effect in a context where that
+# perturbation was never measured, from a single control cell.
+#
+# This run's question: how close does a single-cell-in / single-cell-out
+# model get to experimental replicate agreement on 621 HepG2 perturbations
+# it never saw in HepG2 -- but did see in Jurkat and RPE1?
+#
+# Varied (by the grid, scripts/slurm/rhj_fewshot_grid.sbatch):
+#     film_mode x film_hidden_dim x film_mean_free x loss_type  = 24 arms
+# Held fixed: everything below, plus the frozen benchmark artifact.
+#
+# HOW TO READ THE RESULT
+# ----------------------
+# This benchmark has NO imported anchors. The research-tree numbers
+# (overall 0.1699, pds 0.3487, and the FiLM ablation deltas) were measured
+# on a different panel with a different scorer and are NOT comparable --
+# they justify this starting configuration and nothing more.
+#
+# The anchors are measured here, by scripts/eval_splithalf.py:
+#   ctrlcell     zero-signal floor: the drawn control cell, unchanged
+#   ctrlmean     zero-signal floor: the control mean
+#   meanpert     per-context mean training delta -- the "predict a constant"
+#                baseline that is known to score competitively in this field
+#   experimental replicate agreement at m cells -- the reference, and NOT a
+#                true upper bound at these cell counts (see docs/evaluation.md)
+#
+# ⚠️ Read pearson_delta and discrimination_score_l2. Do NOT rank on
+#    overlap_at_N: a zero-signal predictor beat a real model on it.
+# =====================================================================
+version: 1
+name: rhj_smoke
+seed: 42
+device: cpu
+
+paths: !include paths.yaml
+
+run:
+  root: ./runs
+  stages: [vcell]
+  runner: inprocess
+  resume: auto
+  wandb:
+    enabled: false
+    project: occam
+    tags: [occam, rhj_fewshot, vcell]
+
+data:
+  # Unused by the vcell stage (its corpus is stages.vcell.data.paths), but the loader's
+  # `data:` block is shared, and `expect` documents what the corpus should be.
+  train: /tmp/rhj_smoke/nadig_2024_hepg2.h5ad
+
+stages:
+  vcell:
+    # The released encoder+decoder. The encoder is FROZEN; only the perturbation
+    # conditioning and the decoder train.
+    init_from: checkpoints/release/occam_small_encoder_decoder.pth
+
+    benchmark:
+      dir: /tmp/rhj_smoke/benchmark
+      id: rhj_smoke
+      # Asserted against the artifact. Editing the definition changes this, which changes
+      # the stage hash, which makes the orchestrator refuse to reuse the run -- so a
+      # redefined benchmark cannot be mistaken for a re-run of the old one.
+      sha256: e1c094d3a68289ba5e18c04797d1ffef07377f8b7bc78d05fdac77985b881a7c
+      # Restrict BOTH the encoder input and the loss to the 6,983-gene axis, so all three
+      # contexts present the same columns and cell line is the only difference.
+      axis_scope: input_and_loss
+      # ⚠️ HepG2 only. The 103 val perturbations are TRAINING data in Jurkat and RPE1, so
+      #    drawing val from those contexts would make the selector mostly a training metric.
+      eval_cell_lines: [HEPG2]
+      # The test-perturbation eval dataset is gigabytes and nothing evaluates it during
+      # training. It is also the test set.
+      build_test_datasets: false
+
+    data:
+      paths:
+        - /tmp/rhj_smoke/nadig_2024_hepg2.h5ad
+        - /tmp/rhj_smoke/nadig_2024_jurkat.h5ad
+        - /tmp/rhj_smoke/replogle_2022_rpe1_e.h5ad
+      gene_col: ensembl_gene_id     # NOT gene_name, NOT the var index — see the card
+      pert_col: gene_name
+      batch_col: dataset_batch_num
+      target_sum: 2000.0            # from the checkpoint; must match
+      # SINGLE CELL IN. n_controls_per_sample defaults to 5 and AVERAGES, which would make
+      # the input a pseudobulk and the eval input inconsistent with training.
+      n_controls_per_sample: 1
+      include_controls_as_training: true
+
+    stream:
+      stream_v2: false               # only v2 implements proportional interleave
+      # ⚠️ roundrobin leaves a single-source epoch tail, and eval-time BatchNorm running
+      #    statistics then reflect whatever that tail was -- measured at +-0.007, larger
+      #    than most effects in the grid.
+      interleave: proportional
+      balance_sources: true
+      fixed_pairs: false
+      chunk_size: 128
+      buffer_chunks: 4
+      # Part of the determinism contract: group->worker sharding is `gi % num_workers`, so
+      # determinism holds for a FIXED worker count. Must be identical across all arms.
+      num_workers: 0
+      control_cache_dir: null       # enable only after the cache-key test is green
+      amp_dtype: bf16
+      target_pb_k: 1                # SINGLE CELL OUT (0 would be the group mean)
+      ctrl_avg_k: 1
+
+    encoder:
+      freeze_encoder: true
+      freeze_decoder: false
+
+    graph:
+      graph_type: go
+      graph_types: [go, string]     # NB: the source recipe also used pxmap+txmap
+      graph_edge_filter_mode: top_20
+      master_gene_set_path: ${paths.kg_graph_dir}/master_gene_set_sorted.csv
+      graph_cache_dir: ${paths.kg_graph_dir}
+      gnn_layer_type: gat_v2
+      gnn_num_layers: 4
+      pert_latent_dim: 128
+      graph_reduce2perts: true
+      # ⚠️ Must stay false: film_mean_free averages over the WHOLE node table, so
+      #    restricting the table silently changes the reference it subtracts.
+      data_perts_only: false
+
+    interaction:
+      interaction_type: film
+      film_mode: multiplicative_only
+      film_scale: 1.0
+      film_hidden_dim: 256
+      film_activation: none
+      film_mean_free: true
+
+    optim:
+      lr: 1.0e-03
+      decoder_lr: 3.0e-04
+      epochs: 3
+      warmup_epochs: 1
+      batch_size: 32
+      gradient_clip: 1.0
+      eta_min: 1.0e-07
+
+    loss:
+      loss_type: smooth_l1
+      smooth_l1_beta: 2.0
+      cosine_loss_weight: 0.5
+      # ⚠️ REQUIRED, and not a style choice. `source_weight != none` with loss_type nb or
+      #    zinb RAISES: the normalisation is implemented for the elementwise losses only.
+      #    It is also unnecessary here -- it exists to correct a per-file gene-count
+      #    imbalance, and the frozen axis gives every file an identical gene mask.
+      source_weight: none
+      loss_norm: pooled
+      delta_mag_weight: 0.0
+      # The released checkpoint carries a trained per-gene log_theta; warm-starting it
+      # removes the early-training regime where the NB gradient diverges worst.
+      vc_load_dispersion: true
+
+    guards:
+      nan_guard_max_frac: 0.10
+      weight_check_every: 500
+
+    eval:
+      eval_freq: 1
+      run_baselines: false

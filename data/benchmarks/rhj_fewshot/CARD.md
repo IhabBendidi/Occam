@@ -14,7 +14,7 @@ every file against `benchmark.json`.
 | gene axis | **6,983** Ensembl IDs, `sha256 ef64f2ba7ff7816e…` |
 | validation | **103** HepG2 perturbations |
 | test | **621** HepG2 perturbations |
-| held out of HepG2 training | **724** (103 + 621), **42,731 cells** |
+| held out of HepG2 training | **724** (103 + 621), **44,221 cells** |
 | HepG2 training perturbations | **1,657** |
 | RPE1, Jurkat | **all 2,381 eligible perturbations train** |
 | `benchmark_sha256` | `d934211e5eb1e37e…` |
