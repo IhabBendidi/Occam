@@ -86,29 +86,8 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # newer anndata than the training environment can read.
 # --------------------------------------------------------------------------
 
-def _decode(values):
-    return [v.decode() if isinstance(v, bytes) else str(v) for v in values]
-
-
-def _read_column(grp, name: str) -> Optional[List[str]]:
-    """Read one obs/var column as strings, resolving anndata's categorical encoding.
-
-    Categoricals appear two ways depending on the writer's anndata version: as a subgroup
-    holding `codes` + `categories`, or as a plain dataset of codes with the categories in a
-    sibling `__categories` group. Both are handled, because these files were written by a
-    newer anndata than the training environment can read with anndata itself.
-    """
-    if name not in grp:
-        return None
-    node = grp[name]
-    if isinstance(node, type(grp)):                       # modern categorical subgroup
-        codes = node["codes"][:]
-        cats = _decode(node["categories"][:])
-        return [cats[c] if 0 <= c < len(cats) else "" for c in codes]
-    if "__categories" in grp and name in grp["__categories"]:   # legacy encoding
-        cats = _decode(grp["__categories"][name][:])
-        return [cats[c] if 0 <= c < len(cats) else "" for c in node[:]]
-    return _decode(node[:])
+from occam.h5ad_columns import decode as _decode        # noqa: E402
+from occam.h5ad_columns import read_column as _read_column  # noqa: E402
 
 
 def _read_obs_column(f, name: str) -> Optional[List[str]]:

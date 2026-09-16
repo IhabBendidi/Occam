@@ -21,7 +21,7 @@ inheriting the claim.
 
 from __future__ import annotations
 
-from typing import Callable, Dict, List, Optional, Sequence, Tuple
+from typing import Callable, Dict, List, Optional, Sequence, Tuple, Mapping
 
 import numpy as np
 
@@ -31,6 +31,13 @@ __all__ = ["Arm", "build_arms", "ANCHOR_TAGS"]
 
 # Arms that carry no biology by construction.
 ANCHOR_TAGS = ("ctrlmean", "ctrlcell")
+
+# Arms that are neither a zero-signal anchor nor a model prediction: the replicate reference
+# and the mean-training-delta baseline. They are supplied by the caller (they are not
+# derivable from `pred`), and they may NEVER be named like an anchor -- otherwise the anchor
+# requirement below could be satisfied by a signal-carrying arm, which is exactly the
+# weakening this file exists to prevent.
+REFERENCE_TAGS = ("experimental", "meanpert")
 
 Arm = Tuple[str, np.ndarray, np.ndarray]
 
@@ -48,6 +55,7 @@ def build_arms(
     calibrate: str = "both",
     shrinks: Sequence[float] = (1.0,),
     anchors: Sequence[str] = ANCHOR_TAGS,
+    extra: Optional[Mapping[str, np.ndarray]] = None,
     calibrated: Optional[np.ndarray] = None,
 ) -> List[Arm]:
     """Assemble the arms to score.
@@ -83,6 +91,24 @@ def build_arms(
     unknown = set(anchors) - set(ANCHOR_TAGS)
     if unknown:
         raise ValueError(f"unknown anchor(s) {sorted(unknown)}; expected {list(ANCHOR_TAGS)}")
+
+    extra = dict(extra or {})
+    clash = sorted(set(extra) & set(ANCHOR_TAGS))
+    if clash:
+        # Without this an `extra` arm could be named `ctrlmean` and satisfy the anchor
+        # requirement with an arm that carries signal.
+        raise ValueError(
+            f"extra arm(s) {clash} are named like anchors. An anchor must be zero-signal; "
+            f"naming a reference arm after one would let it satisfy the anchor requirement.")
+    bad = sorted(set(extra) - set(REFERENCE_TAGS))
+    if bad:
+        raise ValueError(f"unknown extra arm(s) {bad}; expected {list(REFERENCE_TAGS)}")
+    for tag, mat in extra.items():
+        if np.asarray(mat).shape != pred.shape:
+            raise ValueError(
+                f"extra arm {tag!r} has shape {np.asarray(mat).shape}, expected "
+                f"{pred.shape}. Every arm must emit the same rows in the same order, or the "
+                f"arms are not comparable cell for cell.")
 
     want = str(calibrate).lower()
     if want not in ("none", "quantile", "both"):
@@ -122,6 +148,12 @@ def build_arms(
         # readable rather than ambiguous.
         arms.append(("ctrlcell", ctrl_used.astype(np.float32), labels))
 
+    # ---- the replicate reference, second ------------------------------------
+    # After the anchors and BEFORE the model, so a job killed at the wall clock has both the
+    # floor and the ceiling and the paired gap is still computable from a partial run.
+    if "experimental" in extra:
+        arms.append(("experimental", np.asarray(extra["experimental"], np.float32), labels))
+
     # ---- model arms ---------------------------------------------------------
     if want in ("none", "both"):
         for alpha in shrinks:
@@ -131,11 +163,25 @@ def build_arms(
         for alpha in shrinks:
             arms.append((_tag("model_cal", alpha), shrink(calibrated, alpha), labels))
 
+    # ---- the mean-training-delta baseline, last -----------------------------
+    if "meanpert" in extra:
+        arms.append(("meanpert", np.asarray(extra["meanpert"], np.float32), labels))
+
+    # Shrink is deliberately NOT applied to the extra arms: it interpolates towards
+    # `ctrl_used`, which has no meaning for a real B-half cell or for a constant baseline.
     return arms
+
+
+def split_arms(arms: Sequence[Arm]) -> Tuple[List[str], List[str], List[str]]:
+    """``(anchor_tags, reference_tags, model_tags)`` present in ``arms``."""
+    anchor = [t for t, _, _ in arms if t in ANCHOR_TAGS]
+    ref = [t for t, _, _ in arms if t in REFERENCE_TAGS]
+    model = [t for t, _, _ in arms
+             if t not in ANCHOR_TAGS and t not in REFERENCE_TAGS]
+    return anchor, ref, model
 
 
 def split_anchor_and_model(arms: Sequence[Arm]) -> Tuple[List[str], List[str]]:
     """``(anchor_tags, model_tags)`` present in ``arms``."""
-    anchor = [t for t, _, _ in arms if t in ANCHOR_TAGS]
-    model = [t for t, _, _ in arms if t not in ANCHOR_TAGS]
+    anchor, _ref, model = split_arms(arms)
     return anchor, model

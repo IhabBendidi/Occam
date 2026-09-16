@@ -94,36 +94,10 @@ def run_panel_evaluation(
     results: Dict[str, Dict[str, Dict[str, float]]] = {p: {} for p in wanted}
 
     for tag, matrix, arm_labels in arms:
-        arm_dir = os.path.join(out_dir, f"celleval_{tag}")
-        pred_path, target_path = write_celleval_v1(matrix, arm_labels, panel, out_dir, tag)
-
-        # Real-side DE is the dominant cost and is identical across arms within a panel:
-        # the target file is a pure function of the panel, with no arm dependence. Keyed on
-        # the TARGET FILE's own sha256 rather than on "whatever real_de.csv the first arm
-        # left behind", so a rebuilt panel misses the cache by construction instead of
-        # being scored against a stale ground truth.
-        from occam.decoder_train.metrics import real_de_cache_path
-
-        kwargs = dict(celleval_kwargs)
-        cache_dir = kwargs.pop("de_real_cache_dir", None) or os.path.join(
-            out_dir, "_de_real_cache")
-        os.makedirs(cache_dir, exist_ok=True)
-        cache_path, digest = real_de_cache_path(cache_dir, target_path)
-        if os.path.isfile(cache_path):
-            kwargs["de_real"] = cache_path
-            print(f"[panel] {tag}: reusing real-side DE for target {digest[:16]}")
-
-        metrics = run_celleval_v1(pred_path, target_path, arm_dir, **kwargs)
+        metrics, arm_dir, _ = score_arm(tag, matrix, arm_labels, panel, out_dir,
+                                        celleval_kwargs)
         if not metrics:
-            print(f"[panel] {tag}: cell-eval returned nothing; skipping")
             continue
-
-        if not os.path.isfile(cache_path):
-            produced = os.path.join(arm_dir, "real_de.csv")
-            if os.path.isfile(produced):
-                import shutil
-                shutil.copyfile(produced, cache_path)
-                print(f"[panel] cached real-side DE -> {os.path.basename(cache_path)}")
 
         results[HEADLINE_PANEL][tag] = metrics
 
@@ -142,6 +116,51 @@ def run_panel_evaluation(
 
     _write_outputs(results, out_dir, wanted)
     return results
+
+
+def score_arm(tag: str, matrix: np.ndarray, arm_labels: np.ndarray, panel: Panel,
+              out_dir: str, celleval_kwargs: Optional[Mapping] = None,
+              *, pred_ctrl: Optional[np.ndarray] = None,
+              ) -> Tuple[Dict[str, float], str, str]:
+    """Write one arm's cell-eval pair, score it, and return ``(metrics, arm_dir, target)``.
+
+    Real-side DE is the dominant cost and is identical across arms within a panel: the
+    target file is a pure function of the panel, with no arm dependence. It is keyed on the
+    TARGET FILE's own sha256 rather than on "whatever real_de.csv the first arm left
+    behind", so a rebuilt panel misses the cache by construction instead of being scored
+    against a stale ground truth. This also makes cross-split reuse impossible, which is
+    what the split-half protocol needs: each split has its own A-side reference.
+
+    `pred_ctrl` is forwarded to `write_celleval_v1` — the split-half protocol's B controls.
+    Empty metrics mean cell-eval returned nothing; the caller decides what to do.
+    """
+    from occam.decoder_train.metrics import real_de_cache_path
+
+    arm_dir = os.path.join(out_dir, f"celleval_{tag}")
+    pred_path, target_path = write_celleval_v1(matrix, arm_labels, panel, out_dir, tag,
+                                               pred_ctrl=pred_ctrl)
+
+    kwargs = dict(celleval_kwargs or {})
+    cache_dir = kwargs.pop("de_real_cache_dir", None) or os.path.join(
+        out_dir, "_de_real_cache")
+    os.makedirs(cache_dir, exist_ok=True)
+    cache_path, digest = real_de_cache_path(cache_dir, target_path)
+    if os.path.isfile(cache_path):
+        kwargs["de_real"] = cache_path
+        print(f"[panel] {tag}: reusing real-side DE for target {digest[:16]}")
+
+    metrics = run_celleval_v1(pred_path, target_path, arm_dir, **kwargs)
+    if not metrics:
+        print(f"[panel] {tag}: cell-eval returned nothing; skipping")
+        return {}, arm_dir, target_path
+
+    if not os.path.isfile(cache_path):
+        produced = os.path.join(arm_dir, "real_de.csv")
+        if os.path.isfile(produced):
+            import shutil
+            shutil.copyfile(produced, cache_path)
+            print(f"[panel] cached real-side DE -> {os.path.basename(cache_path)}")
+    return metrics, arm_dir, target_path
 
 
 def _resolve_panels(panels, labels, train_pert_names, min_perts, warn_at):

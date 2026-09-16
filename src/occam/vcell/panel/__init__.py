@@ -22,8 +22,9 @@ __all__ = [
     "predict_panel", "predict_null",
     "fit_control_quantile_map", "apply_quantile_map", "estimate_gamma",
     "write_celleval_v1", "run_celleval_v1",
-    "build_arms", "ANCHOR_TAGS",
-    "run_panel_evaluation", "write_report", "HEADLINE_PANEL",
+    "build_arms", "ANCHOR_TAGS", "REFERENCE_TAGS", "split_arms",
+    "run_panel_evaluation", "write_report", "HEADLINE_PANEL", "score_arm",
+    "run_split", "run_splithalf_protocol",
     "build_control_identity_samples", "build_panel_val_dataset",
 ]
 
@@ -35,7 +36,10 @@ _SOURCES = {
     "estimate_gamma": "calibrate",
     "write_celleval_v1": "celleval_v1", "run_celleval_v1": "celleval_v1",
     "build_arms": "arms", "ANCHOR_TAGS": "arms",
+    "REFERENCE_TAGS": "arms", "split_arms": "arms",
     "run_panel_evaluation": "run", "write_report": "run", "HEADLINE_PANEL": "run",
+    "score_arm": "run",
+    "run_split": "protocol", "run_splithalf_protocol": "protocol",
     "build_control_identity_samples": "train_hooks",
     "build_panel_val_dataset": "train_hooks",
 }

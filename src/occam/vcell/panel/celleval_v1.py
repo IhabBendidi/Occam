@@ -23,7 +23,8 @@ CONTROL = "non-targeting"
 
 
 def write_celleval_v1(pred: np.ndarray, labels: np.ndarray, panel: Panel,
-                      out_dir: str, tag: str) -> Tuple[str, str]:
+                      out_dir: str, tag: str,
+                      pred_ctrl: Optional[np.ndarray] = None) -> Tuple[str, str]:
     """Write the decoder-convention `injctrl` pair: model-space target and prediction.
 
     Targets are the real panel preprocessed as model input; predictions are the raw model
@@ -39,8 +40,20 @@ def write_celleval_v1(pred: np.ndarray, labels: np.ndarray, panel: Panel,
     var = pd.DataFrame(index=[panel.panel_genes[j] for j in panel.panel_cols])
 
     ctrl_mask = panel.real_labels == CONTROL
-    pred_X = np.concatenate([pred, panel.real_X_model[ctrl_mask]], axis=0)
-    pred_lab = np.concatenate([labels, np.array([CONTROL] * int(ctrl_mask.sum()))])
+    # `pred_ctrl` replaces the controls written into the PREDICTION file only; the target
+    # file always keeps the panel's own. Default None = the real controls at the same
+    # indices, which is the `injctrl` convention and every caller's behaviour to date.
+    # The split-half protocol passes the B controls here, and that single substitution is
+    # what makes the reference (A) and the prediction (B) independent: `pearson_delta` uses
+    # each FILE's own control pseudobulk, so the deltas become A-relative and B-relative.
+    ctrl_block = (panel.real_X_model[ctrl_mask] if pred_ctrl is None
+                  else np.asarray(pred_ctrl, dtype=panel.real_X_model.dtype))
+    if ctrl_block.ndim != 2 or ctrl_block.shape[1] != pred.shape[1]:
+        raise ValueError(
+            f"pred_ctrl has shape {ctrl_block.shape}, expected (n_ctrl, {pred.shape[1]}) "
+            f"on the panel's kept-gene axis")
+    pred_X = np.concatenate([pred, ctrl_block], axis=0)
+    pred_lab = np.concatenate([labels, np.array([CONTROL] * ctrl_block.shape[0])])
 
     tpath = os.path.join(out_dir, f"h1_{tag}_target.h5ad")
     ppath = os.path.join(out_dir, f"h1_{tag}_pred_injctrl.h5ad")
@@ -52,8 +65,9 @@ def write_celleval_v1(pred: np.ndarray, labels: np.ndarray, panel: Panel,
                obs=pd.DataFrame({"target_gene": pred_lab},
                                 index=np.arange(pred_X.shape[0]).astype(str)),
                var=var.copy()).write_h5ad(ppath)
+    which = "real" if pred_ctrl is None else "override"
     print(f"[panel] {tag}: target {panel.real_X_model.shape} + pred {pred_X.shape} "
-          f"({int(ctrl_mask.sum())} injected real controls)")
+          f"({ctrl_block.shape[0]} injected {which} controls)")
     return ppath, tpath
 
 

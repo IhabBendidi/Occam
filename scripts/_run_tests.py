@@ -117,6 +117,82 @@ class _Pytest:
         raise AssertionError(reason)
 
 
+class _MonkeyPatch:
+    """``monkeypatch.setattr`` / ``setitem`` / ``setenv``, with a working undo.
+
+    The undo is the reason this exists rather than a bare ``setattr`` in the test: a stub
+    for ``run_celleval_v1`` that survived into the next test file would make every later
+    cell-eval assertion meaningless while still printing PASS.
+    """
+
+    def __init__(self):
+        self._undo = []
+
+    def setattr(self, target, name, value):
+        had = hasattr(target, name)
+        old = getattr(target, name, None)
+        setattr(target, name, value)
+        self._undo.append(
+            (lambda: setattr(target, name, old)) if had
+            else (lambda: delattr(target, name)))
+
+    def delattr(self, target, name):
+        old = getattr(target, name)
+        delattr(target, name)
+        self._undo.append(lambda: setattr(target, name, old))
+
+    def setitem(self, mapping, key, value):
+        had = key in mapping
+        old = mapping.get(key)
+        mapping[key] = value
+        self._undo.append((lambda: mapping.__setitem__(key, old)) if had
+                          else (lambda: mapping.pop(key, None)))
+
+    def setenv(self, name, value):
+        self.setitem(os.environ, name, str(value))
+
+    def undo(self):
+        while self._undo:
+            self._undo.pop()()
+
+
+def _builtin_fixtures(label):
+    """``tmp_path`` and ``monkeypatch``, fresh per test and torn down after it.
+
+    Not routed through the module fixture cache: ``tmp_path`` must be a new directory for
+    every test, and ``monkeypatch`` must be undone between tests.
+    """
+    import pathlib
+    import tempfile
+
+    state = {}
+
+    def make(name):
+        if name == "tmp_path":
+            d = tempfile.mkdtemp(prefix="occam_test_")
+            state["tmp_path"] = d
+            return pathlib.Path(d)
+        if name == "monkeypatch":
+            mp = _MonkeyPatch()
+            state["monkeypatch"] = mp
+            return mp
+        raise KeyError(name)
+
+    def teardown():
+        mp = state.get("monkeypatch")
+        if mp is not None:
+            mp.undo()
+        d = state.get("tmp_path")
+        if d is not None:
+            import shutil
+            shutil.rmtree(d, ignore_errors=True)
+
+    return make, teardown
+
+
+_BUILTIN_FIXTURES = ("tmp_path", "monkeypatch")
+
+
 def main() -> int:
     sys.modules.setdefault("pytest", _Pytest())
 
@@ -180,16 +256,28 @@ def main() -> int:
             cache[name] = value
             return value
 
-        def bind(fn):
+        def bind(fn, label=""):
             """Wrap a test so its fixture parameters are supplied."""
             import inspect
             try:
-                params = [p for p in inspect.signature(fn).parameters if p in fixtures]
+                names = list(inspect.signature(fn).parameters)
             except (TypeError, ValueError):
-                params = []
-            if not params:
+                names = []
+            params = [p for p in names if p in fixtures]
+            builtins_needed = [p for p in names
+                               if p in _BUILTIN_FIXTURES and p not in fixtures]
+            if not params and not builtins_needed:
                 return fn
-            return lambda: fn(**{p: resolve(p) for p in params})
+
+            def run():
+                make, teardown = _builtin_fixtures(label)
+                kwargs = {p: resolve(p) for p in params}
+                kwargs.update({p: make(p) for p in builtins_needed})
+                try:
+                    return fn(**kwargs)
+                finally:
+                    teardown()
+            return run
 
         cases = []
         for name in dir(mod):
@@ -200,9 +288,9 @@ def main() -> int:
                 inst = obj()
                 for m in sorted(dir(inst)):
                     if m.startswith("test_"):
-                        cases.append((f"{name}.{m}", bind(getattr(inst, m))))
+                        cases.append((f"{name}.{m}", bind(getattr(inst, m), f"{name}.{m}")))
             elif name.startswith("test_") and callable(obj):
-                cases.append((name, bind(obj)))
+                cases.append((name, bind(obj, name)))
 
         for label, fn in cases:
             skip = getattr(fn, "__skip__", None)

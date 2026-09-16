@@ -1,0 +1,107 @@
+{
+  "base_seed": 42,
+  "batch_col": "dataset_batch_num",
+  "benchmark_id": "rhj_fewshot",
+  "benchmark_sha256": "d934211e5eb1e37e28c893fb8c5ff4211d607a1d77b0103d5c2b79221d21677f",
+  "builder_version": "1.0.0",
+  "built": "2026-09-16",
+  "cell_line": "HEPG2",
+  "cohort_sha256": "86c91f938024b2a25e2aeeece0532a36be16fe83ec9f2e41881d4a523a7b534a",
+  "command": "scripts/build_splithalf_panel.py",
+  "control_label": "non-targeting",
+  "gene_axis_sha256": "ef64f2ba7ff7816ed947796066cd8a68014884c6176619d750ef79462c78d4c0",
+  "git_sha": "0b94934c1d2e42849a80c4d4efcd4acb0fa4fa8f",
+  "half_size_strata": {
+    "m>=10": 568,
+    "m>=25": 278,
+    "m>=5": 611,
+    "m_median": 22
+  },
+  "min_cells": 10,
+  "n_axis_genes": 6983,
+  "n_cohort_perts": 611,
+  "n_panel_controls": 4976,
+  "n_panel_rows": 42402,
+  "n_splits": 5,
+  "normalisation": "full-panel row sum over all file genes, then axis restriction, then log1p -- matches stream_v2.load_chunk_sparse",
+  "pert_col_in_source": "gene_name",
+  "protocol": "splithalf/v1",
+  "seed_recipe": "blake2b(SPLIT_SALT | base_seed | split_index | group), one stream PER (split, perturbation) -- so adding a perturbation to the cohort does not reshuffle any other perturbation's halves",
+  "source": "nadig_2024_hepg2.h5ad",
+  "source_sha256": "f31a85d8c90f5a2e26f2e83aca3f9dfd4eba291e4a3fe39a9612ae412afa38b2",
+  "splits": [
+    {
+      "ctrl_A_sha256": "37a4bd48d3c3236f4ec243283e52225d730ff816fd84dce662caebc478a18274",
+      "ctrl_B_sha256": "ea4efbc52f2aade7e1c9f84427bdabf118117c89cc7fc0354d492bfc48642cab",
+      "ctrl_batch_max_abs_diff": 1,
+      "n_ctrl_per_half": 2488,
+      "n_dropped_odd": 276,
+      "n_pert_per_half": 18575,
+      "pert_A_sha256": "a42378bc4a9cecbff6c74ac51c53f705f6c08abcd89c41370d0fb3a45af39197",
+      "pert_B_sha256": "ba221f4cbbb31c77c0dd7add256078f0391f35791537feab1c6c7cb8baa57d37",
+      "split": 0
+    },
+    {
+      "ctrl_A_sha256": "482f1a75ffe4c88fbdfbf5977053f8979bb0b9c7951d9902816287112eafbdf9",
+      "ctrl_B_sha256": "b4dec02151840dcd2c43a52c5cea5ee5c812fc79104dacbc2ff8c4fdcfcb49fe",
+      "ctrl_batch_max_abs_diff": 1,
+      "n_ctrl_per_half": 2488,
+      "n_dropped_odd": 276,
+      "n_pert_per_half": 18575,
+      "pert_A_sha256": "74a9b8644ae27a7d0bae6cb27d64007ba5c54fd3e93e893df0f3a490d46ba95d",
+      "pert_B_sha256": "3f54f24b06665aa6fd50c77e0cc36fb856f736733a2e44ed5b338a2a7571a0d0",
+      "split": 1
+    },
+    {
+      "ctrl_A_sha256": "b882fa05cb61fc8446dfd3ef02984011910209b339fb83cfbffe469459f4ea81",
+      "ctrl_B_sha256": "3d91579f1a044372d82671c4127a6bed3cdf397156ad3a96bcb53b2043c3dc04",
+      "ctrl_batch_max_abs_diff": 1,
+      "n_ctrl_per_half": 2488,
+      "n_dropped_odd": 276,
+      "n_pert_per_half": 18575,
+      "pert_A_sha256": "374fa6922ca6c4616c5cbbb002548b204aa61f4f93489a7cd3950ea94f16aac2",
+      "pert_B_sha256": "de7cef8e34ef0362a90b2ea61190cd0993e2f6ba1a108618144f8c5dd1b9a2ff",
+      "split": 2
+    },
+    {
+      "ctrl_A_sha256": "2449ffa61596421e54b53c39c11bafd6a8c78c372d6f7e67b6ba59d297bbfc62",
+      "ctrl_B_sha256": "22ce196123a02980d86f3f30d92a8b5ae34adc717b11721e51108797fd80146a",
+      "ctrl_batch_max_abs_diff": 1,
+      "n_ctrl_per_half": 2488,
+      "n_dropped_odd": 276,
+      "n_pert_per_half": 18575,
+      "pert_A_sha256": "bb9ce8f2bad4f64ae33e5f1b4d455525ae87c5464558eb00c0f062900de47eea",
+      "pert_B_sha256": "50d426d77780975876dedb349d543b23139604aebb0883de58c614b3fe2bbd28",
+      "split": 3
+    },
+    {
+      "ctrl_A_sha256": "65d3b9c1467ad81ce9b34dbaf1b136deb5b735f3aa7227118e77bbdb4e21109a",
+      "ctrl_B_sha256": "eabcfb0b0c19dc48a5221c11d791609767b0eef459c1d21a53bf8d2c43f15974",
+      "ctrl_batch_max_abs_diff": 1,
+      "n_ctrl_per_half": 2488,
+      "n_dropped_odd": 276,
+      "n_pert_per_half": 18575,
+      "pert_A_sha256": "fe4e4e0e4b597c424859d827bf2650136db1fb49c6790140ff538f4b5d137614",
+      "pert_B_sha256": "f46dec31f19708181c7f480786bd86a0c5285e1cc9567fc612807976d1561413",
+      "split": 4
+    }
+  ],
+  "target_sum": 2000.0,
+  "too_shallow": [
+    "CHMP3",
+    "COG3",
+    "CPSF2",
+    "EIF3F",
+    "HAUS1",
+    "PRPF38B",
+    "RFFL",
+    "RPF2",
+    "TCP1",
+    "ZNF676"
+  ],
+  "train_grand_mean": {
+    "n_perts": 1657,
+    "total_cells": 95527,
+    "weighting": "equal per perturbation"
+  }
+}

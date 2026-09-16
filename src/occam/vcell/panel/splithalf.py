@@ -312,8 +312,13 @@ def panel_for_split(
         ctrl_X_model=base.real_X_model[split.ctrl_B],
         ctrl_counts=(base.real_counts[split.ctrl_B]
                      if getattr(base, "real_counts", None) is not None else None),
+        # `split.ctrl_B` indexes the REAL row axis (one file holds both halves here), so
+        # base.ctrl_batches is only indexable with it when it is on that same axis. On the
+        # split-half base panel it is None; anything else would be silently misaligned.
         ctrl_batches=(np.asarray(base.ctrl_batches)[split.ctrl_B]
-                      if getattr(base, "ctrl_batches", None) is not None else None),
+                      if (getattr(base, "ctrl_batches", None) is not None
+                          and len(base.ctrl_batches) == base.real_X_model.shape[0])
+                      else None),
         enc_cols=base.enc_cols, panel_cols=base.panel_cols,
         panel_genes=base.panel_genes, n_enc=base.n_enc,
     )

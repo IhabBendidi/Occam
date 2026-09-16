@@ -60,3 +60,9 @@ data/graphs/**
 
 # Benchmark definitions are all text and ARE tracked; only h5ad payloads are not.
 data/benchmarks/**/*.h5ad
+
+# The split-half panel's cell matrix, rebuilt in ~1.5 min by
+# scripts/build_splithalf_panel.py. cohort.json, splits.npz, train_grand_mean.npy,
+# splits_manifest.json and CARD.md stay tracked -- they are the frozen definition and the
+# record of its hashes; panel.npz is 164 MB of derived float32.
+data/benchmarks/rhj_fewshot/splithalf/panel.npz
