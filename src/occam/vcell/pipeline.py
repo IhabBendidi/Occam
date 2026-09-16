@@ -536,6 +536,7 @@ class VirtualCellTrainer:
             n_sources=(int(getattr(config, "source_cond_slots", 64))
                        if str(getattr(config, "source_cond", "none")) != "none" else 0),
             source_dropout=float(getattr(config, "source_dropout", 0.25)),
+            film_mean_free=bool(getattr(config, "film_mean_free", False)),
         ).to(self.device)
         if str(getattr(config, "source_cond", "none")) != "none":
             print(f"  [source_cond={config.source_cond}] slots="
@@ -881,6 +882,9 @@ class VirtualCellTrainer:
             freeze_decoder=True,
             interaction_type=ic.get("interaction_type", "additive"),
             interaction_kwargs=interaction_kwargs,
+            # Read back from the checkpoint, never from a config: scoring a mean-free model
+            # without the correction changes every predicted delta.
+            film_mean_free=bool(ic.get("film_mean_free", False)),
         ).to(device)
 
         # Load trained weights
@@ -2994,6 +2998,7 @@ class VirtualCellTrainer:
                 "film_hidden_dim": self.config.film_hidden_dim,
                 "film_activation": self.config.film_activation,
                 "film_mode": self.config.film_mode,
+                "film_mean_free": bool(getattr(self.config, "film_mean_free", False)),
                 "gated_mlp_hidden_dim": self.config.gated_mlp_hidden_dim,
                 "gated_mlp_num_layers": self.config.gated_mlp_num_layers,
             },
@@ -3035,6 +3040,10 @@ class VirtualCellTrainer:
                 "pretrained_encoder": self.config.pretrained_encoder,
                 # v2
                 "interaction_type": self.config.interaction_type,
+                "film_mode": self.config.film_mode,
+                "film_scale": self.config.film_scale,
+                "film_hidden_dim": self.config.film_hidden_dim,
+                "film_mean_free": bool(getattr(self.config, "film_mean_free", False)),
                 "latent_loss_type": self.config.latent_loss_type,
                 "latent_loss_weight": self.config.latent_loss_weight,
                 "delta_reg_type": self.config.delta_reg_type,

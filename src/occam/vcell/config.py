@@ -370,6 +370,17 @@ class VirtualCellConfig:
     wandb_tags: Optional[List[str]] = None
 
     # --- v2: Interaction function ---
+    # ---- NaN guards -----------------------------------------------------------------
+    # Both were previously read only via getattr() defaults in pipeline.py, so they worked
+    # but were invisible to anyone reading the config. Declared so they can be set and
+    # recorded like every other knob.
+    # Fraction of an epoch's batches allowed to produce a non-finite loss before the epoch is
+    # declared failed. One non-finite forward permanently NaNs BatchNorm running statistics,
+    # so this is a real abort criterion, not a warning threshold.
+    nan_guard_max_frac: float = 0.01
+    # Check every parameter AND buffer for non-finite values this often (in steps).
+    weight_check_every: int = 500
+
     interaction_type: str = "additive"  # additive, film, gated_mlp, cell_aware_film
 
     # ---- latent-space health diagnostics (OCCAM_STATE_HYBRID.md §8) --------------------
@@ -384,6 +395,13 @@ class VirtualCellConfig:
     film_hidden_dim: int = 0  # Deep FiLM hidden dim (0 = linear FiLM, >0 = 2-layer MLP)
     film_activation: str = "none"  # Activation for Deep FiLM hidden layer
     film_mode: str = "full"  # full, additive_only, multiplicative_only
+    # Subtract the interaction evaluated at the MEAN graph embedding, so a component shared
+    # across perturbations is unrepresentable by construction rather than penalised after the
+    # fact. Perturbed rows only, so control rows and the control-identity loss are unchanged.
+    # `ebar` is the mean over the whole graph node table, never a batch statistic, so
+    # inference is batch-independent. See VirtualCellModel._interact.
+    # ⚠️ Requires `data_perts_only: false` — restricting the node table changes the reference.
+    film_mean_free: bool = False
     gated_mlp_hidden_dim: Optional[int] = None  # GatedMLP hidden dim (defaults to hidden_size)
     gated_mlp_num_layers: int = 2  # GatedMLP hidden layers
 

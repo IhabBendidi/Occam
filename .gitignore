@@ -52,3 +52,8 @@ venv/
 
 # The corpus in h5ad form: a machine-local symlink, see configs/paths.yaml
 data/corpus/
+
+# Prior-knowledge graphs: 365 MB of third-party data, copied by hand from a
+# shared cluster path. Not ours to redistribute; the manifest is the record.
+data/graphs/**
+!data/graphs/MANIFEST.json

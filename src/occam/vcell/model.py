@@ -256,6 +256,8 @@ class VirtualCellModel(nn.Module):
         freeze_decoder: Whether to freeze decoder parameters.
         interaction_type: Interaction function type (default "additive" for v1 compat).
         interaction_kwargs: Extra kwargs for the interaction constructor.
+        film_mean_free: Subtract the interaction evaluated at the MEAN graph embedding, so a
+            component shared across perturbations is unrepresentable. Perturbed rows only.
     """
 
     def __init__(
@@ -274,6 +276,7 @@ class VirtualCellModel(nn.Module):
         source_cond: str = "none",
         n_sources: int = 0,
         source_dropout: float = 0.25,
+        film_mean_free: bool = False,
     ):
         super().__init__()
         self.encoder = encoder
@@ -286,6 +289,23 @@ class VirtualCellModel(nn.Module):
         self.freeze_encoder = freeze_encoder
         self.freeze_decoder = freeze_decoder
         self.interaction_type = interaction_type
+
+        # ⭐ Mean-free interaction (default off). Emit
+        #       interaction(z, e_p) - interaction(z, ebar)
+        # so a component SHARED across perturbations is unrepresentable by construction rather
+        # than penalised after the fact. In the research tree the shared component was measured
+        # at cos(mean delta_z, FiLM(ebar)) = 1.0000/0.9998, i.e. this subtracts almost exactly
+        # the object that made up ~99.8% of every predicted delta.
+        #
+        # `ebar` is the mean over the WHOLE graph node table, never a batch statistic, so
+        # inference does not depend on batch composition.
+        #
+        # ⚠️ Applied only to rows that carry a perturbation, so control rows stay bit-identical
+        #    to the base model and the control-identity loss is unaffected.
+        #
+        # Note it also removes the interaction's own bias contribution (`beta_net(0)`), which is
+        # why it is not equivalent to centering the embedding table.
+        self.film_mean_free = bool(film_mean_free)
 
         # Interaction module (replaces the old pert_projection Linear)
         self.interaction = build_interaction(
@@ -442,7 +462,7 @@ class VirtualCellModel(nn.Module):
         pert_z = self._condition_pert(pert_z, pert_mask, source_ids, modality_ids, device)
 
         # 4. Interaction function: f(z_ctrl, e_pert) -> delta_z
-        delta_z = self.interaction(z_intrinsic, pert_z)
+        delta_z = self._interact(z_intrinsic, pert_z, z_graph, pert_mask)
         z_hat = z_intrinsic + delta_z
         decoder_out = self.decoder(z_hat)
 
@@ -499,11 +519,41 @@ class VirtualCellModel(nn.Module):
             self._gnn_cache = z_graph
         return z_graph
 
-    def _gather_pert(self, z_graph, slot, device):
-        """Embedding for one perturbation slot; index <0 -> zero vector."""
+    def _slot_embed(self, z_graph, slot, device):
+        """(embedding, mask) for one perturbation slot; index <0 -> zero vector, mask 0.
+
+        The mask is returned as well as applied because `_interact` needs it to leave
+        control rows untouched by the mean-free correction.
+        """
         ids = torch.tensor([p if p >= 0 else 0 for p in slot], device=device, dtype=torch.long)
         msk = torch.tensor([float(p >= 0) for p in slot], device=device).unsqueeze(-1)
-        return z_graph[ids] * msk
+        return z_graph[ids] * msk, msk
+
+    def _gather_pert(self, z_graph, slot, device):
+        """Embedding for one perturbation slot; index <0 -> zero vector."""
+        return self._slot_embed(z_graph, slot, device)[0]
+
+    def _interact(self, z, e, z_graph, mask):
+        """delta_z for one interaction, with the mean-free correction when enabled.
+
+        THE ONLY place `self.interaction` is called for a perturbation effect. Both the
+        batched `forward` and the sequential multi-perturbation path route through here, so
+        enabling `film_mean_free` cannot apply to one and silently skip the other.
+
+        `mask` zeroes the correction on rows with no perturbation, keeping control rows
+        bit-identical to the base model.
+        """
+        d = self.interaction(z, e)
+        if not self.film_mean_free:
+            return d
+        ebar = z_graph.mean(0, keepdim=True)
+        # ⚠️ DTYPE, and it is not cosmetic. `_gnn_cache` can be populated under bf16 autocast
+        #    and then reused OUTSIDE it (the eval path), so `ebar` may be bf16 while the
+        #    interaction's weights are fp32. `e` escapes this only incidentally — the fp32 mask
+        #    multiply in `_slot_embed` upcasts it — so match `e` explicitly rather than rely on
+        #    that accident. Two research-tree jobs died here AFTER a full epoch plus eval.
+        ref = self.interaction(z, ebar.expand(z.shape[0], -1).to(e.dtype))
+        return d - ref * mask
 
     def forward_sequential(
         self,
@@ -540,12 +590,14 @@ class VirtualCellModel(nn.Module):
             """order_idx: 0 = as given, 1 = reversed. Returns final z_hat."""
             slot0 = [(list(reversed(p)) if order_idx else list(p))[0] if p else -1
                      for p in pert_indices]
-            z1 = z_ctrl + self.interaction(z_ctrl, self._gather_pert(z_graph, slot0, device))
+            e0, m0 = self._slot_embed(z_graph, slot0, device)
+            z1 = z_ctrl + self._interact(z_ctrl, e0, z_graph, m0)
             if not bool(multi.any()):
                 return z1
             slot1 = [(list(reversed(p)) if order_idx else list(p))[1] if len(p) > 1 else -1
                      for p in pert_indices]
-            z2 = z1 + self.interaction(z1, self._gather_pert(z_graph, slot1, device))
+            e1, m1 = self._slot_embed(z_graph, slot1, device)
+            z2 = z1 + self._interact(z1, e1, z_graph, m1)
             return torch.where(multi.unsqueeze(-1), z2, z1)
 
         z_hat = chain(0)
