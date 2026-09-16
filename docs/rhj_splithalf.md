@@ -136,6 +136,68 @@ and the probe refuses to print a negative decomposition.
 
 ---
 
+## F3 — the baseline arm needs 420 GB, not 128 GB (measured by killing it)
+
+**Status: FAILED, cause identified, resubmitted.** Job `18022390_26`, arm `a26`
+(`run_baselines: true`): **OUT_OF_MEMORY**, exit `0:125`, **MaxRSS 117.19 GB** against
+`ReqMem 128 GB`, at 29 min 58 s. No numbers were produced.
+
+Cause is arithmetic, not a leak. `_run_baselines` builds an **in-memory** training dataset
+to compute `MeanBaseline`'s per-perturbation deltas — the one path in the vcell stage that
+is not streaming — and it builds it on the **encoder's 44,728-gene axis**, not the
+benchmark's 6,983:
+
+| axis | expression | bool gene mask |
+|---|---|---|
+| 6,983 (the benchmark's) | 16.2 GB | 4.1 GB |
+| **44,728 (the encoder's)** | **103.8 GB** | 26.0 GB |
+
+580,212 perturbed cells × 44,728 × 4 bytes = 103.8 GB, which accounts for the observed
+117.2 GB with overhead. The other 26 arms never reach this path: they stream, and their
+steady-state RSS is ~2 GB.
+
+**Resubmitted at `--mem=420G` on vco**, which has an 8 TB group cap. The launcher's
+`#SBATCH --mem=128G` is correct for the 26 streaming arms and must not be raised for them —
+420 GB × 27 would be 11 TB and would not schedule. The baseline arm is submitted separately
+for exactly this reason, and its header now says so.
+
+⚠️ This does not affect the benchmark's own `meanpert` arm. That one is built by
+`scripts/build_splithalf_panel.py` from the 1,657 HepG2 training perturbations on the 6,983
+axis, precomputed to a single (6,983,) vector in 1.5 min at ~2 GB. The two are different
+baselines anyway — see F4.
+
+---
+
+## F4 — `MeanBaseline` on this benchmark is a cross-cell-line TRANSFER baseline
+
+**Status: established by reading the code, not yet measured.** Worth stating before its
+number arrives, because the number will be misread otherwise.
+
+`baselines.py:120` decides whether a perturbation was "seen" by checking **every training
+cell type at once**:
+
+```python
+has_specific = any(pname in self.pert_deltas.get(train_ct, {})
+                   for train_ct in self.pert_deltas)
+```
+
+All 103 HepG2 validation perturbations **are** trained in Jurkat and RPE1 — that is the
+benchmark's design. So `has_specific` is true for all of them and the prediction becomes
+*HepG2 control mean + the count-weighted mean of that perturbation's Jurkat and RPE1
+deltas*.
+
+That is **not** the global mean-training-delta baseline. It is the non-learned version of
+exactly what the model is asked to do, which makes it the sharpest comparator on the whole
+benchmark: if the model cannot beat "copy this perturbation's delta from the other two cell
+lines", the FiLM machinery is buying nothing. Its log line `MeanBaseline: N specific + M
+global` is the check — expect ~103 specific, 0 global.
+
+The global mean-training-delta baseline is the split-half protocol's **`meanpert`** arm, on
+the 611 test perturbations, cell-eval scored. The two are not comparable: different
+perturbation sets, different metric, different scale.
+
+---
+
 ## Reading order for whoever picks this up
 
 1. `data/benchmarks/rhj_fewshot/splithalf/CARD.md` — the frozen panel, and the two things

@@ -24,12 +24,22 @@
 #   + 2 no-FiLM anchors (interaction_type=additive)        = 26
 #   + 1 baseline arm (kind=baseline -> run_baselines=true)  = 27 total
 #
-# The baseline arm reports MeanBaseline and ExperimentalAccuracy on the HepG2 validation
-# set. Those anchors are NOT learned, so its own FiLM settings are irrelevant and it reuses
-# the no-FiLM smooth_l1 configuration; what it contributes is the two numbers that make
-# `best_metric` readable at all -- a val pearson_delta with no non-learned anchor beside it
-# cannot be told from a good one. Submit it on its own:
-#   sbatch --qos=vco --wckey=vco --array=26 scripts/slurm/rhj_fewshot_grid.sbatch
+# The baseline arm reports ControlBaseline, SimpleMeanBaseline, MeanBaseline and
+# ExperimentalAccuracy on the HepG2 validation set. Those anchors are NOT learned, so its
+# own FiLM settings are irrelevant and it reuses the no-FiLM smooth_l1 configuration; what
+# it contributes are the numbers that make `best_metric` readable at all -- a val
+# pearson_delta with no non-learned anchor beside it cannot be told from a good one.
+#
+# ⛔ IT NEEDS 420G, NOT THE 128G BELOW. Submit it on its own, with the override:
+#   sbatch --qos=vco --wckey=vco --mem=420G --array=26 scripts/slurm/rhj_fewshot_grid.sbatch
+#
+# MEASURED: at 128G it is OUT_OF_MEMORY at 30 min with MaxRSS 117.19G (job 18022390_26).
+# `_run_baselines` builds an IN-MEMORY training dataset -- the one path in this stage that
+# does not stream -- and it builds it on the encoder's 44,728-gene axis, not the benchmark's
+# 6,983: 580,212 cells x 44,728 x 4 B = 103.8 GB, plus a 26 GB bool gene mask.
+#
+# Do NOT raise the 128G below to fix this. The 26 streaming arms peak at ~2 GB RSS, and
+# 420G x 27 = 11 TB would not schedule against either queue's group cap.
 #
 # Held fixed: the frozen benchmark artifact, film_scale 1.0, 30 epochs, seed 42,
 # target_pb_k 1, ctrl_avg_k 1, frozen encoder, stream_v2 + proportional interleave,
