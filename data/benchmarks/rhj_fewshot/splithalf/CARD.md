@@ -74,13 +74,16 @@ to average them once would have quadrupled its size (164 MB → ~600 MB).
    replicate agreement at m cells"*, report the count-stratified gap, and report
    `n_splits_arm_better` so "beat the ceiling on 3/5 splits" is visible rather than buried
    in a mean.
-2. **`ctrlmean`'s `pearson_delta` is undefined by construction.** With B controls on the
-   prediction side the `ctrlmean` prediction *is* the B control mean, so its delta is
-   exactly zero and `pearsonr` returns NaN. It is recorded as
-   `undefined (zero-variance prediction delta)`, never dropped; its `mae`, `overlap_at_N`
-   and discrimination scores stay meaningful. **`ctrlcell` is the load-bearing floor** — its
-   delta is the mean of `m` drawn B controls minus the full B control mean, i.e. pure
-   control-sampling noise at `m` cells, which is the right floor and scales with `m`.
+2. **`ctrlmean`'s prediction delta is zero by construction.** With B controls on the
+   prediction side the `ctrlmean` prediction *is* the B control mean. Predicted NaN;
+   **measured 0.000623** (job `18021925`, split 0) — the delta is zero only in exact
+   arithmetic, and float32 rounding leaves ~1e-8 of noise to correlate, which is a readable
+   zero rather than a hole in the table. Its `mae`, `overlap_at_N` and discrimination
+   scores are meaningful throughout (`discrimination_score_l2` 0.5040 against a chance
+   value of 0.5). **`ctrlcell` is the load-bearing floor** — its delta is the mean of `m`
+   drawn B controls minus the full B control mean, i.e. pure control-sampling noise at `m`
+   cells, which is the right floor and scales with `m`. Full table:
+   `docs/rhj_splithalf.md` F1.
 
 ## Files
 

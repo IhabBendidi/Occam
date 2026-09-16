@@ -28,10 +28,15 @@ THE ARMS, AND WHAT EACH ONE IS THERE TO RULE OUT
 | `model_nocal` / `model_cal` | model fed the drawn B controls | the measurement |
 | `meanpert` | `ctrl_used + (train grand mean - B ctrl mean)` | "it learned the average knockdown" |
 
-`ctrlmean`'s `pearson_delta` is **undefined here by construction** -- with B controls on the
-pred side the ctrlmean prediction *is* the B control mean, so its delta is exactly zero and
-pearsonr returns NaN. It is recorded as `undefined (zero-variance prediction delta)` rather
-than dropped, and its `mae`, `overlap_at_N` and discrimination scores stay meaningful.
+`ctrlmean`'s prediction delta is **zero by construction** -- with B controls on the pred
+side the ctrlmean prediction *is* the B control mean. MEASURED (job 18021925, split 0):
+`pearson_delta` comes back as **0.000623**, not NaN, because the delta is zero only in exact
+arithmetic and float32 rounding leaves ~1e-8 of noise to correlate. That is a readable zero
+rather than a hole in the table, so the guard below is a belt-and-braces branch rather than
+the expected path; it fires only if the value really is non-finite, and then records
+`undefined (zero-variance prediction delta)` instead of letting a NaN drop out of a mean.
+`ctrlcell` is the load-bearing floor either way: its delta is real control-sampling noise at
+`m` cells. See docs/rhj_splithalf.md F1.
 
 COST
 ----
