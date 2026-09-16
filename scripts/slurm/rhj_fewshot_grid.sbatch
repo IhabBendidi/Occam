@@ -63,8 +63,22 @@
 # this job. It was measured on a different corpus with a different estimand, and the first
 # launch of this grid was given a 3 h limit on the strength of it -- every arm would have
 # been killed at about epoch 23, which silently confounds the ablation with training
-# length. The 8.9x discrepancy is most likely I/O contention: 13 concurrent streaming jobs
-# reading the same three h5ad files over GPFS.
+# length.
+#
+# CONCURRENCY IS FREE -- measured, and it falsified the obvious guess. The 8.9x shortfall
+# was assumed to be I/O contention (many streaming jobs reading the same three h5ad files
+# over GPFS). It is not. Ramping 15 -> 27 concurrent arms changed nothing, on the SAME
+# three jobs across the ramp:
+#
+#     arm   before(15)   after(27)
+#     a00   1527, 1534   1541 samples/s
+#     a03   1584, 1583   1583 samples/s
+#     a06   1561, 1565   1567 samples/s
+#
+# So ~1,580 samples/s is a PER-JOB ceiling -- single-GPU compute or the per-worker data
+# pipeline -- not a shared-bandwidth one. Run this grid as wide as the QOS allows; the only
+# limits worth respecting are the queues' own (hooke-predict hits QOSGrpGRES, vco hits
+# GrpTRES mem=8T at 128 G per arm). Do not throttle to protect throughput.
 
 #SBATCH --job-name=rhj_grid
 #SBATCH --partition=hopper
