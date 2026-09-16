@@ -3273,6 +3273,19 @@ class VirtualCellTrainer:
             # key and the checkpoint without being threaded through six call sites.
             config.bench_axis_sha256 = self.benchmark.axis_sha256
             _exclude_file_perts = self.benchmark.exclude_file_perts
+
+            # THE SPLIT COMES FROM THE ARTIFACT. Without this the auto-splitter runs and
+            # invents its own 0.75/0.05/0.20 fractions -- measured once as
+            # train=1789/val=119/test=476 instead of 2381/103/621, silently, with the axis
+            # and the exclusions correctly applied around it. The exclusions still held, so
+            # nothing failed; the benchmark was simply a different benchmark.
+            _bench_split = os.path.join(self.benchmark.dir, "splits.json")
+            if config.split_json and os.path.abspath(str(config.split_json)) != os.path.abspath(_bench_split):
+                raise ValueError(
+                    f"split_json={config.split_json!r} conflicts with benchmark "
+                    f"{self.benchmark.benchmark_id!r}, whose split is {_bench_split}. "
+                    f"A benchmark defines its own split; pick one.")
+            config.split_json = _bench_split
             scope = str(getattr(config, "bench_axis_scope", "input_and_loss"))
             if scope == "input_and_loss":
                 _restrict_ids = self.benchmark.axis_set
@@ -3347,6 +3360,7 @@ class VirtualCellTrainer:
         print("Splitting perturbations...")
         if config.split_json and Path(config.split_json).exists():
             split_info = PerturbationSplitter.load(config.split_json)
+            print(f"  loaded split from {config.split_json}")
         else:
             # Collect perturbation names per cell line (using per-row cell lines)
             # Only include cell lines that have a control pool
@@ -3425,6 +3439,23 @@ class VirtualCellTrainer:
         test_unseen_cell = set(split_info["test_unseen_cell"])
         train_cell_lines = split_info.get("cell_lines_train")
         test_cell_lines = split_info.get("cell_lines_test")
+
+        if self.benchmark is not None:
+            # The split that is ACTUALLY in force must be the artifact's. Asserted rather
+            # than assumed: the first grid launch ran with the auto-splitter's
+            # train=1789/val=119/test=476 while every other benchmark guard passed, because
+            # the axis and the exclusions were correct and only the split was not.
+            want = self.benchmark.split
+            for key in ("train", "val", "test_unseen_pert"):
+                got_n, want_n = len(split_info[key]), len(want[key])
+                if set(split_info[key]) != set(want[key]):
+                    raise ValueError(
+                        f"split '{key}' in force has {got_n} perturbations, the "
+                        f"{self.benchmark.benchmark_id} artifact declares {want_n}. The "
+                        f"benchmark defines the split; something else supplied it.")
+            print(f"  [bench] split verified against the artifact: "
+                  f"train {len(train_perts):,} · val {len(val_perts)} · "
+                  f"test {len(test_unseen_pert)}")
 
         # Eval cell lines follow the split. The research tree also allowed a
         # dataset-specific override that pinned val/test to one benchmark cell
@@ -3779,7 +3810,13 @@ class VirtualCellTrainer:
         # VirtualCellStreamingDataset raises on that combination; skip the precompute here
         # so the run proceeds on the encoder path instead of dying at the first batch.
         # Costs an encoder forward per control input, which is why it is not the default.
-        _stream_exact = (getattr(config, "stream_single_cell", False)
+        # ⚠️ Gate on the REAL router. `stream_single_cell` no longer selects anything --
+        #    `config.pseudobulk` does -- so keying this on it left the v1 streaming path
+        #    precomputing embeddings and then dying at the first batch on
+        #    `control_identity_mode='exact'`, which is the default. v2 was unaffected only
+        #    because it is excluded separately below.
+        _streaming = not bool(getattr(config, "pseudobulk", False))
+        _stream_exact = (_streaming
                          and getattr(config, "control_identity_mode", "paired") == "exact"
                          and config.include_controls_as_training)
         if config.freeze_encoder and not _stream_exact and not getattr(config, "stream_v2", False):
