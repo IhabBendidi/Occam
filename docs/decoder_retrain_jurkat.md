@@ -214,6 +214,40 @@ cell-eval, which would have failed anyway on pre-fix code.
 Arm B is therefore reported as **epoch 124 of a run that reached ~195**, not as
 a completed 200-epoch run.
 
+## Emission arms on the epoch-124 checkpoint (in flight)
+
+Three parallel jobs on one checkpoint, one emission each: `18014497` raw,
+`18014498` int_libnorm, `18014499` int_nolibnorm. Verified from the written
+prediction files rather than from the logs, on a 200-cell slice of perturbed
+rows:
+
+| arm | zero fraction | mean count depth | values integral in count space |
+|---|---|---|---|
+| **target (real data)** | **0.6060** | 2000 | no — counts / real depth, rescaled |
+| `raw` | 0.5943 | 2006.2 | 0.5945 (i.e. only the zeros) |
+| `int_libnorm` | **0.9069** | **2000.0** | 0.9069 (rescaling makes non-zeros fractional again) |
+| `int_nolibnorm` | **0.9069** | **1511.1** | **1.0000** |
+
+Two things are already visible before any metric returns:
+
+1. **`raw` is nearly calibrated to the target's sparsity already** — 0.5943
+   against 0.6060 — because the quantile calibration matches per-gene
+   distributions, and that includes the zero mass. There is little sparsity
+   error left for integerisation to fix.
+2. **Rounding over-sparsifies by ~30 percentage points**, 0.6060 -> 0.9069. At
+   `target_sum` 2,000 over 8,873 present genes the mean count per gene is ~0.23,
+   so most genes round to zero. `int_nolibnorm` additionally loses **24.6% of
+   the count mass** (1511 vs 2000), a uniform downward shift on every surviving
+   gene.
+
+So the prediction registered before the numbers land: **both integer arms
+should lose `pearson_delta` relative to `raw`**, because they move sparsity
+away from the target rather than towards it. The interesting counter-case is
+`de_nsig_counts_pred` — far fewer non-zero genes means far fewer testable ones,
+so the over-call factor could fall even as the delta geometry degrades. If that
+is what happens, it is a warning about reading DE-inflation improvements as
+quality improvements, not a win.
+
 ## Results
 
 **Arm B at epoch 49 of 200 already beats arm A on every promoted metric**, and
