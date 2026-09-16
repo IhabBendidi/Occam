@@ -21,6 +21,7 @@ FMFS = ["0", "1"]
 LOSSES = ["smooth_l1", "nb"]
 N_GRID = len(MODES) * len(FHIDS) * len(FMFS) * len(LOSSES)      # 24
 N_ANCHOR = 2
+N_BASELINE = 1
 
 
 def _rows():
@@ -58,6 +59,47 @@ def test_the_no_film_anchors_are_present():
     assert all(r["interaction_type"] == "additive" for r in anchors)
     assert {r["loss_type"] for r in anchors} == set(LOSSES), (
         "one anchor per loss, or the anchor comparison is confounded by the loss"
+    )
+
+
+def test_the_baseline_arm_is_present_and_carries_nine_columns():
+    """The non-learned val anchors. A val pearson_delta with nothing beside it is unreadable.
+
+    ⚠️ Nine columns, not ten. `run_baselines` is driven by `kind` in the launcher because a
+    tenth column added while an array was already queued would feed each pending task's
+    nine-field `read` a tenth value, and `read` assigns the remainder to the LAST variable —
+    every pending arm would have run with seed "42 0".
+    """
+    rows = _rows()
+    base = [r for r in rows if r["kind"] == "baseline"]
+    assert len(base) == N_BASELINE
+    b = base[0]
+    assert "baselines" in b["tag"], "the tag must say what makes this arm different"
+    assert b["interaction_type"] == "additive", (
+        "the baselines are not learned, so the arm reuses the no-FiLM configuration"
+    )
+    # every data row has exactly the header's column count
+    header = next(l for l in open(GRID) if not l.startswith("#")).rstrip("\n").split("\t")
+    assert len(header) == 9, f"the grid must stay at 9 columns, found {len(header)}"
+    for line in open(GRID):
+        line = line.rstrip("\n")
+        if not line or line.startswith("#") or line.split("\t")[0] == "arm_id":
+            continue
+        assert len(line.split("\t")) == 9, f"{line.split(chr(9))[0]} has the wrong width"
+
+
+def test_the_launcher_turns_the_baseline_kind_into_the_flag():
+    """The TSV declares the arm; the launcher must actually set run_baselines for it."""
+    sbatch = os.path.join(REPO, "scripts", "slurm", "rhj_fewshot_grid.sbatch")
+    body = open(sbatch).read()
+    assert 'if [ "$KIND" = "baseline" ]' in body
+    assert "stages.vcell.eval.run_baselines=${BASELINES}" in body
+    assert "BASELINES=false" in body, "every non-baseline arm must set it false explicitly"
+    # and the array index of the baseline row is documented, since it ships separately
+    rows = _rows()
+    idx = next(i for i, r in enumerate(rows) if r["kind"] == "baseline")
+    assert f"--array={idx}" in body, (
+        f"the baseline row is index {idx}; the launcher header must say so"
     )
 
 

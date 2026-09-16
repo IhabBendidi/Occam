@@ -21,7 +21,15 @@
 #   x film_hidden_dim {0, 256}
 #   x film_mean_free {0, 1}
 #   x loss_type {smooth_l1, nb}                            = 24 arms
-#   + 2 no-FiLM anchors (interaction_type=additive)        = 26 total
+#   + 2 no-FiLM anchors (interaction_type=additive)        = 26
+#   + 1 baseline arm (kind=baseline -> run_baselines=true)  = 27 total
+#
+# The baseline arm reports MeanBaseline and ExperimentalAccuracy on the HepG2 validation
+# set. Those anchors are NOT learned, so its own FiLM settings are irrelevant and it reuses
+# the no-FiLM smooth_l1 configuration; what it contributes is the two numbers that make
+# `best_metric` readable at all -- a val pearson_delta with no non-learned anchor beside it
+# cannot be told from a good one. Submit it on its own:
+#   sbatch --qos=vco --wckey=vco --array=26 scripts/slurm/rhj_fewshot_grid.sbatch
 #
 # Held fixed: the frozen benchmark artifact, film_scale 1.0, 30 epochs, seed 42,
 # target_pb_k 1, ctrl_avg_k 1, frozen encoder, stream_v2 + proportional interleave,
@@ -102,6 +110,15 @@ if [ -z "$ROW" ]; then
 fi
 read -r ARM KIND TAG INTERACT FMODE FHID FMF LOSS SEED <<<"$ROW"
 
+# `kind` drives run_baselines rather than a tenth TSV column, deliberately: adding a column
+# while an array is already queued would feed the pending tasks' nine-field `read` a tenth
+# value, and `read` puts the remainder in the LAST variable -- every pending arm would have
+# got seed "42 0". A row appended at the end is invisible to an array submitted as 0-25.
+BASELINES=false
+if [ "$KIND" = "baseline" ]; then
+    BASELINES=true
+fi
+
 # Deterministic run dir: arm id first so `ls` sorts in grid order, every varied axis in the
 # name, no timestamp and no randomness -- re-running an arm returns to the same directory,
 # which is what makes --resume auto and the ledger's block-on-hash-change work.
@@ -114,6 +131,7 @@ echo "git sha   : $(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
 echo "slurm     : job ${SLURM_ARRAY_JOB_ID:-?} task ${IDX}  qos ${SLURM_JOB_QOS:-?}"
 echo "arm       : interaction=${INTERACT} film_mode=${FMODE} film_hidden_dim=${FHID}"
 echo "            film_mean_free=${FMF} loss=${LOSS} seed=${SEED}"
+echo "baselines : ${BASELINES}"
 echo "run dir   : runs/rhj_fewshot_${SUFFIX}/vcell"
 echo
 
@@ -135,6 +153,7 @@ python -m occam.train --config "$CONFIG" --stages vcell \
     --set "stages.vcell.interaction.film_hidden_dim=${FHID}" \
     --set "stages.vcell.interaction.film_mean_free=${FMF_BOOL}" \
     --set "stages.vcell.loss.loss_type=${LOSS}" \
+    --set "stages.vcell.eval.run_baselines=${BASELINES}" \
     --set "seed=${SEED}"
 
 echo
