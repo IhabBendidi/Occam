@@ -30,36 +30,57 @@ Panel definition and its caveats: `data/benchmarks/rhj_fewshot/splithalf/CARD.md
 
 ## F1 — the zero-signal floor, measured
 
-**Status: PARTIAL.** One arm of the timing probe (job `18021925`, split 0, 2026-09-16). This
-is the `ctrlmean` **anchor**, not a model: its prediction is the half-B control mean tiled
-across every cell. It carries no biology by construction, so whatever it scores is what the
-metric reads from the emission alone.
+**Status: COMPLETE for both anchors.** Timing probe, job `18021925`, split 0, 2026-09-16.
+Neither arm is a model: `ctrlmean` predicts the half-B control mean tiled across every cell,
+`ctrlcell` predicts the drawn half-B control cell itself. Both carry no biology by
+construction, so whatever they score is what the metric reads from the emission alone.
 
 Configuration: split 0 of 5, cohort 611 perturbations (`86c91f938024b2a2…`), 18,575 rows +
 2,488 half-B controls in the prediction file, 18,575 rows + 2,488 half-A controls in the
 target, 6,983 genes (`ef64f2ba7ff7816e…`), `--allow-discrete`, `--batch-size 2000`,
 `--num-threads 16`, cell-eval v1 profile `full`.
 
-| metric | `ctrlmean` | what it says |
-|---|---|---|
-| `pearson_delta` | **0.0006** | a readable zero — see the correction below |
-| `discrimination_score_l2` | **0.5040** | chance is 0.5. The anchor cannot tell perturbations apart |
-| `discrimination_score_l1` / `cosine` | 0.5015 / 0.4970 | same |
-| `overlap_at_N` | **0.0072** | 0.7% of the true DE genes |
-| `de_direction_match` | **0.4883** | chance is 0.5 |
-| `de_spearman_sig` | 0.4048 | |
-| `de_sig_genes_recall` | 0.3080 | recovered by calling ~27× too many genes significant |
-| `de_nsig_counts_pred` *(real 111.6)* | **3,026.8** | a 27.1× DE over-call, the zero-variance-prediction artifact |
-| `mae` / `mae_delta` *(lower better)* | 0.0231 / 0.0231 | |
-| `mse` / `mse_delta` *(lower better)* | 0.00158 / 0.00157 | |
-| `pr_auc` / `roc_auc` | 0.0120 / 0.3902 | |
-| `clustering_agreement` | 0.0011 | |
-| `pearson_edistance` | −0.1202 | |
+| metric | `ctrlmean` | `ctrlcell` | what it says |
+|---|---|---|---|
+| `pearson_delta` | **0.0006** | **−0.0003** | both are a readable zero — see the correction below |
+| `discrimination_score_l2` | **0.5040** | **0.5059** | chance is 0.5. Neither anchor tells perturbations apart |
+| `discrimination_score_l1` / `cosine` | 0.5015 / 0.4970 | 0.5046 / — | same |
+| `overlap_at_N` | 0.0072 | **0.0** | see the bracketing note below |
+| `de_direction_match` | 0.4883 | 0.4837 | chance is 0.5 |
+| `de_spearman_sig` | 0.4048 | *undefined* | no significant gene to rank |
+| `de_sig_genes_recall` | 0.3080 | **0.0** | |
+| `de_nsig_counts_pred` *(real 111.6)* | **3,026.8** | **0.0** | a 27.1× over-call vs zero calls |
+| `mae` / `mae_delta` *(lower better)* | 0.0231 / 0.0231 | 0.0296 / 0.0295 | |
+| `mse` / `mse_delta` *(lower better)* | 0.00158 / 0.00157 | 0.00229 / 0.00228 | |
+| `pr_auc` / `roc_auc` | 0.0120 / 0.3902 | 0.0188 / 0.5051 | |
+| `clustering_agreement` | 0.0011 | 0.0017 | |
+| `pearson_edistance` | −0.1202 | 0.6300 | |
 
-**Read every model number against this row.** On the H1 panel the `ctrlmean` anchor *beat*
-every model arm on `pearson_delta`; here it sits at 0.0006 and at chance on discrimination,
-which is what a floor should look like and means the protocol's B-control substitution is
-doing its job.
+**Read every model number against these two rows.** On the H1 panel the `ctrlmean` anchor
+*beat* every model arm on `pearson_delta`; here both anchors sit at zero and at chance on
+discrimination, which is what a floor should look like and is evidence the protocol's
+B-control substitution is doing its job.
+
+### ⭐ The two anchors bracket the DE metrics from opposite sides
+
+This was not designed in and it is the most useful thing the probe produced. Both arms carry
+zero signal, and they fail the DE tests in **opposite** directions:
+
+| | within-group variance | genes called significant | why |
+|---|---|---|---|
+| `ctrlmean` | **zero** (every row identical) | **3,026.8** of 6,983 | Wilcoxon reads near-zero variance as overwhelming evidence — the pseudobulk-variance artifact |
+| `ctrlcell` | **natural** (real single cells) | **0.0** | the "perturbed" rows are drawn from the same pool as the controls, so nothing is significant |
+| real | natural | 111.6 | |
+
+So a model arm's `de_nsig_counts_pred` has a floor on each side: **0** (real cell-to-cell
+variance, no signal) and **3,026.8** (no variance, no signal). A model calling ~112 is
+calibrated; one calling thousands is emitting under-dispersed cells, not finding biology.
+`overlap_at_N` inherits this: `ctrlcell` scores exactly **0.0** because N on its own side is
+zero, which makes it the honest floor for the DE metrics, while `ctrlmean`'s 0.0072 is a
+small number obtained by calling almost everything.
+
+`ctrlcell` is therefore the load-bearing floor for **both** families — `pearson_delta`
+(−0.0003, pure control-sampling noise at `m` cells) and the DE metrics (exactly 0).
 
 ### ⚠️ Correction to a pre-registered prediction
 
@@ -80,17 +101,38 @@ prediction is recorded here as not-held.
 
 ---
 
-## F2 — protocol cost
+## F2 — protocol cost, measured
 
-**Status: PENDING.** Job `18021925`, split 0. First arm (`ctrlmean`, cold, includes the
-shared real-side DE) completed in ~20 min; the second (`ctrlcell`, warm, reads the real-side
-DE from the target-file sha256 cache) is running. The decomposition
-(`real DE = cold − warm`) and the 5-arm/5-split extrapolation land here when it exits.
+**Status: COMPLETE.** Job `18021925`, split 0, `COMPLETED` in **30 min 47 s**, **MaxRSS
+14.16 GB** on 16 CPU threads, no GPU (the probe's prediction is the identity).
 
-The prior estimate being tested was 2.0–2.8 h per split, extrapolated across a 5× change in
-panel size from the decoder-stage runs. That extrapolation is why the probe exists — the
-same class of extrapolation put a 3 h wall limit on a 3.2 h training job (see
-`runs/aborted_3h_limit/WHY.md`).
+| | measured |
+|---|---|
+| `ctrlmean` — **cold**, computes and caches the real-side DE | 1,169.4 s (19.5 min) |
+| `ctrlcell` — **warm**, reads the real-side DE from the cache | 658.5 s (11.0 min) |
+| **real-side DE**, shared by every arm of a split (`cold − warm`) | **510.9 s (8.5 min)** |
+| **pred-side DE + all 28 metrics**, per additional arm | **658.5 s (11.0 min)** |
+
+So one split of 5 arms is `510.9 + 5 × 658.5` = **63 min**, and the 5-split array is
+**5.3 h of compute in ~1.1 h of wall clock** (plus model prediction and calibration, which
+the probe did not measure — budget 1.5 h per array task). The `rhj_splithalf.sbatch` limit
+of 12 h is margin, not estimate. 96 GB is generous against 14.16 GB, but a real run adds
+the calibration fit over 20,000 control cells.
+
+**The prior estimate was 2.0–2.8 h per split; the measurement is 1.05 h** — the extrapolation
+across a 5× change in panel size was pessimistic by ~2.2×. The probe existed because the same
+class of extrapolation put a 3 h wall limit on a 3.2 h training job the same day (see
+`runs/aborted_3h_limit/WHY.md`). It was worth 31 minutes.
+
+### ⚠️ The probe's own printed decomposition was inverted
+
+The job's stdout reported `real-side DE −510.9 s`. A negative time: the record from that job
+predates `scored_order`, so the script fell back to the **requested** arm order
+(`ctrlcell,ctrlmean`) rather than the order `build_arms` actually scores in (anchors first,
+`ctrlmean` before `ctrlcell`). The numbers above are the corrected assignment, read against
+the job log's own `cached real-side DE ->` / `reusing real-side DE for target` lines, which
+show unambiguously that `ctrlmean` paid for the DE. `run_split` now records `scored_order`
+and the probe refuses to print a negative decomposition.
 
 ---
 

@@ -301,8 +301,21 @@ def main() -> int:
     for tag in order:
         print(f"  {tag:14s} {t[tag]:8.1f} s"
               f"{'   <- cold, includes the real-side DE' if tag == order[0] else ''}")
-    if len(order) >= 2:
+    if len(order) >= 2 and "scored_order" not in rec:
+        print("  ⚠️ this record predates `scored_order`, so which arm paid for the "
+              "real-side DE cannot be read from it. Check the job log for "
+              "`cached real-side DE ->` and assign cold/warm by hand.")
+    elif len(order) >= 2:
         cold, warm = t[order[0]], t[order[1]]
+        if cold <= warm:
+            # A negative real-DE time is impossible; it means the cold arm was
+            # misidentified. Refuse rather than print it.
+            print(f"  ⚠️ the first scored arm ({order[0]}) was not slower than the second "
+                  f"({order[1]}): {cold:.1f} s vs {warm:.1f} s. The cold arm computes the "
+                  f"real-side DE, so this cannot be right and no decomposition is printed.")
+            print(f"  {'wall clock':14s} {total:8.1f} s")
+            print(f"\n[splithalf] this is a PROBE — {out_dir}/metrics_probe.json")
+            return 0
         print(f"  {'real-side DE':14s} {cold - warm:8.1f} s  (cold - warm)")
         print(f"  {'pred DE+metrics':14s} {warm:8.1f} s  (per additional arm)")
         print(f"\n  → 5 arms x 1 split ≈ {(cold - warm + 5 * warm) / 60:.0f} min")
