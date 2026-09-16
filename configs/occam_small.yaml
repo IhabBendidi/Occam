@@ -40,6 +40,24 @@ data:
     n_obs: 1434299
     n_genes: 44728
 
+# ⚠️ STAGE 3 BELOW IS SUPERSEDED (2026-09-16).
+#
+#    Its block records the recipe that produced the `rectified_sigmoid` +
+#    smooth-L1 decoder, which is no longer the released one. That file now
+#    lives at checkpoints/legacy/ and is kept only because the golden fixtures
+#    pin it, making it this repository's port-equivalence evidence.
+#
+#    The RELEASED decoder is configs/decoder_softplus_nb.yaml: softplus + NB,
+#    2048 x 4, lr 5e-5, epoch 124. It scored 0.5732 calibrated pearson_delta on
+#    nadig_2024_jurkat against this recipe's 0.1985 -- see
+#    docs/decoder_retrain_jurkat.md.
+#
+#    Stages 1 and 2 here are unchanged and ARE the published encoder: the
+#    released checkpoint's encoder half is byte-identical to the old one's.
+#    Keep this block as written -- it is verified against the legacy checkpoint
+#    by tests/test_config_frozen.py, and editing it to describe the new decoder
+#    would destroy that correspondence.
+
 stages:
 
   # -------------------------------------------------------------------

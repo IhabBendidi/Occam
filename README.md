@@ -101,6 +101,16 @@ occam-celleval    --checkpoint checkpoints/release/occam_small_encoder_decoder.p
 
 ## The published recipe
 
+> **The released decoder is the softplus + NB one as of 2026-09-16.** It beat
+> the previous `rectified_sigmoid` + smooth-L1 decoder by **+0.3747 calibrated
+> `pearson_delta`** (0.1985 → 0.5732) on `nadig_2024_jurkat`, with the DE
+> over-call factor down from 14.8× to 6.9×. Stages 1–2 come from
+> `configs/occam_small.yaml`; **stage 3 comes from
+> `configs/decoder_softplus_nb.yaml`**. The superseded decoder is kept at
+> `checkpoints/legacy/` — not published — because the golden fixtures pin it and
+> it is the port-equivalence evidence. See
+> [docs/decoder_retrain_jurkat.md](docs/decoder_retrain_jurkat.md).
+
 `configs/occam_small.yaml` **is** the recipe. It was generated from the released
 checkpoints' own embedded configs, not transcribed from run logs, because two of
 the three stages were misdocumented in the tree this repo replaces.

@@ -25,7 +25,11 @@ CONFIG = os.path.join(REPO, "configs", "occam_small.yaml")
 CHECKPOINTS = {
     "pretrain": "checkpoints/reference/occam_small_stage1_pretrain.pth",
     "finetune": "checkpoints/reference/occam_small_stage2_finetune.pth",
-    "decoder": "checkpoints/release/occam_small_encoder_decoder.pth",
+    # configs/occam_small.yaml records the recipe that produced the LEGACY
+    # decoder, so that is what its stage-3 block must agree with. The released
+    # decoder came from configs/decoder_softplus_nb.yaml; see
+    # test_retrain_recipe_agrees_with_the_released_decoder below.
+    "decoder": "checkpoints/legacy/occam_small_encoder_decoder_rectified_sigmoid.pth",
 }
 
 # The values that define the released model. Verified 2026-09-10 from the
@@ -206,3 +210,39 @@ def test_recipe_agrees_with_checkpoints_on_disk():
     )
     assert p3["architecture"]["decoder_num_blocks"] == d3["num_blocks"]
     assert p3["architecture"]["decoder_hidden_dim"] == d3["hidden_dim"]
+
+
+RELEASE = "checkpoints/release/occam_small_encoder_decoder.pth"
+
+
+@pytest.mark.skipif(
+    not os.path.isfile(os.path.join(REPO, RELEASE)),
+    reason="checkpoints not bootstrapped; run scripts/bootstrap_assets.sh",
+)
+def test_retrain_recipe_agrees_with_the_released_decoder():
+    """The published config must describe the weights actually shipped.
+
+    The released decoder was produced by configs/decoder_softplus_nb.yaml, not
+    by the stage-3 block of configs/occam_small.yaml -- that one describes the
+    superseded rectified_sigmoid decoder now under checkpoints/legacy/. A
+    recipe that disagrees with its own checkpoint is the exact defect this
+    repository was built to remove.
+    """
+    torch = pytest.importorskip("torch")
+
+    from occam.config.loader import load_config
+
+    cfg = load_config(os.path.join(REPO, "configs", "decoder_softplus_nb.yaml"))
+    dc, _meta = cfg.build_decoder_config()
+
+    ck = torch.load(os.path.join(REPO, RELEASE), map_location="cpu", weights_only=False)
+    d = ck["decoder_config"]
+    t = ck["training_config"]
+
+    assert d["output_activation"] == dc.decoder_output_activation == "softplus"
+    assert t["loss_type"] == dc.loss_type == "nb"
+    assert d["hidden_dim"] == dc.decoder_hidden_dim == 2048
+    assert d["num_blocks"] == dc.decoder_num_blocks == 4
+    assert t["lr"] == dc.lr
+    assert ck["target_sum"] == 2000.0
+    assert len(ck["gene_names"]) == 44728

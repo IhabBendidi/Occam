@@ -19,6 +19,8 @@ import pytest
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RELEASE = os.path.join(REPO, "checkpoints", "release", "occam_small_encoder_decoder.pth")
+LEGACY = os.path.join(REPO, "checkpoints", "legacy",
+                      "occam_small_encoder_decoder_rectified_sigmoid.pth")
 
 
 def _args(**overrides):
@@ -106,15 +108,35 @@ def test_a_non_unified_checkpoint_is_rejected():
     assert "decoder_config" in str(exc.value)
 
 
-@pytest.mark.skipif(not os.path.isfile(RELEASE),
+@pytest.mark.skipif(not os.path.isfile(LEGACY),
                     reason="checkpoints not bootstrapped; run scripts/bootstrap_assets.sh")
-def test_the_released_checkpoint_really_does_omit_the_activation():
-    """The refusal above is only meaningful if the release actually omits it."""
+def test_the_legacy_checkpoint_really_does_omit_the_activation():
+    """The refusal above is only meaningful if some real checkpoint omits it.
+
+    The superseded rectified_sigmoid decoder does, which is why anything
+    scoring it must pass --output-activation explicitly.
+    """
     torch = pytest.importorskip("torch")
 
-    ck = torch.load(RELEASE, map_location="cpu", weights_only=False)
+    ck = torch.load(LEGACY, map_location="cpu", weights_only=False)
     assert "output_activation" not in ck["decoder_config"]
-    assert ck["decoder_config"]["num_blocks"] == 5, "released decoder is 2048 x 5"
+    assert ck["decoder_config"]["num_blocks"] == 5, "legacy decoder is 2048 x 5"
+
+
+@pytest.mark.skipif(not os.path.isfile(RELEASE),
+                    reason="checkpoints not bootstrapped; run scripts/bootstrap_assets.sh")
+def test_the_released_checkpoint_records_its_activation():
+    """The promoted release must not need the flag at all."""
+    torch = pytest.importorskip("torch")
+
+    from occam.cli.celleval import build_config
+
+    ck = torch.load(RELEASE, map_location="cpu", weights_only=False)
+    assert ck["decoder_config"]["output_activation"] == "softplus"
+    assert ck["decoder_config"]["num_blocks"] == 4, "released decoder is 2048 x 4"
+    # No flag needed, and no refusal triggered.
+    cfg = build_config(ck, _args(checkpoint=RELEASE))
+    assert cfg.decoder_output_activation == "softplus"
 
 
 def test_de_real_cache_is_keyed_by_the_target_content():

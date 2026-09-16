@@ -101,8 +101,8 @@ export PYTHONPATH="$HERE/src${PYTHONPATH:+:$PYTHONPATH}"
 
 CKPT="${CKPT:-checkpoints/release/occam_small_encoder_decoder.pth}"
 
-# Output activation. Only the RELEASED checkpoint needs this passed: it predates
-# the field, and occam-celleval refuses to guess because a softplus decoder
+# Output activation. Only the superseded LEGACY checkpoint needs this passed:
+# it predates the field, and occam-celleval refuses to guess because a softplus decoder
 # loads cleanly under rectified_sigmoid and emits ~99% exact zeros.
 # (occam-verify determined it from a forward pass; see docs/checkpoints.md.)
 #
@@ -113,7 +113,7 @@ CKPT="${CKPT:-checkpoints/release/occam_small_encoder_decoder.pth}"
 # and silently reimpose rectified_sigmoid on a softplus checkpoint.
 if [ -z "${ACT+set}" ]; then
     case "$CKPT" in
-        */occam_small_encoder_decoder.pth) ACT="rectified_sigmoid" ;;
+        */occam_small_encoder_decoder_rectified_sigmoid.pth) ACT="rectified_sigmoid" ;;
         *)                                 ACT="" ;;
     esac
 fi

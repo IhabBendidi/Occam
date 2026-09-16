@@ -1,8 +1,16 @@
 # =====================================================================
 # Occam-small, stage 3 RETRAIN: softplus + negative binomial.
 #
-# ⚠️ PREPARED, NOT RUN. Nothing in this repo submits it. Launch it yourself
-#    with scripts/slurm/retrain_decoder.sbatch when you are ready.
+# ✅ RUN, AND ITS OUTPUT IS THE RELEASED DECODER (2026-09-16).
+#    Job 18006463, best checkpoint epoch 124, combined score 65.36. Promoted to
+#    checkpoints/release/occam_small_encoder_decoder.pth. Measured 0.5732
+#    calibrated pearson_delta on nadig_2024_jurkat against the superseded
+#    decoder's 0.1985 -- see docs/decoder_retrain_jurkat.md.
+#
+#    ⚠️ The run itself FAILED at epoch ~195 of 200 in a filesystem outage. The
+#    shipped weights are the selected epoch-124 checkpoint, which predates the
+#    outage and was verified intact; the evals at 149 and 174 were worse, so
+#    selection had already peaked.
 #
 # WHY THIS EXISTS
 # ---------------

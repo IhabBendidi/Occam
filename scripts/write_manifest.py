@@ -18,6 +18,9 @@ ASSETS = [
     ("stage1_pretrain", "checkpoints/reference/occam_small_stage1_pretrain.pth"),
     ("stage2_finetune", "checkpoints/reference/occam_small_stage2_finetune.pth"),
     ("stage3_release", "checkpoints/release/occam_small_encoder_decoder.pth"),
+    # Superseded 2026-09-16, retained because the golden fixtures pin it and it
+    # is therefore the port-equivalence evidence. Not published.
+    ("stage3_legacy", "checkpoints/legacy/occam_small_encoder_decoder_rectified_sigmoid.pth"),
 ]
 
 # Fields worth pulling out of each checkpoint's embedded config, per stage.
@@ -42,6 +45,7 @@ CONFIG_FIELDS = {
         "smooth_l1_beta", "freeze_encoder", "seed", "wandb_run_name",
     ),
 }
+CONFIG_FIELDS["stage3_legacy"] = CONFIG_FIELDS["stage3_release"]
 
 
 def sha256(path: str, chunk: int = 1 << 24) -> str:

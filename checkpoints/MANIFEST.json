@@ -10,6 +10,7 @@
       },
       "n_genes": 44728,
       "path": "checkpoints/reference/occam_small_stage1_pretrain.pth",
+      "sha256": "21c519b1ad686a019e07dbe2f2c1231d5732bef7c108d45bd8055fc543ba440e",
       "top_level_keys": [
         "best_val_loss",
         "config",
@@ -55,6 +56,7 @@
       },
       "n_genes": 44728,
       "path": "checkpoints/reference/occam_small_stage2_finetune.pth",
+      "sha256": "9ea9d48dec462c637da02391dc83899c4ec55c277bd4dddc2da279e839208d4a",
       "top_level_keys": [
         "best_val_loss",
         "config",
@@ -113,7 +115,7 @@
         "weight_decay": 1.81890136e-09
       }
     },
-    "stage3_release": {
+    "stage3_legacy": {
       "best_val_loss": 0.0011785769730683088,
       "bytes": 928212950,
       "decoder_config": {
@@ -145,7 +147,8 @@
       },
       "model_state_dict_is_decoder": true,
       "n_genes": 44728,
-      "path": "checkpoints/release/occam_small_encoder_decoder.pth",
+      "path": "checkpoints/legacy/occam_small_encoder_decoder_rectified_sigmoid.pth",
+      "sha256": "22c05a18e1fd29c4c4619fa5748baa47efd1a6d7cbcf921d1e87dfc623bfe9d0",
       "target_sum": 2000.0,
       "top_level_keys": [
         "best_val_loss",
@@ -179,47 +182,129 @@
         "wandb_run_name": "decoder_lr_sweep_3e-6_ep200",
         "weight_decay": 0.01
       }
+    },
+    "stage3_release": {
+      "best_val_loss": 0.053063634235192746,
+      "bytes": 892816810,
+      "decoder_config": {
+        "bottleneck_k": 1,
+        "dropout_rate": 0.3,
+        "glu_mode": false,
+        "glu_ratio": 0.667,
+        "hidden_dim": 2048,
+        "input_dim": 512,
+        "kron_rank": 0,
+        "monarch_blocks": 0,
+        "monarch_mup": false,
+        "num_blocks": 4,
+        "output_activation": "softplus",
+        "output_dim": 44728,
+        "se_reduction": 16,
+        "sparsity_24": false,
+        "sparsity_24_decay": 0.0002,
+        "weight_tie": false
+      },
+      "decoder_state_dict": {
+        "n_params": 128456385,
+        "n_tensors": 81
+      },
+      "encoder_config": {
+        "hidden_size": 512,
+        "model_size": "small",
+        "num_genes": 44728
+      },
+      "encoder_state_dict": {
+        "n_params": 94279864,
+        "n_tensors": 13
+      },
+      "epoch": 124,
+      "is_unified_checkpoint": true,
+      "model_state_dict": {
+        "n_params": 128456385,
+        "n_tensors": 81
+      },
+      "model_state_dict_is_decoder": true,
+      "n_genes": 44728,
+      "path": "checkpoints/release/occam_small_encoder_decoder.pth",
+      "sha256": "ef82433f8a6e20b43a830f60c6dfe5c1b0963d970a9233b9718758b67854e006",
+      "target_sum": 2000.0,
+      "top_level_keys": [
+        "best_combined_score",
+        "best_val_loss",
+        "decoder_config",
+        "decoder_state_dict",
+        "dispersion",
+        "encoder_config",
+        "encoder_state_dict",
+        "epoch",
+        "gene_names",
+        "gene_to_index",
+        "is_unified_checkpoint",
+        "loss_state_dict",
+        "model_state_dict",
+        "parent_checkpoint_path",
+        "target_sum",
+        "training_config"
+      ],
+      "verified_config": {
+        "batch_size": 1024,
+        "decoder_dropout": 0.3,
+        "decoder_hidden_dim": 2048,
+        "decoder_num_blocks": 4,
+        "decoder_output_activation": "softplus",
+        "decoder_se_reduction": 16,
+        "epochs": 200,
+        "eta_min": 1e-07,
+        "freeze_encoder": true,
+        "gradient_clip": 0.5,
+        "loss_type": "nb",
+        "lr": 5e-05,
+        "seed": 42,
+        "smooth_l1_beta": 2.0,
+        "wandb_run_name": null,
+        "weight_decay": 0.01
+      }
     }
   },
   "bmdb_database": {
     "All.txt": {
       "bytes": 1746478,
-      "sha256": null
+      "sha256": "9a0518dcdea6335a4862f722f747855c2c563c6490e2438395d6a20c9164cdfc"
     },
     "CORUM.txt": {
       "bytes": 928150,
-      "sha256": null
+      "sha256": "edaafc77a184ef452996d211e9fe1699615315a36e1efc9d602042c06168a695"
     },
     "CORUM_clusters.tsv": {
       "bytes": 140353,
-      "sha256": null
+      "sha256": "caab1d3db6fa694c001f41e2973492d248ea3936a1249be3bf497648071f5c99"
     },
     "HuMAP.txt": {
       "bytes": 1452420,
-      "sha256": null
+      "sha256": "6d08074df77f1a7274e754bc6e5e29aa438004bec0a13cbfb934c2c81328f3c4"
     },
     "LICENSE": {
       "bytes": 731,
-      "sha256": null
+      "sha256": "1bf6881972e84546677534643476aa571efbc63ed3947849711b418f113d8afc"
     },
     "Reactome.txt": {
       "bytes": 267969,
-      "sha256": null
+      "sha256": "ed3cd0fc32d2fe3510f167e9df39668bc9637348d78787615d3f970b2b862e70"
     },
     "SIGNOR.txt": {
       "bytes": 141437,
-      "sha256": null
+      "sha256": "00525d3a90198378b54c5c3093374d5c9ee0550bbd799f06b443512a465bcad3"
     },
     "StringDB.txt": {
       "bytes": 1412650,
-      "sha256": null
+      "sha256": "7955c846a551530c07b1eb508404cf15ef0b77ea39ad2368ed40c5c099dedb8c"
     },
     "compound_gene_interactions.csv": {
       "bytes": 132593,
-      "sha256": null
+      "sha256": "7d34ef38abf665e5e243e8c0c307641f53dc080731a9aaf6c2f289527b089c71"
     }
   },
-  "generated": "2026-09-15T09:04:43.469762+00:00",
+  "generated": "2026-09-16T11:54:00.502029+00:00",
   "provenance_warning": "Stage 1 and stage 3 were written by colliding SLURM array tasks. The 'verified_config' blocks below come from each checkpoint's own embedded config, which is the only primary record. Do not trust outputs/experiments/*/metadata.json or decoder_results/*/run_config.json in the source tree. See docs/reproducing_chain_a.md.",
   "schema": 1
 }
