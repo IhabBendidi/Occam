@@ -103,7 +103,7 @@ from occam.decoder_train.augment import (
 )
 from occam.decoder_train.config import DecoderTrainConfig
 from occam.decoder_train.metrics import (
-    real_de_cache_path,
+    apply_emission, real_de_cache_path,
     compute_all_metrics, compute_pearson_per_sample, compute_spearman_per_sample,
     run_cell_eval, run_decoder_benchmark, _pearson_torch, _spearman_torch,
 )
@@ -1479,12 +1479,28 @@ class DecoderTrainer:
 
         # --- Run both modes against the shared target (injctrl = main, run first) ---
         results: Dict[str, Dict[str, float]] = {}
+        emission_stats: Dict[str, Dict[str, float]] = {}
         _want = [m.strip() for m in
                  str(getattr(self.config, "celleval_modes", "injctrl,reconctrl")).split(",")
                  if m.strip()]
         for mode, pred_X in (("injctrl", preds_inj), ("reconctrl", preds_np)):
             if mode not in _want:
                 continue
+            # Emission. Applied to the WHOLE matrix, injected real controls
+            # included: discretising the perturbed rows alone would make the
+            # perturbed/control contrast partly an artifact of emission, and the
+            # differential-expression test would read that artifact as signal.
+            _emission = str(getattr(self.config, "celleval_emission", "raw"))
+            if _emission != "raw":
+                pred_X, _em_stats = apply_emission(pred_X, _emission, self.target_sum)
+                print(f"  [{mode}] emission {_emission}: zero-frac "
+                      f"{_em_stats['zero_frac_before']:.4f} -> {_em_stats['zero_frac_after']:.4f}, "
+                      f"mean count depth {_em_stats['mean_rowsum_counts_before']:.0f} -> "
+                      f"{_em_stats['mean_rowsum_counts_after']:.0f}"
+                      + (f", {int(_em_stats['empty_rows'])} rows emptied by rounding"
+                         if _em_stats["empty_rows"] else ""))
+                emission_stats[mode] = _em_stats
+
             pred_path = os.path.join(celleval_dir, f"{eval_name}_pred_{mode}.h5ad")
             anndata.AnnData(X=pred_X, obs=obs.copy(), var=var.copy()).write_h5ad(pred_path)
             ce_out = os.path.join(output_dir, f"cell_eval_{eval_name}_{mode}")
@@ -1509,6 +1525,9 @@ class DecoderTrainer:
                     print(f"  cached real-side DE -> {_cache_path}")
                 except OSError as exc:
                     print(f"  [warn] could not cache real-side DE: {exc}")
+
+        if emission_stats:
+            self.last_emission_stats = emission_stats
 
         del preds_np, tgts_np, preds_inj
         gc.collect()

@@ -302,5 +302,35 @@ refuses. That is not redundant with the earlier check: a launcher carrying
 otherwise score ~99% exact zeros and report it as a result. It happened here,
 and the refusal caught it.
 
+**Emission: scoring predictions as counts.** `--emission` re-emits the
+prediction matrix before scoring, because a prediction is continuous in log1p
+space while a measurement is a count:
+
+| mode | operation | isolates |
+|---|---|---|
+| `raw` | none | the baseline |
+| `int_libnorm` | `expm1` → round → rescale each cell to `target_sum` → `log1p` | integerisation **and** library-size alignment |
+| `int_nolibnorm` | `expm1` → round → `log1p` | integerisation only; rounding's lost mass is not put back |
+
+`int_libnorm` vs `int_nolibnorm` isolates the library-size term given
+integerisation; `raw` vs `int_nolibnorm` isolates integerisation given no
+rescaling. (The fourth cell of the 2x2 — rescale without rounding — is not
+implemented; it would make the interaction identifiable rather than just the
+two main effects.)
+
+⚠️ Applied to **every row of the prediction file, injected real controls
+included.** Discretising the perturbed rows alone would make the
+perturbed/control contrast partly an artifact of emission, and the
+differential-expression test would then report that artifact as signal.
+
+⚠️ Lossy by construction at small `target_sum`. Normalised to 2,000 over ~8,900
+present genes the mean count per gene is ~0.23, so rounding sends most genes to
+exactly 0 — measured on synthetic input, zero-fraction 0.000 → 0.691. And the
+**target is not integer either**: it is counts divided by real depth and
+rescaled. So this does not make predictions more like the target; it makes them
+more like a measurement. Whether that helps is the question, not the
+assumption. `metrics.json` records the zero-fraction and count depth before and
+after, so the answer is auditable.
+
 A worked comparison of two decoders on jurkat is in
 [decoder_retrain_jurkat.md](decoder_retrain_jurkat.md).

@@ -27,7 +27,7 @@ def _args(**overrides):
         checkpoint="/nonexistent.pth", output_activation=None, loss_type=None,
         pert_col="gene_name", control_label="non-targeting", calibrate="none",
         modes="injctrl", num_threads=16, timeout=3600, all_genes=False,
-        de_batch_size=None, de_real_cache=None,
+        de_batch_size=None, de_real_cache=None, emission="raw",
     )
     base.update(overrides)
     return argparse.Namespace(**base)
@@ -182,3 +182,65 @@ def test_an_explicit_activation_may_not_contradict_the_checkpoint():
     cfg = build_config(_checkpoint(activation="softplus"),
                        _args(output_activation="softplus"))
     assert cfg.decoder_output_activation == "softplus"
+
+
+def test_emission_modes_do_what_their_names_say():
+    """raw leaves the matrix alone; both int modes discretise; only one rescales."""
+    np = pytest.importorskip("numpy")
+    from occam.decoder_train.metrics import apply_emission
+
+    rng = np.random.default_rng(0)
+    x = np.log1p(rng.gamma(0.3, 20.0, size=(64, 300))).astype(np.float32)
+
+    raw, raw_stats = apply_emission(x.copy(), "raw", 2000.0)
+    assert np.array_equal(raw, x)
+    assert raw_stats["zero_frac_after"] == raw_stats["zero_frac_before"]
+
+    libnorm, ln_stats = apply_emission(x.copy(), "int_libnorm", 2000.0)
+    nolibnorm, nl_stats = apply_emission(x.copy(), "int_nolibnorm", 2000.0)
+
+    # Both discretise, so both gain zeros relative to raw.
+    assert ln_stats["zero_frac_after"] > raw_stats["zero_frac_before"]
+    assert nl_stats["zero_frac_after"] == ln_stats["zero_frac_after"]
+
+    # Only int_libnorm puts the depth back; that is the whole difference
+    # between the two arms, and it is what makes the comparison identifiable.
+    assert abs(ln_stats["mean_rowsum_counts_after"] - 2000.0) < 1.0
+    assert nl_stats["mean_rowsum_counts_after"] < 2000.0
+
+    for out in (libnorm, nolibnorm):
+        assert np.isfinite(out).all()
+        assert (out >= 0).all()
+
+
+def test_emission_never_produces_nan_on_an_all_zero_row():
+    """A row rounded to nothing cannot be rescaled; it must stay zero, not become NaN."""
+    np = pytest.importorskip("numpy")
+    from occam.decoder_train.metrics import apply_emission
+
+    x = np.zeros((3, 10), dtype=np.float32)
+    x[0, 0] = np.log1p(500.0)              # survives rounding
+    out, stats = apply_emission(x, "int_libnorm", 2000.0)
+    assert np.isfinite(out).all()
+    assert stats["empty_rows"] == 2.0
+    assert out[1].sum() == 0.0 and out[2].sum() == 0.0
+
+
+def test_an_unknown_emission_mode_is_refused():
+    np = pytest.importorskip("numpy")
+    from occam.decoder_train.metrics import apply_emission
+
+    with pytest.raises(ValueError) as exc:
+        apply_emission(np.zeros((2, 2), dtype="float32"), "int", 2000.0)
+    assert "int_libnorm" in str(exc.value)
+
+
+def test_emission_reaches_the_config():
+    pytest.importorskip("torch")
+    from occam.cli.celleval import build_config
+
+    cfg = build_config(_checkpoint(activation="softplus"),
+                       _args(emission="int_libnorm"))
+    assert cfg.celleval_emission == "int_libnorm"
+    assert build_config(_checkpoint(activation="softplus"),
+                        _args()).celleval_emission == "raw"

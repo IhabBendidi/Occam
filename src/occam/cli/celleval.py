@@ -145,6 +145,7 @@ def build_config(checkpoint: Dict[str, Any], args) -> Any:
     config.celleval_timeout = args.timeout
     config.celleval_de_batch_size = args.de_batch_size
     config.celleval_de_real_cache = args.de_real_cache
+    config.celleval_emission = args.emission
     config.celleval_present_genes_only = not args.all_genes
     return config
 
@@ -191,6 +192,14 @@ def main(argv=None) -> int:
                          "2,394-perturbation panel into ~212,000 pool tasks "
                          "and trips a shared-memory race in its DE backend. "
                          "Raise it for large panels; 2000 is a good start.")
+    ap.add_argument("--emission", default="raw",
+                    choices=["raw", "int_libnorm", "int_nolibnorm"],
+                    help="re-emit predictions as integer counts. raw: leave "
+                         "them in log1p space. int_libnorm: expm1 -> round -> "
+                         "rescale each cell to target_sum -> log1p. "
+                         "int_nolibnorm: expm1 -> round -> log1p, so rounding's "
+                         "lost mass is not put back. Applied to every row, "
+                         "injected controls included.")
     ap.add_argument("--de-real-cache", default=None,
                     help="directory of reusable ground-truth DE tables, keyed "
                          "by the target file's sha256. The real-side DE depends "
@@ -225,6 +234,7 @@ def main(argv=None) -> int:
           f"{config.decoder_output_activation}, loss {config.loss_type}")
     print(f"eval data    : {args.eval_data}")
     print(f"perturbation : obs['{args.pert_col}'], controls '{args.control_label}'")
+    print(f"emission     : {args.emission}")
     print(f"calibration  : {args.calibrate}"
           + ("  <- fit on control cells; declare this next to any number"
              if args.calibrate != "none" else ""))
@@ -256,10 +266,12 @@ def main(argv=None) -> int:
             "num_threads": args.num_threads,
             "de_batch_size": args.de_batch_size,
             "de_real_cache": args.de_real_cache,
+            "emission": args.emission,
             "present_genes_only": not args.all_genes,
             "epoch": trainer.current_epoch,
         },
         "metrics": results,
+        "emission_stats": getattr(trainer, "last_emission_stats", {}),
     }
     out_path = os.path.join(args.output_dir, "metrics.json")
     with open(out_path, "w", encoding="utf-8") as fh:

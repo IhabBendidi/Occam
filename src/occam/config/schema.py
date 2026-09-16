@@ -259,6 +259,7 @@ DECODER_SCHEMA: Dict[str, Dict[str, Optional[str]]] = {
         "celleval_num_threads": "celleval_num_threads",
         "celleval_de_batch_size": "celleval_de_batch_size",
         "celleval_de_real_cache": "celleval_de_real_cache",
+        "celleval_emission": "celleval_emission",
         "celleval_timeout": "celleval_timeout",
     },
     # Flags added after the released run, listed at their no-op values so a

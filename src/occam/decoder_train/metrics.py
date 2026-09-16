@@ -300,6 +300,73 @@ def _run_bmdb_benchmark(
     return pd.DataFrame(metrics_list) if metrics_list else pd.DataFrame()
 
 
+EMISSION_MODES = ("raw", "int_libnorm", "int_nolibnorm")
+
+
+def apply_emission(x: np.ndarray, mode: str, target_sum: float) -> Tuple[np.ndarray, Dict[str, float]]:
+    """Re-emit a log1p prediction matrix as integer counts.
+
+    Predictions are continuous in log1p space; a real measurement is a count.
+    This stage asks whether emitting them as counts changes what cell-eval
+    sees, and separates two things that are easy to conflate:
+
+    ``raw``
+        Leave them alone. The baseline.
+    ``int_libnorm``
+        ``expm1 -> round -> rescale each cell to `target_sum` -> log1p``.
+        Integerisation AND library-size alignment.
+    ``int_nolibnorm``
+        ``expm1 -> round -> log1p``. Integerisation only; rounding loses mass,
+        so each cell keeps whatever total survives.
+
+    ``int_libnorm`` vs ``int_nolibnorm`` isolates the library-size term given
+    integerisation; ``raw`` vs ``int_nolibnorm`` isolates integerisation given
+    no rescaling.
+
+    ⚠️ This is an EMISSION choice applied uniformly to every row of a
+    prediction file, injected real controls included. Applying it to the
+    perturbed rows only would make the perturbed/control contrast partly an
+    artifact of emission, which is exactly what the differential-expression
+    test would then report as signal.
+
+    ⚠️ It is lossy by construction at small ``target_sum``. Normalised to 2,000
+    over ~8,900 present genes, the mean count per gene is ~0.23, so rounding
+    sends most genes to exactly 0. The TARGET is not integer either -- it is
+    counts divided by real depth and rescaled -- so this does not make
+    predictions more like the target; it makes them more like a measurement.
+    Whether that helps is the question, not the assumption.
+
+    Returns the matrix and diagnostics for the record.
+    """
+    if mode not in EMISSION_MODES:
+        raise ValueError(f"unknown emission mode {mode!r}; expected one of {EMISSION_MODES}")
+    stats = {
+        "zero_frac_before": float((x == 0.0).mean()),
+        "mean_rowsum_counts_before": float(np.expm1(np.clip(x, 0, None)).sum(axis=1).mean()),
+    }
+    if mode == "raw":
+        stats.update({"zero_frac_after": stats["zero_frac_before"],
+                      "mean_rowsum_counts_after": stats["mean_rowsum_counts_before"],
+                      "empty_rows": 0.0})
+        return x, stats
+
+    counts = np.rint(np.expm1(np.clip(x, 0, None))).astype(np.float32)
+    empty = int((counts.sum(axis=1) == 0).sum())
+    if mode == "int_libnorm":
+        totals = counts.sum(axis=1, keepdims=True)
+        # An all-zero row cannot be rescaled to anything; it stays all-zero and
+        # is counted, rather than being turned into NaN or into a silent 1/N.
+        np.divide(counts, np.maximum(totals, 1.0), out=counts)
+        counts *= target_sum
+    out = np.log1p(counts, out=counts)
+    stats.update({
+        "zero_frac_after": float((out == 0.0).mean()),
+        "mean_rowsum_counts_after": float(np.expm1(out).sum(axis=1).mean()),
+        "empty_rows": float(empty),
+    })
+    return out, stats
+
+
 def sha256_file(path: str, chunk: int = 64 * 1024 * 1024) -> str:
     """Full sha256 of a file, streamed."""
     h = hashlib.sha256()

@@ -134,6 +134,10 @@ class DecoderTrainConfig:
     # every arm scored against the same target can share one -- about 1.5 h of a
     # 2.5 h run on nadig_2024_jurkat. None disables reuse.
     celleval_de_real_cache: Optional[str] = None
+    # Emission: raw | int_libnorm | int_nolibnorm. Re-emits log1p predictions as
+    # integer counts, optionally rescaled back to target_sum. See
+    # metrics.apply_emission -- it is lossy by construction at small target_sum.
+    celleval_emission: str = "raw"
     celleval_timeout: int = 3600
     # Disable AMP (mixed precision) — train/eval in fp32.
     no_amp: bool = False
