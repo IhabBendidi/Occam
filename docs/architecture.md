@@ -107,7 +107,7 @@ appears to tame the unbounded output.
 ⚠️ The activation holds no parameters, so **a decoder trained with one loads
 `strict=True` under the other** and silently runs the wrong nonlinearity.
 Checkpoints Occam writes record the field; for older ones,
-`scripts/verify_checkpoint.py` determines it empirically.
+`scripts/verify_checkpoint.py --profile legacy` determines it empirically. The released checkpoint records the field, so its profile asserts it instead.
 
 ### Geometry: do not scale it on reconstruction alone
 

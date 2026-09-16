@@ -64,7 +64,8 @@ distinguish "legitimately absent" from "wrong architecture".
 | `output_activation` | **absent** | the default is `rectified_sigmoid`; a softplus decoder loads cleanly under it and emits ~99% exact zeros |
 | `mae_decoder_hidden` | absent → 1024 | resolved from the config key, then the state dict, then a legacy default — never from the size preset |
 
-`scripts/verify_checkpoint.py` checks all of these, and **determines the output
+`scripts/verify_checkpoint.py --profile legacy` checks all of these, and
+**determines the output
 activation empirically** rather than trusting the default: under
 `rectified_sigmoid` 83.6% of genes come out constant across cells, under softplus
 0.0%.

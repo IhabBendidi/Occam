@@ -49,7 +49,10 @@ def load_ensembl_to_symbol(path: Optional[str] = None) -> Dict[str, str]:
     needs no map, and the benchmark says so and carries on.
     """
     global _CACHE
-    if path is None:
+    # Only the no-argument form is cached: an explicit path is a one-off read,
+    # and caching it would make a later default call return the wrong map.
+    cacheable = path is None
+    if cacheable:
         if _CACHE is not None:
             return _CACHE
         path = map_path()
@@ -65,7 +68,7 @@ def load_ensembl_to_symbol(path: Optional[str] = None) -> Dict[str, str]:
             parts = line.rstrip("\n").split("\t")
             if len(parts) >= 2 and parts[0] and parts[1]:
                 mapping[parts[0]] = parts[1]
-    if os.environ.get("OCCAM_GENE_ID_MAP") is None and path == map_path():
+    if cacheable:
         _CACHE = mapping
     return mapping
 

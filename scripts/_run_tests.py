@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import importlib.util
 import os
-import re
 import sys
 
 
@@ -46,12 +45,13 @@ class _Raises:
     """``pytest.raises``, including ``.value`` -- tests assert on the message.
 
     A refusal is only worth testing if the message tells the reader what to do
-    instead, so the caught exception has to be reachable.
+    instead, so the caught exception has to be reachable. ``match=`` is not
+    supported: nothing uses it, and a shim that silently accepts an argument it
+    ignores is worse than one that raises TypeError.
     """
 
-    def __init__(self, exc, match=None):
+    def __init__(self, exc):
         self.exc = exc
-        self.match = match
         self.value = None
 
     def __enter__(self):
@@ -63,10 +63,6 @@ class _Raises:
         if not issubclass(et, self.exc):
             return False
         self.value = ev
-        if self.match is not None and not re.search(self.match, str(ev)):
-            raise AssertionError(
-                f"raised {et.__name__} but its message does not match "
-                f"{self.match!r}: {ev}")
         return True
 
 

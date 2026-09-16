@@ -18,7 +18,8 @@ Two things live here:
 pip install -e ".[eval]"
 cp configs/paths.example.yaml configs/paths.yaml   # relative defaults; no edit needed
 ./scripts/bootstrap_assets.sh                      # copies checkpoints + BMDB
-python scripts/verify_checkpoint.py                # 25 checks on the release
+python scripts/verify_checkpoint.py                # 28 checks on the release
+python scripts/verify_checkpoint.py --profile legacy  # 24 checks, the port gate
 ```
 
 Evaluation data goes in `data/eval/` — 6 datasets, 5.6 GB, repacked from 1,031 GB

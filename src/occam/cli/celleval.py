@@ -192,8 +192,9 @@ def main(argv=None) -> int:
                          "2,394-perturbation panel into ~212,000 pool tasks "
                          "and trips a shared-memory race in its DE backend. "
                          "Raise it for large panels; 2000 is a good start.")
-    ap.add_argument("--emission", default="raw",
-                    choices=["raw", "int_libnorm", "int_nolibnorm"],
+    from occam.decoder_train.metrics import EMISSION_MODES
+
+    ap.add_argument("--emission", default="raw", choices=list(EMISSION_MODES),
                     help="re-emit predictions as integer counts. raw: leave "
                          "them in log1p space. int_libnorm: expm1 -> round -> "
                          "rescale each cell to target_sum -> log1p. "

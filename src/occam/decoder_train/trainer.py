@@ -1526,8 +1526,9 @@ class DecoderTrainer:
                 except OSError as exc:
                     print(f"  [warn] could not cache real-side DE: {exc}")
 
-        if emission_stats:
-            self.last_emission_stats = emission_stats
+        # Always set, so a caller reading it cannot get a stale dict from an
+        # earlier eval file. Empty under `raw`, which is the honest record.
+        self.last_emission_stats = emission_stats
 
         del preds_np, tgts_np, preds_inj
         gc.collect()

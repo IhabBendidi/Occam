@@ -1,6 +1,11 @@
 #!/usr/bin/env python
 """Verify an Occam checkpoint against a recorded expectation.
 
+Invoked directly or through ``occam-verify``, which wraps it so the check works
+from an installed wheel. It is deliberately NOT part of the test suite: it
+needs the multi-GB checkpoints, which are gitignored and bootstrapped
+separately. Run it before publishing an artifact.
+
 Two profiles, because there are two artifacts with different evidence behind
 them:
 
