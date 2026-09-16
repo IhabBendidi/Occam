@@ -54,6 +54,11 @@ PROTOCOL = "splithalf/v1"
 
 # The reference the model is compared against, and the two arms that bracket it.
 REFERENCE_ARM = "experimental"
+# Used only to decide which arm is "the model" for the detail section, and to label the
+# table. Kept local rather than imported so the report reads a run directory and needs no
+# part of the occam package.
+ANCHORS_ALL = ("ctrlmean", "ctrlcell")
+REFERENCES_ALL = ("experimental", "meanpert")
 FLOOR_ARM = "ctrlcell"
 BASELINE_ARM = "meanpert"
 
@@ -83,13 +88,16 @@ def _fmt(v: Optional[float], nd: int = 4) -> str:
     return f"{v:.{nd}f}"
 
 
-def load_records(run_dir: str) -> List[Dict]:
+def load_records(run_dir: str, allow_probe: bool = False) -> List[Dict]:
     """Every split's `metrics.json`. Probes are refused, not quietly averaged in."""
     out = []
-    for path in sorted(glob.glob(os.path.join(run_dir, "split_*", "metrics.json"))):
+    names = ["metrics.json"] + (["metrics_probe.json"] if allow_probe else [])
+    paths = sorted(p for n in names
+                   for p in glob.glob(os.path.join(run_dir, "split_*", n)))
+    for path in paths:
         with open(path) as fh:
             rec = json.load(fh)
-        if rec.get("probe"):
+        if rec.get("probe") and not allow_probe:
             raise SystemExit(f"{path} is a PROBE record. A probe's prediction is the "
                              f"identity on the control input; it is not a result.")
         if rec.get("protocol") != PROTOCOL:
@@ -100,8 +108,8 @@ def load_records(run_dir: str) -> List[Dict]:
         probes = glob.glob(os.path.join(run_dir, "split_*", "metrics_probe.json"))
         raise SystemExit(
             f"no metrics.json under {run_dir}/split_*/"
-            + (f" ({len(probes)} probe record(s) found -- run without --probe)"
-               if probes else ""))
+            + (f" ({len(probes)} probe record(s) found -- pass --allow-probe to read them, "
+               f"and every output will be stamped PROBE)" if probes else ""))
     cohorts = {r["cohort_sha256"] for r in out}
     if len(cohorts) > 1:
         raise SystemExit(
@@ -141,12 +149,20 @@ def main() -> int:
     ap.add_argument("--out-dir", default="", help="default: <run-dir>/report")
     ap.add_argument("--reference", default=REFERENCE_ARM)
     ap.add_argument("--expect-splits", type=int, default=5)
+    ap.add_argument("--model-arm", default="",
+                    help="which arm is THE MODEL, for the detail section. Default: the "
+                         "first arm that is neither an anchor nor a reference.")
+    ap.add_argument("--allow-probe", action="store_true",
+                    help="also read metrics_probe.json. Every output is then stamped "
+                         "PROBE, because a probe's prediction is the identity on the "
+                         "control input and its model arm is not a model.")
     args = ap.parse_args()
 
     out_dir = args.out_dir or os.path.join(args.run_dir, "report")
     os.makedirs(out_dir, exist_ok=True)
 
-    recs = load_records(args.run_dir)
+    recs = load_records(args.run_dir, allow_probe=args.allow_probe)
+    is_probe = any(r.get("probe") for r in recs)
     splits = [int(r["split"]) for r in recs]
     print(f"[report] {len(recs)} split(s): {splits}")
     if len(recs) != args.expect_splits:
@@ -257,9 +273,34 @@ def main() -> int:
                    }, fh, indent=2, sort_keys=True, default=str)
 
     _write_report(os.path.join(out_dir, "report.md"), recs, arms, ref, metrics,
-                  summary, gaps, strata_rows, args.expect_splits)
+                  summary, gaps, strata_rows, args.expect_splits, is_probe)
+
+    # ---- every metric, every arm, every split ----------------------------
+    all_metrics = sorted({k for r in recs for a in arms
+                          for k, v in r["arms"].get(a, {}).items()
+                          if isinstance(v, (int, float))})
+    long_rows = []
+    for r in recs:
+        for a in arms:
+            for k in all_metrics:
+                v = r["arms"].get(a, {}).get(k)
+                if isinstance(v, (int, float)):
+                    long_rows.append({"protocol": PROTOCOL, "split": r["split"],
+                                      "arm": a, "metric": k, "value": v,
+                                      "lower_is_better": int(k in LOWER_IS_BETTER),
+                                      "probe": int(bool(r.get("probe")))})
+    _write_csv(os.path.join(out_dir, "all_metrics.csv"), long_rows)
+
+    model_arm = args.model_arm or next(
+        (a for a in arms if a not in ANCHORS_ALL and a not in REFERENCES_ALL), "")
+    _write_all_metrics_md(os.path.join(out_dir, "ALL_METRICS.md"), recs, arms,
+                          all_metrics, ref, model_arm, is_probe, args.expect_splits)
     print(f"\n[report] wrote {out_dir}/"
-          f"{{per_split,summary,gaps,gap_summary,strata}}.csv + metrics.json + report.md")
+          f"{{per_split,summary,gaps,gap_summary,strata,all_metrics}}.csv + metrics.json "
+          f"+ report.md + ALL_METRICS.md")
+    print(f"[report] ALL_METRICS.md is the arm-by-arm, split-by-split table for all "
+          f"{len(all_metrics)} cell-eval metrics"
+          + (f", with `{model_arm}` broken out in detail" if model_arm else ""))
     print(f"[report] read report.md -- every number belongs next to its anchor")
     return 0
 
@@ -310,6 +351,240 @@ def _strata(run_dir, recs, arms, ref, metrics):
     return rows
 
 
+_PROBE_STAMP = (
+    "> ⛔ **PROBE — NOT A RESULT.** These records come from `--probe`, whose prediction is "
+    "the identity on the control input. Its \"model\" arm is a copy of the `ctrlcell` "
+    "anchor, and the run exists only to measure what cell-eval costs on this panel. The "
+    "anchor rows ARE real measurements of the zero-signal floor; nothing else here is.\n\n")
+
+
+_METRIC_NOTES = {
+    "pearson_delta": "field convention. Correlation of (pred − pred-file ctrl mean) with "
+                     "(real − real-file ctrl mean). The A/B asymmetry lives here.",
+    "discrimination_score_l2": "rank over the cohort: 1 − rank/n_perts. **Chance is 0.5.** "
+                               "Excludes each perturbation's own gene BY SYMBOL.",
+    "discrimination_score_l1": "same, L1 distance.",
+    "discrimination_score_cosine": "same, cosine distance.",
+    "overlap_at_N": "top-N DE gene overlap, N = the number of FDR-significant genes on the "
+                    "REAL side. Zero when the arm calls nothing significant.",
+    "overlap_at_50": "same at fixed N = 50.",
+    "overlap_at_100": "same at fixed N = 100.",
+    "overlap_at_200": "same at fixed N = 200.",
+    "overlap_at_500": "same at fixed N = 500.",
+    "precision_at_N": "precision form of overlap_at_N.",
+    "de_direction_match": "fraction of DE genes where pred and real agree on up/down. "
+                          "**Chance is 0.5.**",
+    "de_spearman_sig": "Spearman of effect sizes over significant genes.",
+    "de_spearman_lfc_sig": "Spearman of log fold changes over significant genes.",
+    "de_sig_genes_recall": "fraction of the real significant genes the arm also calls "
+                           "significant. Trivially raised by calling everything.",
+    "de_nsig_counts_real": "genes FDR-significant on the real side. The reference count.",
+    "de_nsig_counts_pred": "genes FDR-significant on the predicted side. **Read against "
+                           "BOTH anchors** — see the bracketing note.",
+    "mae": "control-INDEPENDENT. Mean absolute error against the real pseudobulk.",
+    "mse": "control-independent.",
+    "mae_delta": "control-DEPENDENT: error on the delta. The headline error metric here.",
+    "mse_delta": "control-dependent.",
+    "pr_auc": "precision-recall AUC over the DE calls.",
+    "roc_auc": "ROC AUC over the DE calls. **Chance is 0.5.**",
+    "clustering_agreement": "panel-level, not per perturbation. Not re-aggregable.",
+    "pearson_edistance": "panel-level. Not re-aggregable.",
+}
+
+_ARM_ROLE = {
+    "ctrlmean": "zero-signal anchor — the half-B control mean, tiled. Zero within-group "
+                "variance, so the Wilcoxon tests over-call massively.",
+    "ctrlcell": "zero-signal anchor and **the floor** — the drawn half-B control cell, "
+                "unchanged. Natural single-cell variance, so it calls nothing significant.",
+    "experimental": "**the reference** — the real half-B perturbed cells. Replicate "
+                    "agreement at m cells, NOT an upper bound.",
+    "meanpert": "baseline — ctrl + (training grand mean − half-B control mean). The "
+                "\"it learned the average knockdown\" control.",
+}
+
+
+def _write_all_metrics_md(path, recs, arms, all_metrics, ref, model_arm, is_probe, expect):
+    """Arm by arm, split by split, every cell-eval metric. The full record.
+
+    `report.md` promotes six metrics and answers one question. This file answers "what did
+    every arm score on everything", which is what anyone auditing the run needs and what a
+    six-metric table cannot be reconstructed into afterwards.
+    """
+    n = len(recs)
+    splits = [r["split"] for r in recs]
+    with open(path, "w") as fh:
+        W = fh.write
+        W(f"# Split-half evaluation — every arm, every split, every metric\n\n")
+        if is_probe:
+            W(_PROBE_STAMP)
+        if n != expect:
+            W(f"> ⚠️ **PARTIAL: {n} of {expect} splits.** Do not quote any mean here as "
+              f"the {expect}-split result.\n\n")
+
+        W("## What this file is\n\n")
+        W("**Objective.** Predict a perturbation's effect in a context where that "
+          "perturbation was never measured, from a single control cell.\n\n")
+        W("**This file's question.** What did every arm score on every cell-eval metric, "
+          "in every split? No promotion, no selection — the full record, so a claim in "
+          f"`report.md` can be checked against it.\n\n")
+        W(f"**Varied:** the split ({n} of them: {splits}). **Held fixed:** the "
+          f"{recs[0]['n_perts']}-perturbation cohort "
+          f"(`{recs[0]['cohort_sha256'][:16]}…`), the gene axis, the checkpoint, the arm "
+          f"set, and the row counts — {recs[0]['n_rows_per_arm']:,} rows per arm and "
+          f"{recs[0]['n_ctrl_B']:,} half-B controls in every prediction file, identical "
+          f"across arms and splits.\n\n")
+
+        W("## What an *arm* is\n\n")
+        W("One complete prediction matrix, written to its own `.h5ad` and scored by its "
+          "own cell-eval run **against the same shared target file** for that split. Every "
+          "arm emits the same rows in the same order, so any two are comparable "
+          "cell-for-cell — that is what makes the paired gap meaningful. Four of the five "
+          "arms are baselines or references; **one is the model**.\n\n")
+        W("| arm | role |\n|---|---|\n")
+        for a in arms:
+            if "nocal" in a:
+                suffix = " (UNcalibrated)"
+            elif a.endswith("cal") or "_cal" in a:
+                suffix = " (control-fit quantile calibrated — worth ~0.37 pearson_delta "
+                suffix += "on comparable panels, so an uncalibrated number measures little)"
+            else:
+                suffix = ""
+            role = _ARM_ROLE.get(
+                a, f"**the model** — fed the drawn half-B control cells{suffix}")
+            W(f"| `{a}` | {role} |\n")
+        W("\n")
+
+        W("## How to read the numbers\n\n")
+        if ref == "experimental":
+            W(f"* **`{ref}` is the reference**, and it is *not* an upper bound: at median "
+              f"`m` = 22 both it and the real half-A side are noisy pseudobulks, while a "
+              f"low-variance predictor is attenuated on one side only. A model beating it "
+              f"can be doing so from noise alone.\n")
+        else:
+            W(f"* **`{ref}` is the reference here** — gaps below are measured against it. "
+              f"⚠️ That is NOT the protocol's intended reference: `experimental` is, and it "
+              f"was not scored in this run. A gap against a zero-signal anchor says the "
+              f"arm carries signal; it says nothing about how close the arm is to "
+              f"replicate agreement.\n")
+        W("* **Two floors, not one.** `ctrlcell` and `ctrlmean` both carry zero signal but "
+          "fail the DE tests in opposite directions (see the bracketing note below), so a "
+          "DE number must be read against both.\n")
+        W("* `↓` marks metrics where **lower is better**.\n")
+        W("* **Chance is 0.5**, not 0, for `discrimination_score_*`, `de_direction_match` "
+          "and `roc_auc`.\n")
+        W(f"* `mean ± std` is over the {n} split(s), **`ddof=1`**. cell-eval's own `std` "
+          f"column is a different quantity (spread across perturbations within one run) "
+          f"and is not shown here.\n\n")
+
+        # ---- the DE bracketing note, if both anchors are present ----------
+        if {"ctrlmean", "ctrlcell"} <= set(arms):
+            cm = [r["arms"]["ctrlmean"].get("de_nsig_counts_pred") for r in recs]
+            cc = [r["arms"]["ctrlcell"].get("de_nsig_counts_pred") for r in recs]
+            rl = [r["arms"]["ctrlmean"].get("de_nsig_counts_real") for r in recs]
+            cm = [x for x in cm if isinstance(x, (int, float))]
+            cc = [x for x in cc if isinstance(x, (int, float))]
+            rl = [x for x in rl if isinstance(x, (int, float))]
+            if cm and cc and rl:
+                W("### ⭐ The two anchors bracket the DE metrics\n\n")
+                W("| | within-group variance | genes called significant |\n|---|---|---|\n")
+                W(f"| `ctrlmean` | zero (every row identical) | "
+                  f"**{_mean(cm):,.1f}** |\n")
+                W(f"| `ctrlcell` | natural (real single cells) | "
+                  f"**{_mean(cc):,.1f}** |\n")
+                W(f"| real | natural | {_mean(rl):,.1f} |\n\n")
+                W("So `de_nsig_counts_pred` has a floor on each side. An arm near the real "
+                  "count is calibrated; one in the thousands is emitting under-dispersed "
+                  "cells, not finding biology. `overlap_at_N` inherits this — `ctrlcell` "
+                  "scores exactly 0 because N on its own side is 0.\n\n")
+
+        # ---- one table per metric ----------------------------------------
+        W(f"## Every metric, arm × split\n\n")
+        for k in all_metrics:
+            arrow = " ↓ (lower is better)" if k in LOWER_IS_BETTER else ""
+            W(f"### `{k}`{arrow}\n\n")
+            note = _METRIC_NOTES.get(k)
+            if note:
+                W(f"{note}\n\n")
+            W("| arm | " + " | ".join(f"split {sp}" for sp in splits)
+              + " | mean | std (ddof=1) |\n")
+            W("|---|" + "---|" * (len(splits) + 2) + "\n")
+            for a in arms:
+                vals, cells = [], []
+                for r in recs:
+                    v = r["arms"].get(a, {}).get(k)
+                    if isinstance(v, (int, float)) and v == v:
+                        vals.append(v)
+                        cells.append(_num(v))
+                    else:
+                        cells.append("—")
+                mark = "**" if a == model_arm else ""
+                mu = f"{mark}{_num(_mean(vals))}{mark}" if vals else "—"
+                sd = _num(_std1(vals)) if len(vals) > 1 else "—"
+                W(f"| `{a}` | " + " | ".join(cells) + f" | {mu} | {sd} |\n")
+            W("\n")
+
+        # ---- the model, broken out ----------------------------------------
+        if model_arm and model_arm in arms:
+            W(f"## `{model_arm}` in detail\n\n")
+            W(f"The model arm, every metric, with the gap to each non-model arm. "
+              f"**Positive gap = the other arm is better.**\n\n")
+            others = [a for a in arms if a != model_arm]
+            W("| metric | " + f"`{model_arm}` mean ± std | "
+              + " | ".join(f"gap vs `{a}`" for a in others) + " |\n")
+            W("|---|---|" + "---|" * len(others) + "\n")
+            for k in all_metrics:
+                mv = [r["arms"].get(model_arm, {}).get(k) for r in recs]
+                mv = [x for x in mv if isinstance(x, (int, float)) and x == x]
+                if not mv:
+                    continue
+                cells = []
+                for a in others:
+                    per = []
+                    for r in recs:
+                        x = r["arms"].get(a, {}).get(k)
+                        y = r["arms"].get(model_arm, {}).get(k)
+                        if not (isinstance(x, (int, float)) and isinstance(y, (int, float))):
+                            continue
+                        if x != x or y != y:
+                            continue
+                        per.append((y - x) if k in LOWER_IS_BETTER else (x - y))
+                    if not per:
+                        cells.append("—")
+                    else:
+                        better = sum(1 for d in per if d < 0)
+                        cells.append(_num(_mean(per))
+                                     + (f" ({better}/{len(per)} model better)"
+                                        if better else ""))
+                arrow = " ↓" if k in LOWER_IS_BETTER else ""
+                W(f"| `{k}`{arrow} | {_num(_mean(mv))} ± "
+                  f"{_num(_std1(mv)) if len(mv) > 1 else '—'} | "
+                  + " | ".join(cells) + " |\n")
+            W("\n**A negative gap against `experimental` is a red flag, not a triumph** — "
+              "see \"How to read the numbers\" above, and the strata table in "
+              "`report.md`, which is the tie-breaker.\n\n")
+
+        W("## Provenance\n\n")
+        W("| split | record | rows/arm | half-B controls | odd cells dropped |\n")
+        W("|---|---|---|---|---|\n")
+        for r in recs:
+            W(f"| {r['split']} | `{os.path.relpath(r['_path'])}` | "
+              f"{r['n_rows_per_arm']:,} | {r['n_ctrl_B']:,} | {r['n_dropped_odd']:,} |\n")
+        W(f"\nLong-form machine-readable copy: `all_metrics.csv` "
+          f"(one row per split × arm × metric).\n")
+
+
+def _num(v):
+    """Enough digits to be checkable, without pretending to precision."""
+    if v is None or (isinstance(v, float) and v != v):
+        return "—"
+    av = abs(v)
+    if av >= 100:
+        return f"{v:,.1f}"
+    if av >= 1:
+        return f"{v:.3f}"
+    return f"{v:.4f}"
+
+
 def _write_csv(path, rows):
     if not rows:
         open(path, "w").close()
@@ -326,12 +601,15 @@ def _write_csv(path, rows):
             w.writerow(r)
 
 
-def _write_report(path, recs, arms, ref, metrics, summary, gaps, strata, expect):
+def _write_report(path, recs, arms, ref, metrics, summary, gaps, strata, expect,
+                  is_probe=False):
     n = len(recs)
     partial = n != expect
     with open(path, "w") as fh:
         W = fh.write
         W(f"# Split-half paired evaluation — {n} split(s)\n\n")
+        if is_probe:
+            W(_PROBE_STAMP)
         if partial:
             W(f"> ⚠️ **PARTIAL: {n} of {expect} splits.** Do not quote any number here as "
               f"the {expect}-split result.\n\n")

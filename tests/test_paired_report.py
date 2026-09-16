@@ -220,3 +220,79 @@ def test_the_report_states_the_sign_convention_and_the_ceiling_caveat(tmp_path):
     assert "not an upper bound" in body
     assert "undefined (zero-variance prediction delta)" in body
     assert "Only within-protocol, same-split comparisons are valid." in body
+
+
+def test_all_metrics_md_carries_every_arm_every_split_and_every_metric(tmp_path):
+    """`report.md` promotes six metrics. This file is the full record it is checked against.
+
+    The failure this guards is quiet: a report that silently drops the metrics nobody
+    promoted cannot be reconstructed afterwards, because the per-arm cell-eval directories
+    are the only other copy and they are large enough to be deleted first.
+    """
+    import sys
+
+    m = _mod()
+    root = str(tmp_path / "run")
+    _write_run(root)
+    argv = sys.argv
+    try:
+        sys.argv = ["paired_report.py", "--run-dir", root]
+        assert m.main() == 0
+    finally:
+        sys.argv = argv
+
+    body = open(os.path.join(root, "report", "ALL_METRICS.md")).read()
+
+    # every arm appears as a table row, and every metric as its own section
+    for arm in ("ctrlmean", "ctrlcell", "experimental", "meanpert", "model_cal"):
+        assert f"| `{arm}` |" in body, arm
+    for metric in ("pearson_delta", "overlap_at_N", "mae_delta"):
+        assert f"### `{metric}`" in body, metric
+
+    # a per-split column per split, plus mean and std
+    assert "| split 0 | split 1 | split 2 | split 3 | split 4 | mean | std (ddof=1) |" in body
+
+    # the individual per-split values are present, not only the means
+    assert "0.6000" in body and "0.6400" in body        # experimental, splits 0 and 3
+    assert "0.5500" in body and "0.5100" in body        # model_cal, splits 0 and 4
+
+    # what an arm IS, and which one is the model
+    assert "## What an *arm* is" in body
+    assert "**the model**" in body
+    assert "NOT an upper bound" in body
+    assert "Chance is 0.5" in body
+
+    # the model's own section, with the gap to every other arm
+    assert "## `model_cal` in detail" in body
+    for other in ("ctrlmean", "ctrlcell", "experimental", "meanpert"):
+        assert f"gap vs `{other}`" in body, other
+
+    # the long-form machine-readable copy: one row per split x arm x metric
+    rows = list(csv.DictReader(open(os.path.join(root, "report", "all_metrics.csv"))))
+    got = {(r["split"], r["arm"], r["metric"]) for r in rows}
+    assert ("0", "experimental", "pearson_delta") in got
+    assert ("4", "model_cal", "mae_delta") in got
+    assert len({r["metric"] for r in rows}) >= 3
+    assert len({r["split"] for r in rows}) == 5
+    # mae_delta is flagged as an error metric in the machine-readable copy too
+    mae = [r for r in rows if r["metric"] == "mae_delta"]
+    assert mae and all(r["lower_is_better"] == "1" for r in mae)
+
+
+def test_the_model_arm_is_not_confused_with_an_anchor_or_a_reference(tmp_path):
+    """`--model-arm` defaults to the arm that is neither, so a renamed arm cannot hijack it."""
+    import sys
+
+    m = _mod()
+    root = str(tmp_path / "run")
+    _write_run(root)
+    argv = sys.argv
+    try:
+        sys.argv = ["paired_report.py", "--run-dir", root]
+        m.main()
+    finally:
+        sys.argv = argv
+    body = open(os.path.join(root, "report", "ALL_METRICS.md")).read()
+    assert "## `model_cal` in detail" in body
+    for a in ("ctrlmean", "ctrlcell", "experimental", "meanpert"):
+        assert f"## `{a}` in detail" not in body
