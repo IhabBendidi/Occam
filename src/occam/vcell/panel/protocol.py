@@ -208,6 +208,11 @@ def run_split(
         "anchor_arms": anchor_tags, "reference_arms": ref_tags, "model_arms": model_tags,
         "meanpert": meanpert_info,
         "arms": {}, "timings_s": {}, "notes": {},
+        # The order arms were actually SCORED in, which is `build_arms`' fixed emission
+        # order and not the caller's request order. The real-side DE is computed by the
+        # first scored arm and read from the cache by the rest, so which arm was first is
+        # what makes the cold/warm cost decomposition readable.
+        "scored_order": [],
     }
 
     for tag, matrix, lbls in arms:
@@ -215,6 +220,7 @@ def run_split(
             record["arms"][tag] = {"status": "not scored (timing probe)"}
             continue
         t0 = time.time()
+        record["scored_order"].append(tag)
         # `pred_ctrl=ctrl_B` is the protocol: the prediction file carries the B controls, so
         # its delta is B-relative while the target file's is A-relative.
         metrics, arm_dir, target_path = score_arm(

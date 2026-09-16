@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # rhj_fewshot ablation grid -- one array task per arm.
 #
-#   sbatch --qos=hooke-predict --wckey=hooke-predict --array=0-12%6 scripts/slurm/rhj_fewshot_grid.sbatch
+#   sbatch --qos=hooke-predict --wckey=hooke-predict --array=0-12%7 scripts/slurm/rhj_fewshot_grid.sbatch
 #   sbatch --qos=vco          --wckey=vco          --array=13-25%6 scripts/slurm/rhj_fewshot_grid.sbatch
 #
 # qos and wckey must MATCH. Split across both so neither queue's headroom is the
@@ -46,17 +46,24 @@
 #     O(0.1-1), nb's NLL is O(1-10), so the smooth_l1 arms are genuinely half-cosine. Do
 #     not rescale to equalise -- that is tuning inside an ablation. Report the ratio.
 #
-# COST (measured, not guessed): the streaming v2 path ran at ~14,135 samples/s in the
-# research tree. This corpus is 580,212 perturbed + 28,474 control-identity rows = ~608k
-# samples/epoch, so ~43 s/epoch and ~22 min for 30 epochs, plus GO-graph load and the
-# control-embedding scan. Budget ~35-40 min per arm; the 3 h limit is margin, not estimate.
+# COST -- MEASURED ON THIS BENCHMARK, 2026-09-16, job 18021830.
+#   608,686 samples/epoch at **1,580 samples/s** = **386 s/epoch**, so 30 epochs is
+#   **~3.2 h** of training plus ~10 min of GO-graph load and the control-embedding scan.
+#   Budget ~3.5 h per arm. The limit below is 8 h: margin, not estimate.
+#
+# ⚠️ The research tree's 14,135 samples/s does NOT transfer and must not be used to size
+# this job. It was measured on a different corpus with a different estimand, and the first
+# launch of this grid was given a 3 h limit on the strength of it -- every arm would have
+# been killed at about epoch 23, which silently confounds the ablation with training
+# length. The 8.9x discrepancy is most likely I/O contention: 13 concurrent streaming jobs
+# reading the same three h5ad files over GPFS.
 
 #SBATCH --job-name=rhj_grid
 #SBATCH --partition=hopper
 #SBATCH --gres=gpu:h100:1
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=128G
-#SBATCH --time=03:00:00
+#SBATCH --time=08:00:00
 #SBATCH --output=runs/slurm/rhj_grid_%A_%a.out
 #SBATCH --error=runs/slurm/rhj_grid_%A_%a.err
 

@@ -27,7 +27,8 @@ import numpy as np
 
 from occam.vcell.panel.panel_io import Panel
 
-__all__ = ["Arm", "build_arms", "ANCHOR_TAGS"]
+__all__ = ["Arm", "build_arms", "ANCHOR_TAGS", "REFERENCE_TAGS", "split_arms",
+           "split_anchor_and_model"]
 
 # Arms that carry no biology by construction.
 ANCHOR_TAGS = ("ctrlmean", "ctrlcell")
