@@ -20,7 +20,9 @@
 # the same method with the same flags, so the difference between them is the
 # decoder and nothing else.
 #
-# Varied:     nothing within one run -- this measures a single checkpoint.
+# Varied:     nothing within one run -- this measures a single checkpoint under
+#             one emission. Set EMISSION to compare raw against integer-count
+#             emission with and without library-size rescaling.
 # Held fixed: eval file, perturbation column, calibration, mode, gene subset,
 #             cell-eval version and profile.
 #
@@ -118,7 +120,12 @@ fi
 EVAL_DATA="${EVAL_DATA:-data/eval/pert/nadig_2024_jurkat.h5ad}"
 PERT_COL="${PERT_COL:-gene_name}"
 CALIBRATE="${CALIBRATE:-quantile}"
-OUT="${OUT:-runs/celleval/$(basename "${CKPT%.pth}")__$(basename "${EVAL_DATA%.h5ad}")__${CALIBRATE}}"
+
+# Emission: raw | int_libnorm | int_nolibnorm. Re-emits predictions as integer
+# counts before scoring; see docs/evaluation.md. Included in the output
+# directory name so three arms on one checkpoint cannot overwrite each other.
+EMISSION="${EMISSION:-raw}"
+OUT="${OUT:-runs/celleval/$(basename "${CKPT%.pth}")__$(basename "${EVAL_DATA%.h5ad}")__${CALIBRATE}__${EMISSION}}"
 
 echo "=== occam cell-eval ==="
 echo "host      : $(hostname)"
@@ -127,6 +134,7 @@ echo "git sha   : $(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
 echo "checkpoint: $CKPT"
 echo "eval data : $EVAL_DATA"
 echo "calibrate : $CALIBRATE"
+echo "emission  : $EMISSION"
 echo "output    : $OUT"
 echo
 
@@ -138,6 +146,7 @@ python -m occam.cli.celleval \
     --control-label non-targeting \
     --eval-gene-col ensembl_gene_id \
     --calibrate "$CALIBRATE" \
+    --emission "$EMISSION" \
     --modes injctrl \
     --num-threads 16 \
     --de-batch-size 2000 \

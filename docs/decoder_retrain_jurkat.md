@@ -197,6 +197,23 @@ have already been shown to rank decoders differently on this project (3072x10
 wins decoder-only cell-eval and loses virtual-cell transfer 6/6). They say the
 optimisation is healthy. They say nothing about whether arm B beats arm A.
 
+## The run that produced arm B's checkpoint died at epoch ~195 of 200
+
+Job `18006463` FAILED (exit 120) at 10:48:54 elapsed, killed by a GPFS outage
+that made `/rxrx/scratch` return `ESTALE` cluster-side. It was at epoch 192/200
+ten minutes earlier, so the filesystem killed it, not the training.
+
+**It cost almost nothing.** `best_decoder.pth` is **epoch 124**, written hours
+before the outage, verified intact afterwards: every decoder tensor finite,
+`best_combined_score` 65.36, `best_val_loss` 0.053064, NB `theta` mean 20.52
+(range 0.78-237.1). The evals after it were *worse* — 64.69 at epoch 149 and
+65.21 at 174 — so selection had already peaked and the lost epoch-199 eval was
+unlikely to beat it. What was lost is the epoch-199 eval and the in-run
+cell-eval, which would have failed anyway on pre-fix code.
+
+Arm B is therefore reported as **epoch 124 of a run that reached ~195**, not as
+a completed 200-epoch run.
+
 ## Results
 
 **Arm B at epoch 49 of 200 already beats arm A on every promoted metric**, and
