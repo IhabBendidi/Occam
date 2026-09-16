@@ -177,3 +177,41 @@ def test_the_control_cache_key_covers_the_gene_axis():
         assert d_wide["cache_schema"] == 2, "bumping the schema invalidates old caches"
     finally:
         os.unlink(path)
+
+
+def test_the_seen_sample_is_depth_matched_to_the_heldout_set():
+    """The metric-side exclusion gate must not confound "trained on" with "how deep".
+
+    `pearson_delta` at these cell counts is depth-sensitive, and a uniform draw over 1,657
+    training perturbations has a different depth profile from the 103 held-out ones. An
+    unmatched sample would make a real generalisation gap and a pure depth difference look
+    identical, which is exactly the confound this gate exists to avoid.
+    """
+    import importlib.util
+    import os
+
+    import numpy as np
+
+    repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    spec = importlib.util.spec_from_file_location(
+        "verify_by_metric",
+        os.path.join(repo, "scripts", "verify_rhj_exclusion_by_metric.py"))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    counts = {f"S{i}": i for i in range(1, 201)}
+    counts.update({f"H{i}": i * 2 for i in range(1, 11)})
+    target = [f"H{i}" for i in range(1, 11)]
+    seen = [f"S{i}" for i in range(1, 201)]
+
+    picked = mod._matched_sample(seen, target, counts, np.random.default_rng(0))
+    assert len(picked) == len(target), "one seen perturbation per held-out one"
+    assert len(set(picked)) == len(picked), "sampled without replacement"
+    assert sorted(counts[p] for p in picked) == sorted(counts[p] for p in target)
+
+    # and when the pool cannot match exactly it still returns one per target, nearest-first
+    thin = {"S1": 5, "S2": 6}
+    picked2 = mod._matched_sample(["S1", "S2"], ["H1", "H2"],
+                                  {**thin, "H1": 100, "H2": 1},
+                                  np.random.default_rng(0))
+    assert sorted(picked2) == ["S1", "S2"]

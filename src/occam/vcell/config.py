@@ -353,7 +353,6 @@ class VirtualCellConfig:
     # inflation, using a controls-only estimate of the map's noise amplification. Unlike a
     # swept shrink (fitted to the scored panel), gamma is re-derivable from whatever
     # controls a new context provides. See estimate_gamma().
-    panel_gamma_variants: str = ""
     panel_gamma_pairs: int = 4000
     # Which weights the end-of-training H1 evaluation scores. "best" reloads
     # best_model.pth (the selected checkpoint); "final" keeps the last-epoch weights,

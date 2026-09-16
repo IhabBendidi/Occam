@@ -2749,8 +2749,16 @@ class VirtualCellTrainer:
         # carried embeddings instead of gene-space controls.
         controls_np = np.concatenate(all_ctrls) if all_ctrls else None
         if controls_np is None:
+            # Under stream_v2 the control pool holds 512-d EMBEDDINGS, so `all_ctrls` stays
+            # empty and every metric below is a GROUP-MEAN (pseudobulk) quantity, not the
+            # per-cell one the name suggests. That is better for model selection -- a
+            # group-mean delta has far lower variance -- but it must be a decision rather
+            # than a side effect, so the aggregate carries a `__groupmean` alias and a
+            # `metric_granularity` field and both are saved with the checkpoint.
             print("  WARNING: no gene-space controls in eval batches — "
-                  "falling back to PSEUDOBULK metrics (cells will be averaged)")
+                  "falling back to PSEUDOBULK metrics (cells will be averaged). Every "
+                  "pearson_delta below is a GROUP-MEAN quantity; the selection metric is "
+                  "logged as pearson_delta_mean__groupmean.")
         aggregate, per_pert = compute_perturbation_metrics(
             predictions=predictions,
             ground_truth=ground_truth,
@@ -2760,6 +2768,18 @@ class VirtualCellTrainer:
             gene_masks_per_ct=gene_masks_per_ct,
             controls=controls_np,
         )
+
+        # Name the granularity, always -- not only when it falls back. A number whose
+        # granularity is only recoverable by re-reading the streaming config is a number
+        # that will be compared against the wrong thing.
+        aggregate["metric_granularity"] = (
+            "single_cell" if controls_np is not None else "groupmean")
+        # A numeric twin, because the wandb logger skips non-numeric values and the
+        # granularity is exactly the thing you want beside the curve you are reading.
+        aggregate["metric_is_single_cell"] = 1.0 if controls_np is not None else 0.0
+        if controls_np is None:
+            for _k in [k for k in list(aggregate) if k.startswith("pearson_delta")]:
+                aggregate[f"{_k}__groupmean"] = aggregate[_k]
 
         # Add loss and per-sample gene-level metrics (matches training loss computation)
         aggregate["loss"] = total_loss / max(n_loss_samples, 1)
