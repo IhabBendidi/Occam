@@ -336,8 +336,10 @@ def _align_to_encoder(panel_genes: List[str], encoder_gene_names: List[str],
 
     enc_idx = {g: i for i, g in enumerate(encoder_gene_names)}
     sym2ens: Dict[str, str] = {}
-    p = Path(symbol_map_path)
-    if p.exists():
+    # An empty or blank setting means "no map", not Path("") -- which is `.`, and
+    # `Path(".").exists()` is True, so the next line would read_csv a directory.
+    p = Path(str(symbol_map_path).strip()) if str(symbol_map_path).strip() else None
+    if p is not None and p.is_file():
         m = pd.read_csv(p)
         sym2ens = dict(zip(m.gene_symbol.astype(str), m.ensembl_gene_id.astype(str)))
     enc_cols, panel_cols = [], []

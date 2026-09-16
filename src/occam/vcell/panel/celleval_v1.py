@@ -58,28 +58,35 @@ def write_celleval_v1(pred: np.ndarray, labels: np.ndarray, panel: Panel,
 
 
 def run_celleval_v1(pred_path: str, target_path: str, out_dir: str,
-                    num_threads: int = 16, timeout: int = 43200) -> Dict[str, float]:
-    """cell-eval v1 through the `jupyter` pyenv, parsed from agg_results.csv."""
-    import pandas as pd
+                    num_threads: int = 16, timeout: int = 43200,
+                    de_batch_size: Optional[int] = 2000,
+                    de_real: Optional[str] = None,
+                    allow_discrete: bool = True,
+                    profile: str = "full") -> Dict[str, float]:
+    """cell-eval v1, parsed from agg_results.csv.
 
-    os.makedirs(out_dir, exist_ok=True)
-    cmd = ["cell-eval", "run", "-ap", pred_path, "-ar", target_path, "-o", out_dir,
-           "--num-threads", str(num_threads), "--profile", "full"]
-    env = os.environ.copy()
-    env["PYENV_VERSION"] = "jupyter"
-    try:
-        r = subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=timeout)
-        if r.returncode != 0:
-            print(f"[panel] cell-eval v1 failed (exit {r.returncode}): {r.stderr[-800:]}")
-            return {}
-    except subprocess.TimeoutExpired:
-        print(f"[panel] cell-eval v1 timed out after {timeout}s")
-        return {}
-    except FileNotFoundError:
-        print("[panel] cell-eval not found (pyenv jupyter unavailable)")
-        return {}
+    A thin adapter onto `occam.decoder_train.metrics.run_cell_eval`, which is the proven
+    runner: it already tails rather than heads stderr (cell-eval logs INFO there, so the
+    first 500 chars are banner and the traceback is at the end), and it already carries
+    `de_batch_size` and `de_real`.
 
-    return _read_agg(os.path.join(out_dir, "agg_results.csv"))
+    BUG 4 was here. `run.py` set `kwargs["de_real"]` and splatted it into this function,
+    which had no such parameter -- so the advertised ground-truth-DE reuse was dead and
+    every arm recomputed the dominant cost. Maintaining a second subprocess wrapper is what
+    let the two drift apart, so there is now only one.
+
+    `de_batch_size` defaults to 2000, not cell-eval's 100: the DE work is perturbations x
+    genes, and at 100 a 2,394 x 8,873 panel becomes ~212,000 pool tasks, which tripped a
+    CPython shared-memory race. `allow_discrete` defaults True so cell-eval does not decide
+    whether to renormalise our already-log1p input from an unseeded 100-cell heuristic.
+    """
+    from occam.decoder_train.metrics import run_cell_eval
+
+    return run_cell_eval(
+        pred_path, target_path, out_dir,
+        num_threads=num_threads, profile=profile, timeout=timeout,
+        de_batch_size=de_batch_size, de_real=de_real, allow_discrete=allow_discrete,
+    )
 
 
 def _read_agg(agg_path: str) -> Dict[str, float]:

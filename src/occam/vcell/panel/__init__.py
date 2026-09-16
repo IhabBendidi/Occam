@@ -7,8 +7,9 @@ anchor, where averaging is the definition of the baseline.
 
     from occam.vcell.panel import load_panel, predict_panel, run_panel_evaluation
 
-    panel = load_panel(config, encoder_gene_names)
-    pred, labels, ctrl_used = predict_panel(model, panel, pert2id, device, config)
+    panel = load_panel(config, encoder_gene_names, skip_normalize, skip_log1p)
+    pred, labels, ctrl_used, cin_idx = predict_panel(
+        model, panel, pert2id, device, seed=42)
     results = run_panel_evaluation(panel, pred, labels, ctrl_used, out_dir)
 
 The zero-signal anchors are mandatory. See :mod:`occam.vcell.panel.arms`.

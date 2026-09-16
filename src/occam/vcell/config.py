@@ -283,6 +283,14 @@ class VirtualCellConfig:
     panel_control_label: str = "non-targeting"
     # Control fed to the model per predicted cell. 'single' = one real model-visible
     # control cell (NO averaging); 'batch' = same-batch control cell.
+    # Read at train_hooks.py and pipeline.py via getattr but never declared, so the
+    # documented behaviour was unreachable from a config.
+    h1_val_in_panels: bool = True
+    no_h1_train_controls: bool = False
+    # cell-eval DE batching for the panel path. 100 (cell-eval's default) turns a
+    # 2,394-perturbation panel into ~212,000 pool tasks and trips a shared-memory race.
+    panel_celleval_de_batch_size: int = 2000
+
     panel_eval_control: str = "single"
     # Which panels to score, comma-separated. Every H1 perturbation is predicted; these
     # decide how the results are REPORTED.
@@ -297,7 +305,7 @@ class VirtualCellConfig:
     # pds_cosine ranks each effect against the others IN ITS OWN PANEL and
     # expr_mse_unbiased_capped_norm is a single ratio over the panel, so a subset cannot be
     # read off the full-panel result. Each panel therefore also needs its own baseline and
-    # replicate anchor (see ensure_panel_refs).
+    # replicate anchor (built per split by occam.vcell.panel.splithalf).
     panel_panels: str = "all,seen,unseen"
     # Sub-panels below this many perturbations are skipped outright. Kept low deliberately:
     # pds is a rank within its panel, so a small panel gives an unstable scale rather than a

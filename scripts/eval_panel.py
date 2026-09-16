@@ -106,16 +106,22 @@ def main(argv=None) -> int:
     config.panel_celleval_threads = args.threads
     config.panel_celleval_timeout = args.timeout
 
-    panel = load_panel(config, trainer.encoder_gene_names)
-    pred, labels, ctrl_used = predict_panel(
-        trainer.model, panel, trainer.pert2id, trainer.device, config)
+    panel = load_panel(config, trainer.encoder_gene_names,
+                       trainer.skip_normalize, trainer.skip_log1p)
+    pred, labels, ctrl_used, cin_idx = predict_panel(
+        trainer.model, panel, trainer.pert2id, trainer.device,
+        eval_control=str(getattr(config, "panel_eval_control", "single")),
+        batch_size=int(getattr(config, "panel_batch_size", 512)),
+        seed=int(getattr(config, "seed", 42)),
+        ctrl_avg_k=int(getattr(config, "panel_ctrl_avg_k", 1) or 1))
 
     calibrated = None
     if args.calibrate in ("quantile", "both"):
         src_q, ref_q = fit_control_quantile_map(
-            trainer.model, panel, trainer.pert2id, trainer.device, predict_panel,
+            trainer.model, panel, trainer.pert2id, trainer.device,
             max_cells=getattr(config, "panel_calib_max_cells", 20000),
-            seed=getattr(config, "seed", 42))
+            seed=getattr(config, "seed", 42),
+            ctrl_avg_k=int(getattr(config, "panel_ctrl_avg_k", 1) or 1))
         calibrated = apply_quantile_map(pred, src_q, ref_q, trainer.device)
 
     results = run_panel_evaluation(

@@ -401,6 +401,7 @@ def run_cell_eval(
     timeout: int = 3600,
     de_batch_size: Optional[int] = None,
     de_real: Optional[str] = None,
+    allow_discrete: bool = False,
 ) -> Dict[str, float]:
     """Run ARC Institute cell-eval via subprocess (jupyter pyenv); parse agg_results.csv.
 
@@ -430,6 +431,15 @@ def run_cell_eval(
     ]
     if de_batch_size:
         cmd += ["--batch-size", str(de_batch_size)]
+    if allow_discrete:
+        # Without this, cell-eval decides whether to normalize_total + log1p the input by
+        # inspecting 100 randomly chosen cells with an UNSEEDED np.random.choice. Our input
+        # is already normalised and log1p'd, so the guess should come out right -- but it is
+        # a stochastic gate on a destructive transform, and sc.pp.normalize_total with no
+        # target_sum normalises to each FILE's own median, so a false trigger would rescale
+        # the real and predicted files differently and corrupt every delta. Passing the flag
+        # makes "do not transform" deterministic.
+        cmd += ["--allow-discrete"]
     if de_real:
         # The real-side differential expression depends only on the target file,
         # never on the decoder, so it is identical for every arm scored against

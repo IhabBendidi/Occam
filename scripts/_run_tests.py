@@ -120,6 +120,17 @@ class _Pytest:
 def main() -> int:
     sys.modules.setdefault("pytest", _Pytest())
 
+    # Static checks first: they are seconds, they need no fixtures, and one of them covers a
+    # class of bug (call arity) that four broken panel call sites proved the test suite
+    # cannot see on its own.
+    import subprocess as _sp
+    _repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    for _checker in ("check_undefined_names.py", "check_call_arity.py"):
+        _rc = _sp.call([sys.executable, os.path.join(_repo, "scripts", _checker)])
+        if _rc:
+            print(f"\n{_checker} FAILED")
+            return _rc
+
     repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     tests_dir = os.path.join(repo, "tests")
     selected = sys.argv[1:]

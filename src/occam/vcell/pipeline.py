@@ -4036,18 +4036,46 @@ class VirtualCellTrainer:
                                 if _which == "best" else contextlib.nullcontext(False)
                             )
                             with _ctx:
-                                panel = load_panel(config, self.encoder_gene_names)
-                                pred, labels, ctrl_used = predict_panel(
-                                    fwd_model, panel, self.pert2id, self.device, config,
+                                # BUG 1 was: load_panel(config, genes) -- 2 of 4 required
+                                # args. The skip flags are the TRAINER's resolved values
+                                # (checkpoint-inherited, then OR'd with the config), not
+                                # config.* which is only one of the two inputs.
+                                panel = load_panel(
+                                    config, self.encoder_gene_names,
+                                    self.skip_normalize, self.skip_log1p,
+                                )
+                                # BUG 2 was: `config` passed positionally into the
+                                # `predict_fn` slot, then called as config(ct, pidx); and a
+                                # 4-tuple unpacked into 3. Never pass input_override from a
+                                # scoring path -- it feeds the true perturbed cell.
+                                _p_avg_k = int(getattr(config, "panel_ctrl_avg_k", 1) or 1)
+                                if _p_avg_k != int(getattr(config, "ctrl_avg_k", 1) or 1):
+                                    raise ValueError(
+                                        f"panel_ctrl_avg_k={_p_avg_k} != "
+                                        f"ctrl_avg_k={getattr(config, 'ctrl_avg_k', 1)}. "
+                                        f"Eval-side control averaging must match training "
+                                        f"or the read-out is not comparable.")
+                                pred, labels, ctrl_used, cin_idx = predict_panel(
+                                    fwd_model, panel, self.pert2id, self.device,
+                                    eval_control=str(getattr(
+                                        config, "panel_eval_control", "single")),
+                                    batch_size=int(getattr(
+                                        config, "panel_batch_size", 512)),
+                                    seed=int(getattr(config, "seed", 42)),
+                                    ctrl_avg_k=_p_avg_k,
                                 )
                                 calibrated = None
                                 if str(getattr(config, "panel_calibrate", "both")).lower() \
                                         in ("quantile", "both"):
+                                    # BUG 3 was: predict_panel passed as predict_fn, which
+                                    # is invoked as predict_fn(ct, pidx) -- a signature it
+                                    # can never satisfy. The None default builds the right
+                                    # closure itself.
                                     src_q, ref_q = fit_control_quantile_map(
                                         fwd_model, panel, self.pert2id, self.device,
-                                        predict_panel,
                                         max_cells=getattr(config, "panel_calib_max_cells", 20000),
                                         seed=config.seed,
+                                        ctrl_avg_k=_p_avg_k,
                                     )
                                     calibrated = apply_quantile_map(
                                         pred, src_q, ref_q, self.device)
@@ -4066,6 +4094,23 @@ class VirtualCellTrainer:
                                         str(getattr(config, "panel_shrink", "1.0")).split(",")
                                         if x
                                     ],
+                                    anchors=tuple(
+                                        a.strip() for a in
+                                        str(getattr(config, "panel_anchors",
+                                                    "ctrlmean,ctrlcell")).split(",")
+                                        if a.strip()),
+                                    min_panel_perts=int(getattr(
+                                        config, "panel_min_perts", 25)),
+                                    small_panel_warn=int(getattr(
+                                        config, "panel_small_warn", 30)),
+                                    celleval_kwargs={
+                                        "num_threads": int(getattr(
+                                            config, "panel_celleval_threads", 16)),
+                                        "timeout": int(getattr(
+                                            config, "panel_celleval_timeout", 43200)),
+                                        "de_batch_size": int(getattr(
+                                            config, "panel_celleval_de_batch_size", 2000)),
+                                    },
                                 )
                             if wandb_run and panel_metrics:
                                 flat = {
@@ -4075,10 +4120,13 @@ class VirtualCellTrainer:
                                     for m, v in ms.items()
                                 }
                                 wandb_run.log(flat)
-                        except Exception as e:
-                            print(f"  Panel evaluation failed: {e}")
-                            import traceback
-                            traceback.print_exc()
+                        except (FileNotFoundError, ImportError) as e:
+                            # Only the two EXPECTED absences are tolerated: no panel
+                            # directory on this machine, or the optional panel deps
+                            # missing. Everything else propagates -- a bare `except
+                            # Exception` here turned four TypeErrors into printed lines and
+                            # hid them for the whole life of the port.
+                            print(f"  Panel evaluation skipped: {type(e).__name__}: {e}")
 
                     # Test unseen pert
 
