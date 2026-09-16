@@ -2620,6 +2620,15 @@ class VirtualCellTrainer:
         """Evaluate on a split, computing loss + pearson_delta + gene-level metrics."""
         model = self.model
         model.eval()
+
+        # Reset the eval control draw so the metric is a function of the WEIGHTS ONLY.
+        # `CellTypeControlMatcher.sample_controls` draws from a shared, mutable generator, so
+        # without this each val cell gets a different control every epoch and the selector
+        # moves for reasons that have nothing to do with the model.
+        _ds = getattr(eval_loader, "dataset", None)
+        _cm = getattr(_ds, "control_matcher", None)
+        if _cm is not None and hasattr(_cm, "rng"):
+            _cm.rng = np.random.default_rng(int(getattr(self.config, "seed", 42)))
         fwd_model = model.module if hasattr(model, "module") else model
 
         all_preds = []
@@ -2957,7 +2966,22 @@ class VirtualCellTrainer:
         fwd_model = (
             self.model.module if hasattr(self.model, "module") else self.model
         )
+        bench = getattr(self, "benchmark", None)
         checkpoint = {
+            # The benchmark this model was trained under. The scoring side must refuse a
+            # checkpoint whose gene_axis_sha256 disagrees with the axis it is scored on: a
+            # model trained on 6,983 input columns and scored on 9,624 is silent and severe.
+            "benchmark": ({
+                "id": bench.benchmark_id,
+                "benchmark_sha256": bench.sha256,
+                "gene_axis_sha256": bench.axis_sha256,
+                "n_axis_genes": len(bench.axis_ensembl),
+                "axis_scope": str(getattr(self.config, "bench_axis_scope", "")),
+                "eval_cell_lines": list(bench.eval_cell_lines),
+                "excluded_perts": {k: sorted(v)
+                                   for k, v in bench.exclude_file_perts.items()},
+            } if bench is not None else None),
+            "val_cell_lines": list(getattr(self, "_val_cell_lines", []) or []),
             "encoder_state_dict": self._encoder_state_dict,
             "gnn_state_dict": fwd_model.gnn.state_dict(),
             "decoder_state_dict": fwd_model.decoder.state_dict(),
@@ -3076,13 +3100,23 @@ class VirtualCellTrainer:
     # Full training
     # ------------------------------------------------------------------
 
-    def train(self, output_dir: str = None):
-        """Full training pipeline."""
+    def train(self, output_dir: str = None, run_dir: str = None):
+        """Full training pipeline.
+
+        `run_dir`, when given, is used VERBATIM. The orchestrator always passes it, because
+        the timestamp+urandom fallback below makes a 24-arm array job unattributable -- the
+        exact failure that left the research tree with checkpoints nobody could match to a
+        recipe. The fallback is kept only for library callers with no run directory of their
+        own.
+        """
         config = self.config
         output_dir = output_dir or config.output_dir
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        unique_suffix = os.urandom(3).hex()
-        run_dir = Path(output_dir) / f"occam_vcell_{timestamp}_{unique_suffix}"
+        if run_dir:
+            run_dir = Path(run_dir)
+        else:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            unique_suffix = os.urandom(3).hex()
+            run_dir = Path(output_dir) / f"occam_vcell_{timestamp}_{unique_suffix}"
         ckpt_dir = run_dir / "checkpoints"
         ckpt_dir.mkdir(parents=True, exist_ok=True)
 
@@ -3218,6 +3252,37 @@ class VirtualCellTrainer:
             # stream_batch_match needs a batch id on every row to build per-batch pools
             or getattr(config, "stream_batch_match", False)
         )
+        # ---- Frozen benchmark definition -------------------------------------------
+        # Loaded before any data is read, so a moved source file or an edited artifact stops
+        # the run here rather than producing a plausible number three hours later.
+        self.benchmark = None
+        _restrict_ids = None
+        _exclude_file_perts = None
+        if getattr(config, "bench_dir", None):
+            from occam.vcell.benchmark import load_benchmark
+
+            self.benchmark = load_benchmark(
+                config.bench_dir,
+                expect_id=str(getattr(config, "bench_id", "") or ""),
+                expect_sha256=str(getattr(config, "bench_sha256", "") or ""),
+                data_paths=list(config.data_paths),
+                encoder_gene_names=self.encoder_gene_names,
+            )
+            print(f"  [bench] {self.benchmark.summary()}")
+            # Record the axis hash on the config so it reaches the control-embedding cache
+            # key and the checkpoint without being threaded through six call sites.
+            config.bench_axis_sha256 = self.benchmark.axis_sha256
+            _exclude_file_perts = self.benchmark.exclude_file_perts
+            scope = str(getattr(config, "bench_axis_scope", "input_and_loss"))
+            if scope == "input_and_loss":
+                _restrict_ids = self.benchmark.axis_set
+            elif scope != "loss_only":
+                raise ValueError(
+                    f"bench_axis_scope must be 'input_and_loss' or 'loss_only', "
+                    f"got {scope!r}")
+            print(f"  [bench] axis scope {scope}: "
+                  f"{'input and loss' if _restrict_ids else 'loss mask only'}")
+
         file_metas, control_matcher = prepare_virtual_cell_data(
             data_paths=config.data_paths,
             encoder_gene_names=self.encoder_gene_names,
@@ -3238,7 +3303,28 @@ class VirtualCellTrainer:
                 config, "require_control_batch_overlap", False),
             control_force_group=getattr(config, "control_force_group", False),
             build_pools=not getattr(config, "stream_v2", False),
+            restrict_gene_ids=_restrict_ids,
+            exclude_file_perts=_exclude_file_perts,
         )
+
+        if self.benchmark is not None:
+            # loss_only: keep the full input scatter, narrow the loss mask instead.
+            if str(getattr(config, "bench_axis_scope", "")) == "loss_only":
+                axis_cols = torch.zeros(len(self.encoder_gene_names), dtype=torch.bool)
+                idx = [self.gene_to_index[g] for g in self.benchmark.axis_ensembl
+                       if g in self.gene_to_index]
+                axis_cols[idx] = True
+                for _fm in file_metas:
+                    _fm.gene_mask = _fm.gene_mask & axis_cols
+            # Every context must present the SAME columns; that is the whole point.
+            _sums = {int(_fm.gene_mask.sum()) for _fm in file_metas}
+            if len(_sums) != 1:
+                raise ValueError(
+                    f"gene masks differ across files ({sorted(_sums)}). The benchmark axis "
+                    f"exists so that cell line is the only difference between contexts; "
+                    f"unequal masks also change the pooled loss normalisation per context.")
+            print(f"  [bench] all {len(file_metas)} contexts share a "
+                  f"{_sums.pop():,}-gene mask")
 
         # cell_line -> source-file map, for the per-source diagnostics. Cell lines are
         # unique to a file in this corpus (essential lines, Feng donor ids, T-cell
@@ -3448,7 +3534,10 @@ class VirtualCellTrainer:
             print("Building pseudobulk test_unseen_pert dataset...")
             test_pert_dataset = None
             test_pert_loader = None
-            if test_unseen_pert:
+            # Off by default. build_eval_dataset loads EVERY cell of the split, dense, at
+            # full encoder width -- gigabytes -- and nothing evaluates it during training.
+            # It is also the test set, which should not be touched here at all.
+            if test_unseen_pert and getattr(config, "bench_build_test_datasets", True):
                 test_pert_dataset = build_pseudobulk_dataset(
                     file_metas=file_metas,
                     pert2id=self.pert2id,
@@ -3551,8 +3640,16 @@ class VirtualCellTrainer:
                     encoder_gene_names=self.encoder_gene_names,
                     target_sum=self.target_sum,
                     n_controls=config.n_controls_per_sample,
-                    cell_lines=train_cell_lines,
+                    # The benchmark's eval cell lines, NOT train_cell_lines. The held-out
+                    # perturbations are TRAINING data in the other contexts, so drawing val
+                    # from them would make the selector two-thirds a training metric.
+                    cell_lines=(getattr(config, "bench_eval_cell_lines", None)
+                                or train_cell_lines),
                 )
+                self._val_cell_lines = list(
+                    getattr(config, "bench_eval_cell_lines", None) or train_cell_lines)
+                print(f"  val cell lines: {self._val_cell_lines}  "
+                      f"({len(val_dataset)} samples, {len(val_perts)} perturbations)")
                 val_loader = DataLoader(
                     val_dataset,
                     batch_size=eval_batch_size,

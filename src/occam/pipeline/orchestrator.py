@@ -54,6 +54,14 @@ _DECODER_ARTIFACTS = (
     ("best_decoder", "best_decoder.pth"),
     ("final_decoder", "final_decoder.pth"),
 )
+# Both are collected and both get scored downstream: the research tree measured selection
+# picking one checkpoint while the eventual bake-off winner was the last-epoch one, so a
+# systematic disagreement between them is itself a finding about the selector.
+# Bare filenames: `_collect` already searches <stage_dir>/checkpoints/ and the root.
+_VCELL_ARTIFACTS = (
+    ("best_model", "best_model.pth"),
+    ("final_model", "final_model.pth"),
+)
 
 
 class Orchestrator:
@@ -297,6 +305,8 @@ class Orchestrator:
             return self._run_pretrain()
         if stage == "finetune":
             return self._run_finetune()
+        if stage == "vcell":
+            return self._run_vcell()
         if stage == "decoder":
             return self._run_decoder()
         raise ConfigError(f"no runner for stage {stage!r}")
@@ -477,6 +487,41 @@ class Orchestrator:
             )
 
     # -- stage 3 ---------------------------------------------------------
+    def _run_vcell(self) -> None:
+        from occam.vcell.pipeline import VirtualCellTrainer
+
+        vc_cfg, meta = self.cfg.build_vcell_config()
+        init_from = resolve_artifact_ref(
+            vc_cfg.encoder_checkpoint, self.ledger.data, "stages.vcell.init_from")
+        if not os.path.isabs(init_from):
+            init_from = os.path.join(self.cfg.repo_root, init_from)
+        if not os.path.isfile(init_from):
+            raise StageFailed(f"vcell init_from does not exist: {init_from}")
+        vc_cfg.encoder_checkpoint = init_from
+
+        stage_dir = self._begin("vcell")
+        trainer = VirtualCellTrainer(vc_cfg, device=self.cfg.device)
+        # The run dir is passed in, never invented: the trainer's own timestamp+urandom
+        # naming makes a 24-arm array job unattributable, which is the failure
+        # `_prepare_stage_dir` exists to prevent.
+        trainer.train(output_dir=stage_dir, run_dir=stage_dir)
+
+        artifacts = self._collect(stage_dir, _VCELL_ARTIFACTS)
+        if "final_model" not in artifacts:
+            raise StageFailed(
+                f"vcell produced no final_model under {stage_dir}; "
+                f"found {sorted(artifacts)}")
+        self.ledger.complete("vcell", artifacts, metrics={
+            "best_metric": getattr(trainer, "best_metric", None),
+            "epochs": vc_cfg.epochs,
+        }, extra={
+            "init_from": init_from,
+            "benchmark_id": getattr(vc_cfg, "bench_id", "") or None,
+            "benchmark_sha256": getattr(vc_cfg, "bench_sha256", "") or None,
+            "gene_axis_sha256": getattr(vc_cfg, "bench_axis_sha256", "") or None,
+        })
+        print(f"[occam] vcell artifacts: {json.dumps(artifacts, indent=2)}")
+
     def _run_decoder(self) -> None:
         from occam.decoder_train.stages import run_decoder
 

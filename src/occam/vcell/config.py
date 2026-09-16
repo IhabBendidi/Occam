@@ -370,6 +370,30 @@ class VirtualCellConfig:
     wandb_tags: Optional[List[str]] = None
 
     # --- v2: Interaction function ---
+    # ---- Frozen benchmark definition (data/benchmarks/<id>/) -----------------------
+    # When `bench_dir` is set the trainer loads gene_axis.csv, splits.json and
+    # exclusions.json from it, pins the gene axis, applies the per-(file, perturbation)
+    # training exclusions, and records the artifact hashes in every checkpoint. Everything
+    # about the benchmark is then a property of the artifact, not of this config.
+    bench_dir: Optional[str] = None
+    bench_id: str = ""
+    # Asserted against benchmark.json. Also placed in the stage YAML so that editing an
+    # artifact changes the stage hash and the orchestrator refuses to reuse the run.
+    bench_sha256: str = ""
+    # input_and_loss = restrict what the encoder is SHOWN and what the loss counts (the
+    # default, and the only setting under which the three contexts are truly comparable).
+    # loss_only = keep the full input, mask the loss.
+    bench_axis_scope: str = "input_and_loss"
+    bench_axis_sha256: str = ""          # filled from the artifact; part of the cache key
+    # Cell lines the val/test datasets may draw from. For rhj_fewshot this is ["HEPG2"]:
+    # the held-out perturbations are TRAINING data in Jurkat and RPE1, so a val set that
+    # also drew from them would be two-thirds a training metric.
+    bench_eval_cell_lines: Optional[List[str]] = None
+    # The test-perturbation eval dataset is expensive to build (all cells, dense, full
+    # width) and is never evaluated during training. Off by default; the test set is scored
+    # separately, on purpose.
+    bench_build_test_datasets: bool = False
+
     # ---- NaN guards -----------------------------------------------------------------
     # Both were previously read only via getattr() defaults in pipeline.py, so they worked
     # but were invisible to anyone reading the config. Declared so they can be set and

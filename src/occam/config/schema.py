@@ -15,7 +15,7 @@ from __future__ import annotations
 from typing import Any, Dict, Mapping, Optional, Tuple
 
 __all__ = [
-    "PRETRAIN_SCHEMA", "FINETUNE_SCHEMA", "DECODER_SCHEMA",
+    "PRETRAIN_SCHEMA", "FINETUNE_SCHEMA", "DECODER_SCHEMA", "VCELL_SCHEMA",
     "TOP_LEVEL_KEYS", "RUN_KEYS", "DATA_KEYS",
     "SchemaError", "flatten_stage", "validate_stage",
 ]
@@ -276,10 +276,80 @@ DECODER_SCHEMA: Dict[str, Dict[str, Optional[str]]] = {
     },
 }
 
+VCELL_SCHEMA: Dict[str, Dict[str, Optional[str]]] = {
+    "": {"init_from": None},                     # the unified encoder+decoder checkpoint
+    "benchmark": {
+        "dir": "bench_dir", "id": "bench_id", "sha256": "bench_sha256",
+        "axis_scope": "bench_axis_scope",
+        "eval_cell_lines": "bench_eval_cell_lines",
+        "build_test_datasets": "bench_build_test_datasets",
+    },
+    "data": {
+        "paths": "data_paths", "gene_col": "gene_name_col", "pert_col": "pert_gene_col",
+        "batch_col": "batch_col", "target_sum": "target_sum",
+        "skip_normalize": "skip_normalize", "skip_log1p": "skip_log1p",
+        "n_controls_per_sample": "n_controls_per_sample",
+        "include_controls_as_training": "include_controls_as_training",
+        "min_controls_per_cell_line": "min_controls_per_cell_line",
+    },
+    "stream": {
+        "stream_v2": "stream_v2", "interleave": "stream_interleave",
+        "balance_sources": "balance_sources", "fixed_pairs": "stream_fixed_pairs",
+        "chunk_size": "optim_chunk_size", "buffer_chunks": "optim_buffer_chunks",
+        "num_workers": "num_workers", "control_cache_dir": "control_cache_dir",
+        "control_scan_threads": "control_scan_threads", "amp_dtype": "amp_dtype",
+        "target_pb_k": "target_pb_k", "ctrl_avg_k": "ctrl_avg_k",
+        "max_cells_per_pert": "max_cells_per_pert_stream",
+        "min_cells_per_pert": "min_cells_per_pert_stream",
+    },
+    "encoder": {"freeze_encoder": "freeze_encoder", "freeze_decoder": "freeze_decoder"},
+    "graph": {
+        "graph_type": "graph_type", "graph_cache_dir": "graph_cache_dir",
+        "master_gene_set_path": "master_gene_set_path",
+        "graph_types": "graph_types", "graph_edge_filter_mode": "graph_edge_filter_mode",
+        "gnn_layer_type": "gnn_layer_type", "gnn_hidden_dim": "gnn_hidden_dim",
+        "gnn_num_layers": "gnn_num_layers", "gnn_num_heads": "gnn_num_heads",
+        "gnn_dropout": "gnn_dropout", "gnn_activation": "gnn_activation",
+        "pert_latent_dim": "pert_latent_dim", "use_edge_weight": "use_edge_weight",
+        "graph_reduce2perts": "graph_reduce2perts", "data_perts_only": "data_perts_only",
+    },
+    # ---- the ablation axes, kept adjacent so a grid row is readable ----
+    "interaction": {
+        "interaction_type": "interaction_type", "film_mode": "film_mode",
+        "film_scale": "film_scale", "film_hidden_dim": "film_hidden_dim",
+        "film_activation": "film_activation", "film_mean_free": "film_mean_free",
+    },
+    "optim": {
+        "lr": "lr", "decoder_lr": "decoder_lr", "weight_decay": "weight_decay",
+        "batch_size": "batch_size", "epochs": "epochs",
+        "warmup_epochs": "warmup_epochs", "eta_min": "eta_min",
+        "gradient_clip": "gradient_clip",
+        "decoder_lr_warmup_epochs": "decoder_lr_warmup_epochs",
+    },
+    "loss": {
+        "loss_type": "loss_type", "smooth_l1_beta": "smooth_l1_beta",
+        "cosine_loss_weight": "cosine_loss_weight",
+        "recon_loss_scale": "recon_loss_scale",
+        "loss_norm": "loss_norm", "source_weight": "source_weight",
+        "latent_loss_type": "latent_loss_type", "delta_reg_type": "delta_reg_type",
+        "expression_loss_mode": "expression_loss_mode",
+        "delta_mag_weight": "delta_mag_weight",
+        "vc_load_dispersion": "vc_load_dispersion",
+    },
+    "guards": {
+        "nan_guard_max_frac": "nan_guard_max_frac",
+        "weight_check_every": "weight_check_every",
+    },
+    "eval": {
+        "eval_freq": "eval_freq", "run_baselines": "run_baselines",
+    },
+}
+
 STAGE_SCHEMAS = {
     "pretrain": PRETRAIN_SCHEMA,
     "finetune": FINETUNE_SCHEMA,
     "decoder": DECODER_SCHEMA,
+    "vcell": VCELL_SCHEMA,
 }
 
 

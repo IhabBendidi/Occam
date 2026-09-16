@@ -53,7 +53,7 @@ ARCH_AFFECTING_FIELDS = (
 )
 
 _VAR = re.compile(r"\$\{([^}]+)\}")
-_STAGE_ORDER = ("pretrain", "finetune", "decoder")
+_STAGE_ORDER = ("pretrain", "finetune", "decoder", "vcell")
 
 
 # ---------------------------------------------------------------------------
@@ -215,6 +215,24 @@ class OccamConfig:
             setattr(cfg, key, value)
         cfg.encoder_checkpoint = init_from
         self._apply_shared(cfg, decoder=True)
+        return cfg, meta
+
+    def build_vcell_config(self):
+        from occam.vcell.config import VirtualCellConfig
+
+        attrs, meta = self.stage_attrs("vcell")
+        cfg = VirtualCellConfig()
+        for key, value in attrs.items():
+            setattr(cfg, key, value)
+        cfg.encoder_checkpoint = meta.get("init_from") or ""
+        self._apply_shared(cfg)
+        # Relative registry-style paths resolve against the REPO ROOT, not the cwd, so a
+        # config behaves the same wherever it is run from.
+        for attr in ("bench_dir", "graph_cache_dir", "master_gene_set_path",
+                     "control_cache_dir"):
+            val = getattr(cfg, attr, None)
+            if val and not os.path.isabs(str(val)):
+                setattr(cfg, attr, os.path.join(self.repo_root, str(val)))
         return cfg, meta
 
     def _apply_shared(self, cfg, decoder: bool = False) -> None:
