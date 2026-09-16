@@ -184,6 +184,18 @@ class FileMetadata:
     # perturbations to training. Used to lend one screen's NTCs to another screen that
     # has none of its own (Feng genome-wide ships 12-36 NTCs in total).
     controls_only: bool = False
+    # Perturbations excluded from TRAINING in THIS FILE, by name. A (file, perturbation)
+    # property, one level finer than `excluded_pert_lines` below and for the same reason: the
+    # rhj_fewshot benchmark holds 724 perturbations out of HepG2 while the SAME symbols must
+    # keep training from Jurkat and RPE1, so a global name-level exclusion would delete two
+    # contexts of training data.
+    #
+    # ⚠️ Consumed ONLY by the training predicates (`_count_pert_cells`, the streaming
+    # `__iter__`, and StreamingDatasetV2's static eligibility mask). The eval builders must
+    # NOT consult it -- reading exactly these perturbations back is what makes them val/test.
+    # That is also why this is not applied as a row filter in `_load_file_metadata`: a row
+    # filter would delete the validation data too.
+    excluded_perts: Optional[frozenset] = None
     # Cell lines whose perturbations IN THIS FILE must be skipped. Set by
     # require_control_batch_overlap, which is a property of a (file, cell line) pair, not
     # of a cell line: one donor line appears in both the targeted and the genome-wide
@@ -306,6 +318,7 @@ def _load_file_metadata(
     cell_line_cols: Optional[List[str]] = None,
     control_fallback_col: Optional[str] = None,
     controls_only: bool = False,
+    restrict_gene_ids: Optional[Set[str]] = None,
 ) -> FileMetadata:
     """Load obs metadata and compute gene alignment for one h5ad file.
 
@@ -315,6 +328,14 @@ def _load_file_metadata(
     biological context that must have its own control pool. `--cell_line_cols donor
     condition` gives `D1_Rest`, `D1_Stim8hr`, ... without rewriting a 1 TB dataset.
     Missing columns are skipped, so one setting works across a heterogeneous file list.
+
+    `restrict_gene_ids` pins the gene axis to a fixed, pre-computed set (a frozen benchmark
+    axis). It restricts BOTH the input scatter and `gene_mask`, i.e. both what the encoder is
+    shown and what the loss counts, because `src_indices`/`dst_indices` drive both. The point
+    is cross-context comparability: every file then presents the encoder with the same non-zero
+    columns and the same zeros, so cell line is the only thing that differs between them.
+    A file that cannot supply the whole axis is an error, not a warning -- a silently truncated
+    axis changes the loss normalisation and makes two runs incomparable.
     """
     adata = anndata.read_h5ad(path, backed="r")
 
@@ -400,11 +421,12 @@ def _load_file_metadata(
             f"{cl}__{b}" for cl, b in zip(obs_cell_lines, raw_batch)
         ])
 
-    # Gene alignment: data genes → encoder vocabulary
+    # Gene alignment: data genes → encoder vocabulary, optionally pinned to a frozen axis
+    allowed = None if restrict_gene_ids is None else set(restrict_gene_ids)
     src_indices = []
     dst_indices = []
     for j, gene in enumerate(var_ensembl_ids):
-        if gene in encoder_gene_to_idx:
+        if gene in encoder_gene_to_idx and (allowed is None or gene in allowed):
             src_indices.append(j)
             dst_indices.append(encoder_gene_to_idx[gene])
     src_indices = np.array(src_indices, dtype=np.int64)
@@ -412,6 +434,22 @@ def _load_file_metadata(
 
     gene_mask = torch.zeros(len(encoder_gene_names), dtype=torch.bool)
     gene_mask[dst_indices] = True
+
+    if allowed is not None:
+        # The whole point of a frozen axis is that every context presents the SAME columns.
+        # If one file is short, the masks differ, the pooled loss normalisation differs, and
+        # the contexts stop being comparable -- silently. So this is a raise.
+        got = int(gene_mask.sum())
+        if got != len(allowed):
+            present = {var_ensembl_ids[j] for j in src_indices}
+            missing = sorted(allowed - present)
+            raise ValueError(
+                f"{path}: the frozen benchmark axis has {len(allowed)} genes but only {got} "
+                f"align here ({len(missing)} missing, e.g. {missing[:10]}). A partial axis "
+                f"would give this context a different gene mask from the others and make the "
+                f"loss normalisation incomparable. Rebuild the axis with "
+                f"scripts/build_rhj_fewshot.py over exactly the files you intend to train on."
+            )
 
     del adata
     gc.collect()
@@ -1173,6 +1211,11 @@ class VirtualCellStreamingDataset(IterableDataset):
             keep = ~np.asarray(fm.is_control, dtype=bool)
             if fm.excluded_pert_lines:
                 keep &= ~np.isin(fm.obs_cell_lines, list(fm.excluded_pert_lines))
+            if fm.excluded_perts:
+                # Must be ANDed here, while `keep` is still full length -- the
+                # `keep[keep] = ...` compaction below cannot take a full-length mask.
+                keep &= ~np.isin(np.asarray(fm.pert_gene_names, dtype=str),
+                                 list(fm.excluded_perts))
             if self.min_cells_per_pert > 0:
                 keep &= self._row_ok[fmi]
             if train_cl_set is not None:
@@ -1348,6 +1391,8 @@ class VirtualCellStreamingDataset(IterableDataset):
                             and fm.obs_cell_lines[gi] in fm.excluded_pert_lines):
                         continue
                     if fm.pert_gene_names[gi] not in self.split_pert_names:
+                        continue
+                    if fm.excluded_perts and fm.pert_gene_names[gi] in fm.excluded_perts:
                         continue
                     if self.min_cells_per_pert > 0 and not self._row_ok[mi][gi]:
                         continue
@@ -1561,6 +1606,8 @@ def prepare_virtual_cell_data(
     cell_line_cols: Optional[List[str]] = None,
     max_controls_per_cell_line: int = 0,
     control_fallback_col: Optional[str] = None,
+    restrict_gene_ids: Optional[Set[str]] = None,
+    exclude_file_perts: Optional[Dict[str, Set[str]]] = None,
     control_only_paths: Optional[List[str]] = None,
     min_control_batches_per_cell_line: int = 0,
     require_control_batch_overlap: bool = False,
@@ -1631,6 +1678,7 @@ def prepare_virtual_cell_data(
             batch_col=batch_col, cell_line_cols=cell_line_cols,
             control_fallback_col=control_fallback_col,
             controls_only=path in controls_only_set,
+            restrict_gene_ids=restrict_gene_ids,
         )
         file_metas.append(fm)
         unique_cls = sorted(set(fm.obs_cell_lines))
@@ -1641,6 +1689,34 @@ def prepare_virtual_cell_data(
             f"{(~fm.is_control).sum()} perturbed, {fm.is_control.sum()} controls, "
             f"{len(fm.src_indices)}/{fm.n_vars} genes aligned to encoder{role}"
         )
+
+    # ---- Per-(file, perturbation) TRAINING exclusions ----
+    # Keyed on file BASENAME, not cell line: the exclusion is a property of (file,
+    # perturbation). Applied only in the training predicates, so the eval builders still see
+    # these rows -- which is what makes them the val/test set.
+    if exclude_file_perts:
+        seen = set()
+        for fm in file_metas:
+            name = Path(fm.path).name
+            ex = exclude_file_perts.get(name)
+            if not ex:
+                continue
+            seen.add(name)
+            fm.excluded_perts = frozenset(ex)
+            n_cells = int(np.isin(np.asarray(fm.pert_gene_names, dtype=str), list(ex)).sum())
+            print(f"  [bench-exclude] {name}: {len(ex)} perturbation(s), "
+                  f"{n_cells:,} perturbed cells withheld from TRAINING")
+        missing = sorted(set(exclude_file_perts) - seen)
+        if missing:
+            # The highest-consequence silent failure in the whole benchmark: a renamed or
+            # relocated data file turns the exclusion into a no-op and the held-out
+            # perturbations train normally, with no error and a flattering score.
+            raise ValueError(
+                f"exclusions name file(s) that are not in data_paths: {missing}. "
+                f"Loaded: {sorted(Path(fm.path).name for fm in file_metas)}. "
+                f"Refusing to train -- an exclusion that matches nothing would leak the "
+                f"held-out perturbations into training silently."
+            )
 
     # ---- Cell-line eligibility, decided BEFORE any expression is read ----
     # Three independent criteria, reported per line so none of them is ever silent:

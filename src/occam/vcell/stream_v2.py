@@ -23,6 +23,7 @@ different order (see `scripts/stream_v2_equivalence.py`).
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -279,6 +280,11 @@ class StreamingDatasetV2(VirtualCellStreamingDataset):
                 pert_ok[:] = False
             if fm.excluded_pert_lines:
                 pert_ok &= ~np.isin(cls, list(fm.excluded_pert_lines))
+            if fm.excluded_perts:
+                # Per-(file, perturbation) TRAINING exclusion. `_static_ok` is the ONLY
+                # per-row eligibility gate `__iter__` consults, so this single line is what
+                # enforces the benchmark on the path we actually train on.
+                pert_ok &= ~np.isin(names, list(fm.excluded_perts))
             if self.min_cells_per_pert > 0:
                 pert_ok &= self._row_ok[mi]
             uniq, inv = np.unique(names, return_inverse=True)
@@ -549,11 +555,73 @@ def encoder_fingerprint(encoder: torch.nn.Module, extra: str = "") -> str:
     return h.hexdigest()[:16]
 
 
+CTRL_CACHE_SCHEMA = 2
+
+
+def control_cache_key(
+    *,
+    path: str,
+    n_obs: int,
+    n_genes_encoder: int,
+    col_map: np.ndarray,
+    control_rows: np.ndarray,
+    target_sum: float,
+    skip_normalize: bool,
+    skip_log1p: bool,
+    encoder_key: str,
+    axis_sha256: str = "",
+    axis_scope: str = "",
+) -> Tuple[str, Dict[str, object]]:
+    """A canonical, self-describing key for one file's control embeddings.
+
+    Returns ``(sha16, key_dict)``. The dict is written beside the cache as a sidecar so a
+    stale entry can explain itself instead of being silently reused.
+
+    Every field here can change an embedding. The one that used to be missing is the gene
+    alignment: the old key carried `n_genes` (always 44,728, the encoder width) but not which
+    of those columns were actually written, so a cache built before a benchmark-axis
+    restriction was reused with embeddings computed from a different input -- wrong control
+    embeddings for every pair, no error. `col_map_sha256` fixes that by construction, and
+    `n_genes_axis` makes it readable.
+    """
+    n_axis = int((np.asarray(col_map) >= 0).sum())
+    key = {
+        "cache_schema": CTRL_CACHE_SCHEMA,
+        "file_name": Path(path).name,
+        "file_mtime": os.path.getmtime(path),
+        "file_size": os.path.getsize(path),
+        "n_obs": int(n_obs),
+        "n_genes_encoder": int(n_genes_encoder),
+        "n_genes_axis": n_axis,
+        "col_map_sha256": hashlib.sha256(
+            np.asarray(col_map, dtype=np.int64).tobytes()).hexdigest(),
+        "control_rows_sha256": hashlib.sha256(
+            np.asarray(control_rows, dtype=np.int64).tobytes()).hexdigest(),
+        "n_control_rows": int(len(control_rows)),
+        "target_sum": float(target_sum),
+        "skip_normalize": bool(skip_normalize),
+        "skip_log1p": bool(skip_log1p),
+        "encoder_fingerprint": str(encoder_key),
+        "benchmark_axis_sha256": str(axis_sha256),
+        "benchmark_axis_scope": str(axis_scope),
+    }
+    digest = hashlib.sha256(
+        json.dumps(key, sort_keys=True).encode()).hexdigest()[:16]
+    return digest, key
+
+
+def control_cache_mismatch(want: Dict[str, object], got: Dict[str, object]) -> List[str]:
+    """Field names that differ between the recomputed key and a sidecar, most useful first."""
+    keys = sorted(set(want) | set(got))
+    return [k for k in keys if want.get(k) != got.get(k)]
+
+
 def build_control_embedding_pool(
     pending: Dict[str, List[Tuple[FileMetadata, np.ndarray]]],
     encode_fn, num_genes: int, target_sum: float, skip_normalize: bool, skip_log1p: bool,
     device, cache_dir: Optional[str], enc_key: str, chunk_size: int = 8192, threads: int = 6,
     extra_dense: Optional[Dict[str, torch.Tensor]] = None,
+    axis_sha256: str = "", axis_scope: str = "",
 ) -> Tuple[Dict[str, torch.Tensor], Dict[str, np.ndarray]]:
     """Encode every control cell once (chunk-wise scan) -> {line: (n, hidden)} + {line: mean log1p row}.
 
@@ -585,10 +653,31 @@ def build_control_embedding_pool(
         rows_all = np.concatenate([r for _, _, r in entries])
         cl_of_row = np.concatenate([np.array([cl] * len(r)) for cl, _, r in entries])
         order = np.argsort(rows_all, kind="stable"); rows_all = rows_all[order]; cl_of_row = cl_of_row[order]
-        key = hashlib.sha1((f"{path}|{os.path.getmtime(path)}|{os.path.getsize(path)}|{fm.n_obs}|{num_genes}|"
-                            f"{target_sum}|{skip_normalize}|{skip_log1p}|{enc_key}|"
-                            + hashlib.sha1(rows_all.tobytes()).hexdigest()).encode()).hexdigest()[:20]
+        col_map = make_col_map(fm.n_vars, fm.src_indices, fm.dst_indices)
+        key, key_dict = control_cache_key(
+            path=path, n_obs=fm.n_obs, n_genes_encoder=num_genes, col_map=col_map,
+            control_rows=rows_all, target_sum=target_sum,
+            skip_normalize=skip_normalize, skip_log1p=skip_log1p, encoder_key=enc_key,
+            axis_sha256=axis_sha256, axis_scope=axis_scope,
+        )
         cpath = cache / f"ctrl_emb_{Path(path).stem}_{key}.pt" if cache else None
+        spath = cpath.with_suffix(".json") if cpath else None
+        if cpath and cpath.exists():
+            # A cache that cannot explain itself is not used. The digest already encodes
+            # every field, so a mismatch here means a hash collision or a hand-edited file --
+            # either way, recompute and say which fields disagreed.
+            side = {}
+            if spath and spath.exists():
+                try:
+                    with open(spath) as fh:
+                        side = json.load(fh)
+                except (OSError, ValueError) as exc:
+                    print(f"  [ctrl-cache] unreadable sidecar {spath.name}: {exc}")
+            diff = control_cache_mismatch(key_dict, side) if side else ["<no sidecar>"]
+            if diff:
+                print(f"  [ctrl-cache] IGNORING {cpath.name}: key fields differ "
+                      f"({', '.join(diff[:6])}) — recomputing")
+                cpath = None
         if cpath and cpath.exists():
             blob = torch.load(cpath, map_location="cpu", weights_only=False)
             for cl in np.unique(cl_of_row):
@@ -598,7 +687,6 @@ def build_control_embedding_pool(
                 counts[cl] = counts.get(cl, 0) + int(m.sum())
             print(f"  [ctrl-cache] {Path(path).name}: {len(rows_all):,} controls from cache", flush=True)
             continue
-        col_map = make_col_map(fm.n_vars, fm.src_indices, fm.dst_indices)
         # chunk spans that contain at least one control
         chunk_ids = np.unique(rows_all // chunk_size)
         spans = [(int(c) * chunk_size, min(fm.n_obs, (int(c) + 1) * chunk_size)) for c in chunk_ids]
@@ -635,6 +723,13 @@ def build_control_embedding_pool(
         if cpath:
             # atomic: concurrent jobs may build the same cache; readers see a whole file or none
             tmp = cpath.with_suffix(f".tmp{os.getpid()}")
+            # The sidecar first: a payload without its key would be ignored on the next run
+            # anyway, whereas a key without a payload is simply a miss.
+            if spath:
+                stmp = spath.with_suffix(f".jtmp{os.getpid()}")
+                with open(stmp, "w") as fh:
+                    json.dump(key_dict, fh, indent=2, sort_keys=True)
+                os.replace(stmp, spath)
             torch.save({"emb": emb_all, "rows": rows_all, "cell_lines": cl_of_row,
                         "sum": {cl: t.cpu().float() for cl, t in file_sum.items()}, "key": key}, tmp)
             os.replace(tmp, cpath)

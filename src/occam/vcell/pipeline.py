@@ -1630,7 +1630,11 @@ class VirtualCellTrainer:
             cache_dir=getattr(config, "control_cache_dir", None), enc_key=key,
             chunk_size=config.optim_chunk_size,
             threads=int(getattr(config, "control_scan_threads", 6)),
-            extra_dense=extra_dense)
+            extra_dense=extra_dense,
+            # The gene axis is part of the cache identity: embeddings computed under a
+            # different axis are a different input, not the same input cached.
+            axis_sha256=str(getattr(config, "bench_axis_sha256", "") or ""),
+            axis_scope=str(getattr(config, "bench_axis_scope", "") or ""))
         control_matcher.control_pool = pools
         control_matcher.set_control_embeddings(pools)
         self._v2_control_means = means
