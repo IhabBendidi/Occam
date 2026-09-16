@@ -57,3 +57,6 @@ data/corpus/
 # shared cluster path. Not ours to redistribute; the manifest is the record.
 data/graphs/**
 !data/graphs/MANIFEST.json
+
+# Benchmark definitions are all text and ARE tracked; only h5ad payloads are not.
+data/benchmarks/**/*.h5ad
