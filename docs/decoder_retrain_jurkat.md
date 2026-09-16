@@ -250,101 +250,93 @@ quality improvements, not a win.
 
 ## Results
 
-**Arm B at epoch 49 of 200 already beats arm A on every promoted metric**, and
-the pre-registered mechanistic prediction held. Arm A: job `18006756`,
-COMPLETED 2:57:37. Arm B early read: job `18009517`, COMPLETED 2:49:17, the
-epoch-49 `best_decoder.pth` snapshot.
+**Arm B beats the released decoder by +0.3747 `pearson_delta`. Integer emission
+loses on every per-perturbation metric that matters.** All four arms:
+`injctrl`, quantile calibration, present genes only (8,873/44,728), jurkat,
+cell-eval 0.6.0 `--profile full`, 16 threads, `--batch-size 2000`, one shared
+ground-truth DE (target sha256 `cea6dd49b29b0566`, served from cache in all
+three emission arms).
 
-| metric | A: released (rect_sigmoid + smooth_l1) | B: retrain @ ep49 (softplus + nb) | B − A |
+| metric | A released | **B raw** | B int_libnorm | B int_nolibnorm |
+|---|---|---|---|---|
+| `pearson_delta` | 0.1985 | **0.5732** | 0.5299 | 0.5396 |
+| `discrimination_score_l2` | 0.9652 | 0.9867 | **0.9891** | 0.9819 |
+| `discrimination_score_cosine` | 0.9365 | **0.9991** | 0.9987 | 0.9989 |
+| `de_direction_match` | 0.8212 | **0.8705** | 0.7590 | 0.7605 |
+| `de_spearman_sig` | 0.9379 | **0.9589** | 0.8568 | 0.8598 |
+| `overlap_at_N` *(do not rank on this)* | 0.0155 | 0.0497 | 0.0382 | 0.0389 |
+| `precision_at_N` | 0.0388 | 0.0632 | 0.0864 | **0.0887** |
+| `de_sig_genes_recall` | **0.6341** | 0.5130 | 0.3646 | 0.3744 |
+| `de_nsig_counts_pred` *(truth 262.2)* | 3871.0 | 1822.8 | 1034.0 | **1029.6** |
+| `mse` *(error: lower better)* | 0.0169 | **0.0014** | 0.0051 | 0.0047 |
+| `mae` *(error: lower better)* | 0.0678 | **0.0239** | 0.0557 | 0.0554 |
+| `clustering_agreement` | 0.6311 | 0.6385 | **0.6497** | 0.6489 |
+| `pearson_edistance` | 0.9282 | 0.9043 | **0.9558** | 0.9488 |
+
+### Headline: the retrain wins, and through its stated mechanism
+
+| | A released | B raw (ep124) | change |
 |---|---|---|---|
-| `pearson_delta` | 0.1985 | **0.5636** | **+0.3651** |
-| `discrimination_score_l2` | 0.9652 | **0.9849** | +0.0197 |
-| `discrimination_score_cosine` | 0.9365 | **0.9986** | +0.0621 |
-| `de_direction_match` | 0.8212 | **0.8664** | +0.0452 |
-| `overlap_at_N` *(do not rank on this)* | 0.0155 | 0.0501 | +0.0346 |
-| `mse` *(error: lower better)* | 0.0169 | **0.0015** | −0.0154 |
-| `mae` *(error: lower better)* | 0.0678 | **0.0249** | −0.0429 |
+| `pearson_delta` | 0.1985 | **0.5732** | **+0.3747** |
+| `de_nsig_counts_pred` | 3,871.0 | 1,822.8 | **−52.9%** |
+| over-call vs truth (262.2) | 14.8x | 6.9x | |
 
-Both arms: `injctrl`, quantile calibration, present genes only (8,873/44,728),
-jurkat, cell-eval 0.6.0 `--profile full`, 16 threads, `--batch-size 2000`,
-identical target file (sha256 `cea6dd49b29b0566`).
+−52.9% against the base/768 anchor's −53.2%. The mechanism transferred at
+essentially its full measured size across a change of encoder *and* panel.
 
-### The pre-registered prediction, and it held
+Epoch 124 vs the epoch-49 snapshot: `pearson_delta` 0.5636 -> 0.5732 (+0.0096),
+consistent with the small reconstruction gain (combined 64.96 -> 65.36). The
+conclusion never depended on the extra 75 epochs.
 
-Before arm B was scored, this document predicted that if the stated mechanism
-transfers, `de_nsig_counts_pred` should **roughly halve**. It did:
+### Emission: the registered prediction held, including the trap
 
-| | A: released | B @ ep49 | base/768 anchor |
-|---|---|---|---|
-| ground-truth significant genes | 262.2 | 262.2 | 262.2 |
-| predicted significant genes | 3,871.0 | **1,972.7** | 3,361 → 1,572 |
-| over-call factor | 14.8x | **7.5x** | 12.8x → 6.0x |
-| reduction | — | **−49.0%** | −53.2% |
+Predicted before the runs returned: both integer arms lose `pearson_delta`
+because rounding moves sparsity away from the target (0.6060) rather than
+towards it, and `de_nsig_counts_pred` could fall anyway simply because fewer
+genes remain testable — which would be a warning, not a win. Both happened.
 
-−49.0% here against −53.2% on the base/768 encoder. **The gain arrives through
-the mechanism it was attributed to**, not merely alongside it: removing the
-exact-zero floor removes the near-zero within-group variance that a Wilcoxon
-test reads as strong evidence. A `pearson_delta` gain with a flat significant-
-gene count would have been unexplained; this is not that.
+Decomposing the 2x2 (the fourth cell was not run, so these are main effects
+under additivity):
 
-### The trade-off, stated because it is real
-
-| | A: released | B @ ep49 |
+| effect | contrast | `pearson_delta` |
 |---|---|---|
-| `de_sig_genes_recall` | **0.6341** | 0.5166 |
-| `precision_at_N` | 0.0388 | **0.0596** |
+| integerisation, given no rescaling | `raw` -> `int_nolibnorm` | **−0.0336** |
+| library-size rescaling, given integerisation | `int_nolibnorm` -> `int_libnorm` | **−0.0097** |
 
-Calling 1,899 fewer genes significant means recovering fewer of the true ones:
-recall drops 0.117 while precision rises. That is the expected shape of a
-reduction in over-calling and it is the right trade here — the decoder still
-over-calls by 7.5x — but a use case that needs recall over precision should
-know the released decoder scores higher on it, for the uninteresting reason
-that it calls nearly everything significant.
+**Integerisation costs ~0.034. Putting the library size back adds nothing** —
+it is slightly negative, i.e. the 24.6% of count mass that rounding destroys is
+not worth restoring by rescaling. So neither factor is a lever here.
 
-### Against the anchors
+The trap, stated plainly: `de_nsig_counts_pred` almost halves again under
+integer emission, 1,823 -> 1,034, and a reader who tracked only DE inflation
+would call that the best arm. It is not. `de_sig_genes_recall` collapses
+0.5130 -> 0.3646 and `de_direction_match` falls 0.8705 -> 0.7590. The
+significant-gene count fell because **9.1% of gene-cell entries survive
+rounding instead of 40.6%** — there is simply less left to test. Precision
+rises (0.0632 -> 0.0887) for the same reason. **A DE-inflation improvement is
+only evidence of quality when recall and direction hold; here they do not.**
 
-| arm | encoder | panel | calibrated `pearson_delta` |
-|---|---|---|---|
-| rect_sigmoid + smooth_l1 | base/768 | nadig | 0.2285 |
-| rect_sigmoid + smooth_l1 | **small/512** | **jurkat** | **0.1985** |
-| softplus + nb | base/768 | nadig | 0.6009 |
-| **softplus + nb @ ep49** | **small/512** | **jurkat** | **0.5636** |
-
-Both rows of the port land just below their base/768 counterparts, by 0.030 and
-0.037. The head/loss effect reproduces at nearly its full measured size on a
-different encoder and a different panel.
+The two panel-level metrics do prefer the integer arms
+(`clustering_agreement` 0.6385 -> 0.6497, `pearson_edistance` 0.9043 ->
+0.9558), and `discrimination_score_l2` is flat across all three. Those measure
+between-perturbation geometry, which sparsification can sharpen even as
+per-perturbation fidelity degrades. They are not the headline and they do not
+overturn it.
 
 ### Verdict against the pre-registered criterion
 
-The criterion was: *B clearly above A's measured value -> the change survives
-the move to small/512 and the retrained decoder supersedes the released one.*
-**0.5636 against 0.1985 meets it, at epoch 49 of 200.** The final checkpoint can
-only confirm or refine this; a reversal would itself be a finding and is not
-expected, since reconstruction has been flat since epoch 50.
+The criterion was: *B clearly above A's measured value -> the head/loss change
+survives the move to small/512, and the retrained decoder supersedes the
+released one.* **0.5732 against 0.1985 meets it**, on the metric the criterion
+named, with the mechanism confirmed independently.
 
-⚠️ **n = 1 per arm, no seed replicates**, one panel, and the geometry differs
-(2048x5 released, 2048x4 retrained). The geometry confound is small next to a
-+0.365 effect but it is not zero, and nothing here speaks to unseen-context
-transfer: the decoder never sees perturbation labels, so this measures whether
-a reconstruction PRESERVES perturbation deltas, not whether a model predicts
-them.
+`raw` is the emission to use. Integer emission is recorded as measured and
+rejected, at this `target_sum`; it might behave differently at realistic
+sequencing depth, where rounding is not a ~0.23-count-per-gene operation.
 
-### Cost, measured — and a corrected claim
-
-The DE-reuse saving was overstated when it was introduced. Measured artifact
-timings:
-
-| step | A (no cache) | B (cache hit) |
-|---|---|---|
-| forward pass + two ~9.3 GB h5ad | ~35 min | ~35 min |
-| **real-side DE** | **56 min** | **0 — reused** |
-| prediction-side DE | 58 min | 76 min |
-| metric computation | 56 min | 81 min |
-| **total** | **2:57:37** | **2:49:17** |
-
-The cache removed a measured 56-minute step, but net wall clock fell only 8
-minutes: the softplus arm's own prediction-side DE and metric computation ran
-18 and 25 minutes longer, because its predictions have no exact-zero floor and
-are therefore denser to test. The earlier "~1.5 h of a ~2.5 h run" figure was
-wrong; **the cache is worth ~56 min of compute, not ~1.5 h of wall clock**, and
-on this panel a denser-prediction arm gives part of it back.
+⚠️ **n = 1 per arm, no seed replicates, one panel, one cell line.** The
+geometry differs between A and B (2048x5 vs 2048x4) and is a real if small
+confound. And nothing here measures unseen-context transfer: the decoder never
+sees perturbation labels, so this is whether a reconstruction PRESERVES
+perturbation deltas, not whether a model predicts them. The 7/9 unattributed
+DiverseRNA blocks mean jurkat cannot even be asserted to be an unseen context.
