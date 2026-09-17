@@ -233,6 +233,83 @@ is present on disk, and it is now copied — so the arm is reproducible. Also
 
 ---
 
+## C4 — the four environments, and the three things that stopped them building
+
+**Finding: all four arms now have a working interpreter, and TxPert did not need a new one.**
+
+| arm | interpreter | how | notes |
+|---|---|---|---|
+| **TxPert** | `pyenv` `gspp`, python 3.11.9 | already existed | torch 2.5.1, lightning 2.4.0, torch-geometric 2.6.1, anndata 0.11.3, **cell-eval 0.6.0 / pdex 0.1.24 — OUR versions** |
+| **PerturbDiff** | `competitors/PerturbDiff/.venv` | `uv sync`, 4.4 GB | 125 packages, clean first try |
+| **STATE** | `competitors/STATE/state/.venv` | `uv sync` after a fix | zarr 3.1.6; needs python ≥3.11, so the existing `state` pyenv (3.10.14, no zarr) could not be reused |
+| **CellFlow** | `competitors/CellFlow/cellflow/.venv` | `uv sync` after a fix | zarr 3.4.0; jax + `cellflow-tools`, no existing env had them |
+
+⭐ **TxPert's pre-existing env pins cell-eval 0.6.0 / pdex 0.1.24 — exactly ours.** That is
+better for comparability than a fresh build would have been: its *in-training validation*
+metric is then computed by the same scorer as the reported number, so its checkpoint selection
+and our measurement cannot disagree because of a version. The other three select on their own
+pinned cell-eval (CellFlow 0.7.2-era, STATE 0.6.8); that is a training-internal choice and is
+stated rather than hidden. **Every reported number comes from our 0.6.0 path regardless.**
+
+### The three build failures, all of them ours, all cheap to fix
+
+1. **`OSError: Readme file does not exist: README.md` — twice.** `STATE/state/pyproject.toml`
+   and `CellFlow/cellflow/pyproject.toml` both declare `readme = "README.md"`, resolved
+   relative to the package directory. The copy allowlist had neither, so hatchling failed the
+   *editable* build. Fixed by adding `state/README.md`, `cellflow/README.md` and
+   `cellflow/LICENSE` (the latter for the PolyForm-Noncommercial declaration) to
+   `scripts/copy_competitor_code.py`. Tracked tree is still **1.17 MB** (STATE) and
+   **1.43 MB** (CellFlow).
+2. **A transient `404` on `fsspec-2026.7.0-py3-none-any.whl`.** Three `uv sync` runs in
+   parallel; CellFlow's got the 404 while PerturbDiff pulled **the byte-identical URL and
+   hash** successfully in the same minute. Not a pin problem — retried serially and it
+   resolved. ⚠️ Do not "fix" this by loosening a pin; the lock is what makes the arm
+   reproducible.
+3. **`srun: Invalid generic resource (gres) specification`.** The gate exited **FAILED in 2 s**
+   (job `18042983`) because it wrapped its python in `srun` on the `cpu` partition. **No
+   launcher in this repo uses `srun`** — the batch step is the task. Removed from all six new
+   launchers.
+
+And one that was not a build failure at all:
+
+4. **`/tmp` is NODE-LOCAL.** The gate's first submission (job `18042891`) pointed at a script
+   in the session scratchpad under `/tmp` and failed in 2 s with
+   `gate.sh: No such file or directory`. The compute node cannot see the login node's `/tmp`.
+   **Launchers live in the repo, on GPFS** — now `scripts/slurm/rhj_competitor_gate.sbatch`
+   plus a reproducible `scripts/export_gate_ctrlcell.py`.
+
+## C5 — the launchers, and the footgun that is now a test
+
+**Finding: the `#`-inside-a-continuation footgun is linted, and it found a real omission.**
+
+| leg | script | resources | array over |
+|---|---|---|---|
+| train | `competitor_train_txpert.sbatch` | h100, 12 cpu, 200 G, 16 h | seed 42–46 |
+| train | `competitor_train_state.sbatch` | 1 gpu, 20 cpu, 320 G, 24 h | seed 42–46 |
+| train | `competitor_train_cellflow.sbatch` | 1 gpu, 12 cpu, 256 G, 12 h | seed 42–46 |
+| train | `competitor_train_perturbdiff.sbatch` | h100, 12 cpu, 128 G, 20 h | seed 42–46 |
+| export (Phase A) | `competitor_export.sbatch` | 1 gpu, 8 cpu, 128 G, 2 h | seed; loops all 5 splits |
+| score (Phase B) | `competitor_score.sbatch` | cpu, 16 cpu, 64 G, 2 h | split 0–4 |
+
+Resources and every hyperparameter are transcribed from
+`hooke-tx/reproducibility/<arm>__replogle_nadig_fewshot/launch.*.sh`, with the **time and
+memory raised where our axis is 3.5× wider** (6,983 vs 2,000 genes) and nothing else touched.
+
+`tests/test_competitor_manifest.py` enforces four things about them:
+
+* **no `#` inside a backslash-continued command.** The naive version of this check flags every
+  usage-example block in every header, because those lines are comments *and* end in `\`. The
+  real rule is narrower: a continuation only counts if it STARTED from a non-comment line.
+  Upstream, the un-narrow version of this bug dropped 29 of 32 Hydra overrides on STATE, which
+  fell back to `name=debug`, auto-resumed an unrelated checkpoint, and **exited 0**.
+* **no arm's own scorer is wired into a launcher.** They clip to `[0,14]`, skip
+  `pearson_edistance` and `clustering_agreement`, label controls `"empty"`, and run cell-eval
+  0.7.2 / pdex 0.2.2–0.3.0. Reference only.
+* **each header states objective, question, varied/fixed, and pre-registered outcomes**
+  (RULE 0c) **and quotes the `meanpert` / `transfer` / `experimental` anchors.** This caught
+  three of the four launchers missing `experimental` 0.3722 — the test is not decorative.
+* **no payload is tracked, and the tracked tree stays under 40 MB.**
+
 ## Status
 
 | step | state |
@@ -242,9 +319,11 @@ is present on disk, and it is now copied — so the arm is reproducible. Also
 | 5b — emission space | ✅ C1 above, 13 tests |
 | 2 — `occam_data.py` reader | ✅ C2 above, bit-identical gate passed, 9 tests |
 | 3 — copy code per arm | ✅ 347 files, **6.6 MB** from a 141 GB upstream |
-| 4 — wire each dataloader to our data | next |
-| 5 — the prediction bridge | pending |
-| 6 — launchers, collector | pending |
+| 4a — TxPert reads our data (GO + STRING only) | ✅ verified on real data, `12,000 x 6,983` csr |
+| 4b–4d — STATE / CellFlow / PerturbDiff wirings | next; all three environments now build (C4) |
+| 5 — the prediction bridge | ✅ Phase A + Phase B written, control draw verified identical to `predict_panel`; **gate `18043091` running** |
+| 6 — launchers, collector | ✅ C5 above; `scripts/collect_competitors.py` writes `docs/rhj_competitors_results.md` |
+| 7 — tests | ✅ `test_competitor_bridge.py` (10) + `test_competitor_manifest.py` (7) |
 
 Plan: `~/.claude/plans/i-want-to-make-iterative-cray.md`.
 Panel definition: `data/benchmarks/rhj_fewshot/splithalf/CARD.md`.

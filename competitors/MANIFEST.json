@@ -14,9 +14,11 @@
         ".python-version",
         "cellflow/src",
         "cellflow/pyproject.toml",
+        "cellflow/README.md",
+        "cellflow/LICENSE",
         "cellflow/uv.lock"
       ],
-      "bytes": 1423232,
+      "bytes": 1426437,
       "copied": "2026-09-17",
       "files": {
         ".python-version": {
@@ -28,6 +30,16 @@
           "bytes": 8073,
           "sha256": "6c358654fcb9dcf4a0877265c09d5a7715853e8efccc0029e8928e8a54d9e138",
           "upstream": "CellFlow/README.md"
+        },
+        "cellflow/LICENSE": {
+          "bytes": 1057,
+          "sha256": "2c31cbfc07eff294f2a6ec1efcb4ddac1c78759201af7cdad1a4bc3802e1768f",
+          "upstream": "CellFlow/cellflow/LICENSE"
+        },
+        "cellflow/README.md": {
+          "bytes": 2148,
+          "sha256": "67a27b3f78e9811ccf7a73fffb29cd1b59a0c4e2c6388e75e491cdb54ba48dad",
+          "upstream": "CellFlow/cellflow/README.md"
         },
         "cellflow/pyproject.toml": {
           "bytes": 8854,
@@ -351,7 +363,7 @@
         }
       },
       "missing_upstream": [],
-      "n_files": 66,
+      "n_files": 68,
       "upstream_commit": "18e159145bdd7c59aa3db673603eab39e53dc263",
       "upstream_dir": "CellFlow"
     },
@@ -937,6 +949,7 @@
         "state/pyproject.toml",
         "state/uv.lock",
         "state/.python-version",
+        "state/README.md",
         "state/train_state_fewshot.sh",
         "state/predict_state_fewshot.sh",
         "state/tests/test_zarr_perturbation.py",
@@ -945,7 +958,7 @@
         "hepg2_noval_fixedbatch.toml",
         "state/ihabxcell_hepg2_fewshot_zarr.toml"
       ],
-      "bytes": 1161264,
+      "bytes": 1170472,
       "copied": "2026-09-17",
       "files": {
         "hepg2.toml": {
@@ -967,6 +980,11 @@
           "bytes": 5,
           "sha256": "49a506dd32096b010d75205acf3430c9ae6c40351888129499e5a5e487126c93",
           "upstream": "STATE/state/.python-version"
+        },
+        "state/README.md": {
+          "bytes": 9208,
+          "sha256": "568c0b4f9d93374f7ebc7467c226fdde0050abfd60147bce0b316163bf4199d6",
+          "upstream": "STATE/state/README.md"
         },
         "state/ihabxcell_hepg2_fewshot_zarr.toml": {
           "bytes": 2629,
@@ -1565,7 +1583,7 @@
         }
       },
       "missing_upstream": [],
-      "n_files": 123,
+      "n_files": 124,
       "upstream_commit": "18e159145bdd7c59aa3db673603eab39e53dc263",
       "upstream_dir": "STATE"
     },

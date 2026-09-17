@@ -45,6 +45,9 @@ ALLOWLIST: Dict[str, List[str]] = {
     "STATE": [
         "state/src/state",            # the package, 1.8 M
         "state/pyproject.toml", "state/uv.lock", "state/.python-version",
+        # `pyproject.toml` has `readme = "README.md"`; without it `uv sync` fails the
+        # editable build with `OSError: Readme file does not exist`. MEASURED 2026-09-17.
+        "state/README.md",
         "state/train_state_fewshot.sh", "state/predict_state_fewshot.sh",
         "state/tests/test_zarr_perturbation.py",
         "hepg2.toml", "hepg2_noval.toml", "hepg2_noval_fixedbatch.toml",
@@ -62,6 +65,12 @@ ALLOWLIST: Dict[str, List[str]] = {
         "README.md",
         ".python-version",            # at the ARM root, not under cellflow/
         "cellflow/src", "cellflow/pyproject.toml",
+        # `cellflow/pyproject.toml` declares `readme = "README.md"` and a
+        # PolyForm-Noncommercial licence file, both resolved relative to that
+        # directory. Without them `uv sync` fails the editable build with
+        # `OSError: Readme file does not exist`. MEASURED 2026-09-17, same class of
+        # failure as STATE's.
+        "cellflow/README.md", "cellflow/LICENSE",
         # ⚠️ Present on disk despite the upstream PR note calling CellFlow's environment
         # unreconstructible because this file "was gitignored and never committed". Copying
         # it is what makes the arm reproducible at all, so it is deliberately in the list.

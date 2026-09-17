@@ -287,6 +287,11 @@ class ZarrExperimentConfig:
                 logger.warning("Split file does not exist: %s -> %s", name, path)
 
 
+from .occam_source import (
+    OCCAM_FORMAT, occam_fold_for_line, read_occam_source,
+)
+
+
 # --------------------------------------------------------------------------- #
 # Per-source reader: loads obs (derived fields) + an X row-fetcher + gene map
 # --------------------------------------------------------------------------- #
@@ -306,8 +311,14 @@ class _Source:
         selected_genes: list[str] | None,
         embed_key: str | None,
         feature_loading: str = "ram",
+        occam_bench_dir: str | None = None,
+        occam_target_sum: float = 10_000.0,
+        occam_log1p: bool = True,
+        occam_verify_sources: bool = True,
+        occam_max_cells_per_line: int | None = None,
     ):
         self.name = name
+        self._occam = None
         self.path = Path(path)
         self.source_format = source_format
         self.embed_key = embed_key
@@ -362,6 +373,29 @@ class _Source:
                 a.file.close()
             except Exception:
                 pass
+        elif source_format == OCCAM_FORMAT:
+            # Occam's `rhj_fewshot`: OUR h5ads, OUR frozen 6,983-gene axis, OUR splits, read
+            # in place. Normalisation happens in occam_data on the FULL source panel row sum
+            # -- see occam_source.py for why that denominator, and not the 6,983-gene one, is
+            # the load-bearing choice in this port.
+            self._occam = read_occam_source(
+                str(self.path), bench_dir=occam_bench_dir, target_sum=occam_target_sum,
+                log1p=occam_log1p, control_pert=control_pert, pert_col=pert_col,
+                cell_type_key=cell_type_key, batch_col=batch_col,
+                selected_genes=selected_genes,
+                verify_sources=occam_verify_sources,
+                max_cells=occam_max_cells_per_line)
+            var_ensembl = list(self._occam.gene_ensembl)
+            var_symbol = list(self._occam.gene_symbols)
+            self.pert_str = self._occam.pert_str
+            self.is_control = self._occam.is_control
+            self.cell_type = self._occam.cell_type
+            self.batch = self._occam.batch
+            self.n_rows = self._occam.n_rows
+            self.cell_type_code, self.n_cell_types = _dense_codes(
+                pl.Series(self.cell_type))
+            # The matrix is already in RAM, in axis order, and already normalised.
+            self._x = self._occam.X
         else:
             raise ValueError(f"Unknown source_format {source_format!r}")
 
@@ -397,7 +431,15 @@ class _Source:
             return
         fl = self.feature_loading
 
-        if self.source_format == "zarr":
+        if self.source_format == OCCAM_FORMAT:
+            # read_occam_source already put the whole matrix in RAM, and __getstate__ drops
+            # it for worker pickling, so re-read rather than hand a worker an empty source.
+            if self._occam is None:
+                raise RuntimeError(
+                    "an occam source lost its matrix across a process boundary. Run with "
+                    "num_workers=0, or keep feature_loading='ram' in the main process.")
+            self._x = self._occam.X
+        elif self.source_format == "zarr":
             if fl == "npy":
                 if not os.path.exists(self._npy_path):
                     raise FileNotFoundError(
@@ -441,6 +483,11 @@ class _Source:
         state = self.__dict__.copy()
         state["_x"] = None
         state["_adata"] = None
+        # ⚠️ Drop the occam matrix as well. Without this, every DataLoader worker would be
+        # sent several GB of expression through a pickle; with it, an occam source simply
+        # cannot cross a process boundary and says so (see _ensure_open). Upstream's own
+        # STATE launcher passes num_workers=0, so this costs nothing.
+        state["_occam"] = None
         return state
 
 
@@ -742,6 +789,8 @@ class ZarrPerturbationDataModule(LightningDataModule):
         "output_space", "basal_mapping_strategy", "n_basal_samples",
         "should_yield_control_cells", "cell_sentence_len", "source_format",
         "feature_loading", "selected_ensembl_gene_ids_path", "target_sum", "log1p",
+        "occam_bench_dir", "occam_target_sum", "occam_log1p", "occam_verify_sources",
+        "occam_max_cells_per_line",
         "barcode", "drop_last", "is_log1p", "split_idx",
         "pert_feature_mode", "pert_feature_path",
     )
@@ -767,6 +816,11 @@ class ZarrPerturbationDataModule(LightningDataModule):
         selected_ensembl_gene_ids_path: str | None = None,
         target_sum: int | None = None,
         log1p: bool = False,
+        occam_bench_dir: str | None = None,
+        occam_target_sum: float = 10_000.0,
+        occam_log1p: bool = True,
+        occam_verify_sources: bool = True,
+        occam_max_cells_per_line: int | None = None,
         barcode: bool = False,
         drop_last: bool = False,
         is_log1p: bool = True,
@@ -795,6 +849,11 @@ class ZarrPerturbationDataModule(LightningDataModule):
         self.selected_ensembl_gene_ids_path = selected_ensembl_gene_ids_path
         self.target_sum = target_sum
         self.log1p = log1p
+        self.occam_bench_dir = occam_bench_dir
+        self.occam_target_sum = occam_target_sum
+        self.occam_log1p = occam_log1p
+        self.occam_verify_sources = occam_verify_sources
+        self.occam_max_cells_per_line = occam_max_cells_per_line
         self.barcode = barcode
         self.drop_last = drop_last
         self.is_log1p = is_log1p
@@ -805,6 +864,24 @@ class ZarrPerturbationDataModule(LightningDataModule):
             raise ValueError("pert_feature_path is required when pert_feature_mode='external'")
         self.pert_feature_mode = pert_feature_mode
         self.pert_feature_path = pert_feature_path
+
+        if source_format == OCCAM_FORMAT:
+            if not occam_bench_dir:
+                raise ValueError(
+                    "source_format='occam' needs occam_bench_dir, the path to our frozen "
+                    "benchmark (data/benchmarks/rhj_fewshot). It carries the gene axis, the "
+                    "splits, the exclusions and the source sha256s.")
+            if target_sum is not None or log1p:
+                # `_transform_expression` divides by the row sum AFTER gene selection, i.e.
+                # over 6,983 genes. occam_data has already normalised on the FULL source
+                # panel, which is what makes the 10,000 -> 2,000 emission map exact. Doing
+                # both would silently renormalise on the wrong denominator.
+                raise ValueError(
+                    f"source_format='occam' requires target_sum=null and log1p=false (got "
+                    f"{target_sum!r} / {log1p!r}). The data arrives already normalised at "
+                    f"target_sum={occam_target_sum:g} on the FULL source panel row sum; a "
+                    f"second transform would divide by the 6,983-gene sum instead and break "
+                    f"both `mae` and the prediction bridge's emission map.")
 
         self.config = ZarrExperimentConfig.from_toml(toml_config_path)
         self.config.validate()
@@ -845,6 +922,11 @@ class ZarrPerturbationDataModule(LightningDataModule):
                 selected_genes=self.selected_genes,
                 embed_key=self.embed_key,
                 feature_loading=self.feature_loading,
+                occam_bench_dir=self.occam_bench_dir,
+                occam_target_sum=self.occam_target_sum,
+                occam_log1p=self.occam_log1p,
+                occam_verify_sources=self.occam_verify_sources,
+                occam_max_cells_per_line=self.occam_max_cells_per_line,
             )
         return self._sources[name]
 
@@ -878,6 +960,15 @@ class ZarrPerturbationDataModule(LightningDataModule):
 
     # --------------------------------------------------------------- splits #
     def _read_split(self, name: str) -> dict | None:
+        if self.source_format == OCCAM_FORMAT:
+            # Our split is not a JSON of row indices; it is the frozen benchmark, read live.
+            # HepG2 splits three ways, Jurkat and RPE1 are wholly finetune -- our
+            # per-(file, perturbation) exclusion in their vocabulary. Returned in the exact
+            # shape setup() already consumes, so no new machinery touches the training loop.
+            return occam_fold_for_line(
+                self._load_source(name)._occam, bench_dir=self.occam_bench_dir,
+                verify_sources=False)
+
         path = self.config.splits.get(name)
         if path is None:
             return None
