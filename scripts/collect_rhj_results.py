@@ -68,7 +68,7 @@ def main(argv=None) -> int:
         rec = {**arm, "run_dir": os.path.relpath(d, REPO) if os.path.isdir(d) else None,
                "status": "MISSING", "best_metric": None, "epochs": None,
                "config_hash": None, "benchmark_sha256": None, "axis_sha256": None,
-               "error": None, "qos": None}
+               "benchmark_id": None, "error": None, "qos": None}
         led = os.path.join(d, "ledger.json")
         if os.path.isfile(led):
             with open(led) as fh:
@@ -79,9 +79,16 @@ def main(argv=None) -> int:
             metrics = st.get("metrics") or {}
             rec["best_metric"] = metrics.get("best_metric")
             rec["epochs"] = metrics.get("epochs")
+            # The ledger writes these at the STAGE top level. Reading them from `extra`
+            # returned None for every arm and the cross-check below degraded to "?" while
+            # still printing as if it had run -- which is the exact failure mode this
+            # collector exists to prevent. `extra` is kept as a fallback for older ledgers.
             extra = st.get("extra") or {}
-            rec["benchmark_sha256"] = extra.get("benchmark_sha256")
-            rec["axis_sha256"] = extra.get("gene_axis_sha256")
+            rec["benchmark_sha256"] = (st.get("benchmark_sha256")
+                                       or extra.get("benchmark_sha256"))
+            rec["axis_sha256"] = (st.get("gene_axis_sha256")
+                                  or extra.get("gene_axis_sha256"))
+            rec["benchmark_id"] = st.get("benchmark_id") or extra.get("benchmark_id")
             if st.get("status") == "failed":
                 rec["error"] = (st.get("error") or "").strip().splitlines()[-1:] or None
         sj = os.path.join(d, "slurm_job.json")
@@ -126,6 +133,13 @@ def main(argv=None) -> int:
 
     benches = {r["benchmark_sha256"] for r in done if r["benchmark_sha256"]}
     axes = {r["axis_sha256"] for r in done if r["axis_sha256"]}
+    # A cross-check that finds nothing to check has not passed; say so.
+    if done and not benches:
+        problems.append(f"{len(done)} completed arm(s) record NO benchmark_sha256, so "
+                        f"'they were trained on the same benchmark' is UNVERIFIED")
+    if done and not axes:
+        problems.append(f"{len(done)} completed arm(s) record NO gene_axis_sha256, so "
+                        f"'they share a gene axis' is UNVERIFIED")
     if len(benches) > 1:
         problems.append(f"arms trained on {len(benches)} DIFFERENT benchmarks: {benches}")
     if len(axes) > 1:

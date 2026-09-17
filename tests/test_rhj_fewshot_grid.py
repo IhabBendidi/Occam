@@ -138,3 +138,69 @@ def test_film_scale_is_not_an_axis():
     assert "film_scale" not in open(GRID).read().split("\n")[6], (
         "film_scale must not be a grid column"
     )
+
+
+def test_the_collector_reads_the_benchmark_hashes_from_where_the_ledger_writes_them():
+    """A cross-check that silently finds nothing has not passed — it has stopped running.
+
+    The ledger writes `benchmark_sha256` / `gene_axis_sha256` at the STAGE top level. The
+    collector read them from `st["extra"]`, got None for all 27 arms, and printed
+    "all completed arms share benchmark ? and axis ?" — indistinguishable from success.
+    """
+    import importlib.util
+    import json
+    import tempfile
+
+    spec = importlib.util.spec_from_file_location(
+        "collect", os.path.join(REPO, "scripts", "collect_rhj_results.py"))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    tmp = tempfile.mkdtemp(prefix="occam_collect_")
+    grid_rows = _rows()[:1]
+    arm = grid_rows[0]
+    cfg = os.path.join(tmp, "grid.tsv")
+    with open(cfg, "w") as fh:
+        fh.write("\t".join(arm.keys()) + "\n")
+        fh.write("\t".join(arm.values()) + "\n")
+
+    d = os.path.join(tmp, "runs", f"rhj_fewshot_{arm['arm_id']}__{arm['tag']}")
+    os.makedirs(d, exist_ok=True)
+    with open(os.path.join(d, "ledger.json"), "w") as fh:
+        json.dump({"stages": {"vcell": {
+            "status": "completed", "config_hash": "abc12345",
+            # top level, exactly as the orchestrator writes it
+            "benchmark_sha256": "d934211e5eb1e37e" + "0" * 48,
+            "gene_axis_sha256": "ef64f2ba7ff7816e" + "0" * 48,
+            "benchmark_id": "rhj_fewshot",
+            "metrics": {"best_metric": 0.35, "epochs": 30},
+        }}}, fh)
+
+    import contextlib
+    import io
+
+    out = os.path.join(tmp, "table.md")
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        rc = mod.main(["--grid", cfg, "--runs", os.path.join(tmp, "runs"), "--out", out])
+    printed = buf.getvalue()
+    assert rc == 0, printed
+
+    # ⭐ the hash must appear in the summary line. "share benchmark ? and axis ?" is the
+    # dead-check signature and must not come back.
+    assert "d934211e5eb1e37e" in printed, printed[-400:]
+    assert "ef64f2ba7ff7816e" in printed, printed[-400:]
+    assert "benchmark ? and axis ?" not in printed
+    assert "UNVERIFIED" not in printed
+
+    # and when the hashes are genuinely absent, the collector must SAY so rather than
+    # printing a summary that looks like a pass
+    with open(os.path.join(d, "ledger.json"), "w") as fh:
+        json.dump({"stages": {"vcell": {
+            "status": "completed", "config_hash": "abc12345",
+            "metrics": {"best_metric": 0.35, "epochs": 30},
+        }}}, fh)
+    buf2 = io.StringIO()
+    with contextlib.redirect_stdout(buf2):
+        mod.main(["--grid", cfg, "--runs", os.path.join(tmp, "runs"), "--out", out])
+    assert "UNVERIFIED" in buf2.getvalue(), buf2.getvalue()[-400:]
