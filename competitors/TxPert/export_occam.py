@@ -1,0 +1,252 @@
+"""Phase A for TxPert: predict our panel's split from the drawn half-B control cells.
+
+WHAT THIS ANSWERS
+-----------------
+Overall goal: predict a perturbation's effect in a context where that perturbation was never
+measured, from a single control cell.
+
+This script's job: run TxPert's selected checkpoint over one split of our frozen panel and
+write `(18575, 6983)` float32 in OUR evaluation space, which `scripts/eval_competitor.py` then
+scores through OUR cell-eval 0.6.0. It measures nothing itself; it is the transport.
+
+HOW IT PREDICTS, AND THE ONE DELIBERATE DEVIATION
+-------------------------------------------------
+Everything goes through TxPert's own `XcelltypePerturbDataset` + `evaluate()`, deliberately
+rather than assembling tensors by hand -- their `export_artifacts.py` docstring makes the point
+that the basal input, the dose encoding and the `p` embedding must not be allowed to drift from
+what the perturbed rows get during their own evaluation.
+
+⚠️ EXCEPT FOR THE CONTROL PAIRING, WHICH IS OURS AND MUST BE. Their
+`_get_control_data(idx)` picks a control cell by (cell_type, batch) -- randomly, or averaged
+when `avg_cntr` is set -- because their protocol conditions on a control *population*. Our
+split-half protocol conditions each predicted cell on ONE SPECIFIC drawn control cell, the same
+cell our own arms and all four baselines see (`eval_control="single"`, `ctrl_avg_k=1`,
+`rng = default_rng(42 + 1000 * split)`). `_PairedDataset` below overrides exactly that one
+method to return row `idx`'s own control, and changes nothing else.
+
+WHY THIS IS THE RIGHT CHOICE, not a convenience: the paired design is what buys the
+0.001-0.003 split-to-split std on `pearson_delta`. If TxPert were fed averaged or randomly
+drawn controls while `meanpert`, `transfer` and our own model were fed the drawn ones, the
+comparison would stop being paired and the anchors would no longer be anchors. Recorded beside
+TxPert's numbers in `docs/rhj_competitors.md`.
+
+EMISSION SPACE
+--------------
+TxPert emits gene space directly, in the space it was trained on:
+`log1p(counts / rowsum_FULL_PANEL * 10_000)`. Declared to `export_split` as
+`from_target_sum=10_000, from_log1p=True`, and `assert_same_space` REFUSES rather than warns.
+Never let cell-eval decide: `guess_is_lognorm` reads 500 UNSEEDED cells and asks only whether
+the row sums have fractional parts.
+
+    python export_occam.py --seed 42 --split 0 --out-dir <dir> \
+        --panel-dir data/benchmarks/rhj_fewshot/splithalf \
+        --bench-dir data/benchmarks/rhj_fewshot
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+from typing import Sequence
+
+import numpy as np
+
+ARM = "txpert"
+_HERE = os.path.dirname(os.path.abspath(__file__))
+_REPO = os.path.dirname(os.path.dirname(_HERE))
+for _p in (_HERE, os.path.join(_REPO, "competitors", "shared")):
+    if os.path.isdir(_p) and _p not in sys.path:
+        sys.path.insert(0, _p)
+
+
+def _resolve_checkpoint(seed: int, explicit: str) -> str:
+    """The checkpoint TxPert itself selected on VALIDATION, never the last epoch.
+
+    Its training leg writes `best_ckpt_path.txt` beside the checkpoints, chosen on
+    `val/celleval/selection_score` = mean(pearson_delta, discrimination_score_l1), mode=max.
+    Refuse rather than fall back to a glob: silently scoring the final epoch would make the
+    number incomparable to every other arm, and nothing about the output would say so.
+    """
+    if explicit:
+        if not os.path.isfile(explicit):
+            raise SystemExit(f"no checkpoint at {explicit}")
+        return explicit
+    marker = os.path.join(_REPO, "runs", "competitors", "txpert", "ckpt",
+                          f"occam_s{seed}", "best_ckpt_path.txt")
+    if not os.path.isfile(marker):
+        raise SystemExit(
+            f"no selection marker at {marker}. Either training has not finished for seed "
+            f"{seed}, or it finished without selecting a checkpoint. Refusing to guess: "
+            f"scoring the final epoch instead of the selected one would be silently "
+            f"incomparable to every other arm.")
+    path = open(marker).read().strip()
+    if not os.path.isfile(path):
+        raise SystemExit(f"{marker} points at {path}, which does not exist")
+    return path
+
+
+def _paired_dataset_class():
+    """`XcelltypePerturbDataset` with OUR control pairing. See the module docstring."""
+    from gspp.data.datamodule import XcelltypePerturbDataset
+
+    class _PairedDataset(XcelltypePerturbDataset):
+        """One predicted cell per drawn control cell, row for row.
+
+        The ONLY override is `_get_control_data`. Everything else -- the `p` embedding, the
+        dose encoding, the condition-name parsing `evaluate()` relies on -- is inherited, so
+        it cannot drift from what their own evaluation produces.
+        """
+
+        def _get_control_data(self, idx: int):
+            return self.control_data[int(idx)]
+
+    return _PairedDataset
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--seed", type=int, required=True)
+    ap.add_argument("--split", type=int, required=True)
+    ap.add_argument("--out-dir", required=True)
+    ap.add_argument("--panel-dir", required=True)
+    ap.add_argument("--bench-dir", required=True)
+    ap.add_argument("--checkpoint", default="")
+    ap.add_argument("--config-name", default="config-txpert-occam")
+    ap.add_argument("--batch-size", type=int, default=256)
+    ap.add_argument("--device", default="cuda")
+    args = ap.parse_args(argv)
+
+    import pandas as pd
+    import torch
+    from hydra import compose, initialize_config_dir
+    from torch.utils.data import DataLoader
+
+    import anndata as sc_ad
+    import gspp.constants as cs
+    from gspp.data.datamodule import collate_fn
+    from gspp.evaluation import evaluate
+    from export_predictions import TRAIN_TARGET_SUM, export_split, load_panel_split
+
+    ckpt_path = _resolve_checkpoint(args.seed, args.checkpoint)
+    print(f"[{ARM}] checkpoint {ckpt_path}")
+
+    split = load_panel_split(args.panel_dir, args.split, target_sum=TRAIN_TARGET_SUM)
+
+    # The datamodule is instantiated for its VOCABULARY and GRAPH, not for its loaders:
+    # pert2id / id2pert and the knowledge-graph embeddings must be exactly the ones the
+    # checkpoint was trained with, or `pert_idxs` index a different perturbation.
+    with initialize_config_dir(config_dir=os.path.join(_HERE, "configs"), version_base=None):
+        cfg = compose(config_name=args.config_name, overrides=[
+            f"datamodule.occam_bench_dir={args.bench_dir}",
+            f"training.seed={args.seed}",
+        ])
+
+    from omegaconf import OmegaConf
+
+    from gspp.data.datamodule import HybridDataModuleWrapper
+    from gspp.graph import GSPGraph
+    from gspp.predictor import PertPredictor
+    from gspp.utils import modify_config, set_seed
+
+    # Their own `mode=test` sequence from main.py, step for step. Reproducing it rather than
+    # writing a shorter one matters: `modify_config` resolves interpolations the checkpoint's
+    # `model_args` were built from, and `datamodule.setup("fit")` is what populates
+    # `condition_group` and the predefined splits -- main.py's comment records that skipping
+    # it raises AttributeError downstream.
+    set_seed(args.seed)
+    cfg = modify_config(cfg)
+    data_args = OmegaConf.to_container(cfg.datamodule, resolve=True)
+    added_data_args = data_args.pop("added_data_args", {})
+    dm = HybridDataModuleWrapper(base_dm_args=data_args, **added_data_args)
+    dm.prepare_data()
+    dm.setup("fit")
+
+    graph = GSPGraph(pert2id=dm.pert2id, gene2id=dm.gene2id, **cfg.graph)
+    model = PertPredictor.load_from_checkpoint(
+        ckpt_path,
+        input_dim=dm.input_dim,
+        output_dim=dm.output_dim,
+        adata_output_dim=dm.adata_output_dim,
+        num_perts=len(dm.pert2id),
+        graph=graph,
+        pert_names=list(dm.pert2id.keys()),
+        model_args=OmegaConf.to_container(cfg.model, resolve=True),
+        device=args.device,
+    ).to(args.device).eval()
+    base_dm = getattr(dm, "base_dm", dm)
+    print(f"[{ARM}] graphs {list(cfg.datamodule.get('kg_list', []))} · "
+          f"{len(dm.pert2id):,} perturbations · {dm.adata_output_dim:,} output genes")
+
+    missing = sorted({p for p in split.labels} - set(base_dm.pert2id))
+    if missing:
+        raise SystemExit(
+            f"{len(missing)} cohort perturbation(s) are absent from the checkpoint's "
+            f"vocabulary, e.g. {missing[:5]}. The frozen 611-perturbation cohort is not "
+            f"negotiable; a partial arm would be scored on a different panel.")
+
+    paired_cls = _paired_dataset_class()
+    cell_type = str(getattr(base_dm, "test_cell_type", "hepg2"))
+
+    def predict(ctrl: np.ndarray, pert_names: Sequence[str]) -> np.ndarray:
+        n = len(pert_names)
+        X = np.asarray(ctrl, dtype=np.float32)
+        obs = pd.DataFrame({
+            cs.GENE_NAME: [str(p) for p in pert_names],
+            cs.IS_CONTROL: np.zeros(n, dtype=bool),
+            cs.CELL_TYPE: np.full(n, cell_type),
+            cs.BATCH_RAW: np.full(n, "occam_panel"),
+            # `evaluate` parses this as "{cell_type}_{pert}+ctrl_{dose}" by splitting on "_",
+            # taking [1] for the perturbation and [-1] for the dose. Build it the same way.
+            "condition_name": [f"{cell_type}_{p}+ctrl_1+1" for p in pert_names],
+        }, index=[str(i) for i in range(n)])
+        ad = sc_ad.AnnData(X=X, obs=obs,
+                           var=pd.DataFrame(index=[str(g) for g in split.gene_names])
+                           if hasattr(split, "gene_names") else None)
+        conditions = pd.Series([[base_dm.pert2id[str(p)]] for p in pert_names],
+                               index=obs.index)
+
+        ds = paired_cls(
+            ad, ad, conditions, obs["condition_name"], args.device,
+            train_cond_names=None,          # do NOT re-inject controls as extra rows
+            match_cntr=False, avg_cntr=False,   # ⚠️ ours: one drawn control per row
+            smiles2vec=None, unique_doses=getattr(base_dm, "unique_doses", None),
+            obsm_key=cs.ObsmKey.RAW,
+        )
+        loader = DataLoader(ds, batch_size=args.batch_size, shuffle=False,
+                            collate_fn=collate_fn)
+        with torch.no_grad():
+            res = evaluate(loader, model, args.device, ad, base_dm.id2pert)
+
+        out = np.asarray(res[cs.RES_PRED], dtype=np.float32)
+        got = [str(p).replace("+ctrl", "") for p in res[cs.RES_PERT_CAT]]
+        want = [str(p) for p in pert_names]
+        if got != want:
+            first = next((i for i, (a, b) in enumerate(zip(got, want)) if a != b), 0)
+            raise RuntimeError(
+                f"evaluate() returned rows in a different order than they were given "
+                f"(first mismatch at {first}: {got[first]!r} vs {want[first]!r}). A "
+                f"positional prediction matrix would then be silently wrong.")
+        if out.shape != (n, X.shape[1]):
+            raise RuntimeError(f"prediction is {out.shape}, expected {(n, X.shape[1])}")
+        return out
+
+    export_split(predict, split, args.out_dir, arm=ARM,
+                 from_target_sum=TRAIN_TARGET_SUM, from_log1p=True,
+                 batch_size=max(args.batch_size, 512),
+                 extra_manifest={
+                     "checkpoint": ckpt_path,
+                     "seed": args.seed,
+                     "config_name": args.config_name,
+                     "kg_list": list(cfg.datamodule.get("kg_list", [])),
+                     "control_pairing": "one drawn half-B control cell per predicted row "
+                                        "(match_cntr=False, avg_cntr=False); OUR protocol, "
+                                        "not their population convention",
+                 })
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

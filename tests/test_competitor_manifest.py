@@ -217,3 +217,61 @@ def test_every_competitor_launcher_names_its_arm_and_its_anchors():
         assert "WHAT EACH OUTCOME MEANS" in head, f"{f}: outcomes are not pre-registered"
         for anchor in ("0.2323", "0.1324", "0.3722"):
             assert anchor in head, f"{f}: missing the {anchor} anchor"
+
+
+@pytest.mark.skipif(not os.path.isdir(COMPET), reason="competitors not copied yet")
+def test_every_adapted_file_is_protected_from_being_re_copied():
+    """⛔ The bug this test exists for reverted the ENTIRE port in one command, silently.
+
+    `scripts/copy_competitor_code.py` copies an allowlist of upstream paths. Nine of those
+    paths are files we deliberately ADAPTED so each arm reads our data. Re-running the script
+    overwrote all nine with the pristine upstream versions -- and
+    `test_every_recorded_file_still_exists_and_only_the_adapted_ones_differ` then PASSED,
+    because every file matched its upstream sha256 again. MEASURED 2026-09-17.
+
+    The sha256 test structurally cannot catch this: a reverted file is indistinguishable from
+    a file that was never adapted. Only the PROTECTED list can, so it is checked here against
+    the ADAPTED list above -- the two must not drift apart.
+    """
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "copy_competitor_code",
+        os.path.join(REPO, "scripts", "copy_competitor_code.py"))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    protected = {arm: set(paths) for arm, paths in mod.PROTECTED.items()}
+    allow = {arm: list(paths) for arm, paths in mod.ALLOWLIST.items()}
+
+    # Every adapted file that the allowlist would re-copy must be protected.
+    unguarded = []
+    for arm, paths in protected.items():
+        for rel in paths:
+            f = os.path.join(COMPET, arm, rel)
+            if not os.path.isfile(f):
+                unguarded.append(f"{arm}/{rel}: protected but absent")
+    assert not unguarded, unguarded
+
+    # And every file we call adapted, which lives under an allowlisted tree, must be in
+    # PROTECTED -- otherwise the next copy silently reverts it.
+    missing_guard = []
+    for arm in ARMS:
+        arm_dir = os.path.join(COMPET, arm)
+        if not os.path.isdir(arm_dir):
+            continue
+        for dirpath, dirnames, filenames in os.walk(arm_dir):
+            dirnames[:] = [d for d in dirnames if d not in {".venv", "__pycache__", ".git"}]
+            for fn in filenames:
+                rel = os.path.relpath(os.path.join(dirpath, fn), arm_dir).replace(os.sep, "/")
+                if not any(rel.endswith(a) for a in ADAPTED):
+                    continue
+                # A NEW file (occam_source.py, occam_bridge.py, export_occam.py, ...) is not
+                # in any allowlisted upstream tree, so a copy cannot touch it. Only files
+                # that EXIST upstream need guarding.
+                upstream = os.path.join(mod.UPSTREAM, arm, rel)
+                if os.path.isfile(upstream) and rel not in protected.get(arm, set()):
+                    missing_guard.append(f"{arm}/{rel}")
+    assert not missing_guard, (
+        f"adapted file(s) that a re-copy would silently REVERT: {missing_guard}. "
+        f"Add them to PROTECTED in scripts/copy_competitor_code.py.")

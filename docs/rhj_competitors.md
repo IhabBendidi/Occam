@@ -487,9 +487,108 @@ larger than the other three arms because of its cache/store abstraction.**
   **raises** if HepG2's validation or test split comes out empty, because an arm with no
   validation split silently keeps its final weights instead of selecting a checkpoint.
 
+### Measured on the FULL benchmark, 2026-09-17
+
+| | value |
+|---|---|
+| datasets | `['HEPG2', 'jurkat', 'RPE1']` |
+| vocabularies | 2,395 perturbations · 3 cell types · 167 batches |
+| train | HepG2 **96,276** · jurkat **250,943** · RPE1 **236,429** |
+| validation | HepG2 **6,731** · jurkat 0 · RPE1 0 |
+| test | HepG2 **37,490** · jurkat 0 · RPE1 0 |
+| gene panel | 6,983, `['ENSG00000000419', ...]`, symbols `['DPM1', 'GCLC', 'NIPAL3']` |
+| one retrieved row | `(1, 6983)`, max 5.57 |
+
+⭐ **`validation` is 6,731 here and 6,731 in CellFlow (C8) — two independently written readers
+agreeing on the same split, to the cell.** That is the cross-check that makes both credible.
+
+ⓘ The train counts are PERTURBED cells only: `split_out_control` moves the controls into the
+basal pool and mutates `*_num_cell` in place, which is their design and applies to the zarr
+path identically. HepG2 96,276 + its 4,976 controls = 101,252, which is exactly CellFlow's
+HepG2 finetune count.
+
 One matrix per cell line lives in a process-global cache and is **never pickled**, the same
 discipline `zarr_store.py` documents: three `H5adSentenceDataset`s are built over the same
 files, and HepG2 alone is 145,473 × 6,983 float32 ≈ 4.1 GB.
+
+## C10 — ⛔ RE-COPYING SILENTLY REVERTED THE ENTIRE PORT, and the tests passed
+
+**Finding: `scripts/copy_competitor_code.py` overwrote all NINE adapted files with the
+pristine upstream versions in one command, and `tests/test_competitor_manifest.py` then
+PASSED.** Caught by reading `grep -c occam` on the four wired files, not by a test.
+
+MEASURED 2026-09-17. The mechanism is simple and was entirely predictable in hindsight: the
+allowlist copies upstream *trees* (`gspp`, `src`, `train_cellflow.py`, ...), and nine of the
+files inside them are files we deliberately adapted. A plain re-run to refresh the manifest
+copied over every one.
+
+**Why the sha256 test could not catch it.** That test asserts "every recorded file matches its
+upstream sha256, EXCEPT the ones in `ADAPTED`". After the revert, the adapted files matched
+upstream again — which is indistinguishable from a file that was never adapted. A reverted
+port and a clean port look identical to a hash comparison.
+
+**The fix, in three parts:**
+
+1. **`PROTECTED` in `scripts/copy_competitor_code.py`** — the nine paths, per arm. They are
+   skipped, and recorded in `MANIFEST.json` with `"adapted": true` and `"sha256": null`, so the
+   manifest never claims they match upstream when they deliberately do not.
+2. **The skip is printed**, `🔒 N adapted file(s) PRESERVED`, so a re-copy says what it did.
+3. **`test_every_adapted_file_is_protected_from_being_re_copied`** — walks the copied tree,
+   finds every file whose name is in `ADAPTED`, and asserts that any of them which *also exist
+   upstream* are in `PROTECTED`. New files (`occam_source.py`, `occam_bridge.py`,
+   `hooke_bridge/occam.py`, `export_occam.py`) need no guard: no allowlisted upstream tree
+   contains them, so a copy cannot touch them.
+
+Restored from `git checkout --`, which is the only reason this cost minutes rather than the
+whole port. **All nine wirings verified present after a second re-copy.**
+
+## C11 — the four Phase-A adapters, and the one deviation all four share
+
+**Finding: every arm conditions on ONE drawn control cell per predicted row, which is OUR
+protocol and differs from all four of their own conventions.**
+
+| arm | their control convention | what the adapter does |
+|---|---|---|
+| **TxPert** | `match_cntr`/`avg_cntr`: a control drawn from, or averaged over, the cell's (cell_type, batch) pool | `_PairedDataset` overrides `_get_control_data` ONLY, returning row `idx`'s own control |
+| **STATE** | a control drawn from the (cell_type, batch) pool | batch dict built to `collate_fn`'s contract with `ctrl_cell_emb` = the drawn cells |
+| **CellFlow** | `predict` over a control *population* per condition | rows GROUPED BY perturbation, each predicted from its own drawn control cell |
+| **PerturbDiff** | `mapping_cells`: a control drawn at RANDOM from the (cell_type, batch) group | `self_condition["cont_emb"]` = the drawn cells |
+
+**Why this is the right choice, not a convenience.** The paired split-half design is what buys
+the **0.001–0.003** split-to-split std on `pearson_delta`. If a competitor were fed averaged or
+randomly drawn controls while `ctrlcell`, `ctrlmean`, `meanpert`, `transfer` and our own model
+were all fed the panel's drawn ones, the comparison would stop being paired and the anchors
+would stop being anchors.
+
+### Emission spaces, declared per arm
+
+| arm | head | declared to `export_split` |
+|---|---|---|
+| TxPert | gene space | `from_target_sum=10_000, from_log1p=True` |
+| STATE | `output_space: gene` | `from_target_sum=10_000, from_log1p=True` |
+| CellFlow | 256-component PCA decode, `clip_min=0.0` | `from_target_sum=10_000, from_log1p=True` |
+| PerturbDiff | gene space through `output_fn: relu` | `from_target_sum=10_000, from_log1p=True` |
+
+⚠️ A relu head is **not** a guarantee of log1p shape, which is why every declaration is
+explicit and checked by `assert_same_space` rather than inferred. And ⚠️ **CellFlow's
+`clip_max` is left unset on purpose**: their own scorer clips to `[0, 14]`, ours does not, and
+clipping only the competitor would be an unrecorded asymmetry.
+
+### Checkpoint resolution refuses rather than guesses
+
+Each adapter resolves the checkpoint the arm selected **on validation** — TxPert's
+`best_ckpt_path.txt`, STATE's `best_celleval.ckpt`, PerturbDiff's single `save_top_k=1` file,
+CellFlow's `run_meta.json` selection block — and **exits** if it is absent rather than falling
+back to the final epoch, which would be silently incomparable to every other arm. PerturbDiff's
+also refuses if it finds MORE than one checkpoint, because `save_top_k=1` only prunes files it
+tracked itself and a smoke checkpoint once sat beside a real one.
+
+### ⚠️ ALL FOUR ARE UNEXERCISED
+
+No competitor has trained yet, so no checkpoint exists and not one of these adapters has run.
+The plan's own rule applies and is not optional: **one arm, one seed, one split end to end
+before any 4×5 sweep.** The last two 135-task launches in this campaign died on code that had
+never executed once on the real path.
 
 ## Status
 
@@ -503,7 +602,8 @@ files, and HepG2 alone is 145,473 × 6,983 float32 ≈ 4.1 GB.
 | 4a — TxPert reads our data (GO + STRING only) | ✅ verified on real data, `12,000 x 6,983` csr |
 | 4b — STATE reads our data | ✅ C6 above, smoke-tested end to end |
 | 4c — CellFlow reads our data | ✅ C8 above, smoke-tested on the FULL benchmark |
-| 4d — PerturbDiff reads our data | ✅ C9 above, written; smoke test next |
+| 4d — PerturbDiff reads our data | ✅ C9 above, smoke-tested on the FULL benchmark; validation count matches CellFlow's exactly |
+| 5b — the four Phase-A adapters | ✅ written (C11); ⚠️ **UNEXERCISED** — no checkpoint exists yet |
 | 5 — the prediction bridge | ✅ Phase A + Phase B written, control draw verified identical to `predict_panel`; **gate PASSED** (C7) |
 | 6 — launchers, collector | ✅ C5 above; `scripts/collect_competitors.py` writes `docs/rhj_competitors_results.md` |
 | 7 — tests | ✅ `test_competitor_bridge.py` (10) + `test_competitor_manifest.py` (7) |

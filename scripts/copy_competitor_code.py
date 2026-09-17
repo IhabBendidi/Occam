@@ -100,6 +100,34 @@ DENY_FILE_GLOBS = (
 # A copied tree that exceeds this is a sign the denylist missed something.
 MAX_ARM_BYTES = 40 * 1024 * 1024
 
+# ⛔ NEVER OVERWRITE THESE. They are upstream files we deliberately ADAPTED so each arm reads
+# our data; re-copying them silently reverts the whole port to the pristine upstream version.
+#
+# MEASURED 2026-09-17: a plain `python scripts/copy_competitor_code.py` reverted all NINE
+# wirings in one command, and `tests/test_competitor_manifest.py` then PASSED -- because every
+# file matched its upstream sha256 again. The test cannot catch this; only this list can.
+#
+# Paths are relative to the arm directory. Add a path here the moment it is adapted.
+PROTECTED = {
+    "TxPert": (
+        "gspp/data/datamodule.py",
+    ),
+    "STATE": (
+        "state/src/state/tx/data/zarr_perturbation.py",
+    ),
+    "CellFlow": (
+        "train_cellflow.py",
+    ),
+    "PerturbDiff": (
+        "src/data/metadata_cache.py",
+        "src/data/dataset/dataset_core.py",
+        "src/data/data_module/data_module.py",
+        "src/data/data_module/data_module_setup.py",
+        "src/data/data_module/__init__.py",
+        "src/apps/training/training_datamodule_builder.py",
+    ),
+}
+
 
 def _denied_dir(name: str) -> bool:
     return name in DENY_DIRS or any(fnmatch.fnmatch(name, g) for g in DENY_DIR_GLOBS)
@@ -170,6 +198,7 @@ def main(argv=None) -> int:
         entries: Dict[str, Dict[str, object]] = {}
         n_files = n_bytes = 0
         missing: List[str] = []
+        protected: List[str] = []
 
         for rel in ALLOWLIST[arm]:
             src = os.path.join(src_root, rel)
@@ -180,6 +209,18 @@ def main(argv=None) -> int:
                 rel_out = rel if os.path.isfile(src) else os.path.join(rel, sub)
                 dst = os.path.join(dst_root, rel_out)
                 size = os.path.getsize(ap)
+                if rel_out in PROTECTED.get(arm, ()):
+                    # Adapted on purpose. Skipped, and recorded as skipped, so the manifest
+                    # does not claim it matches upstream when it deliberately does not.
+                    protected.append(rel_out)
+                    entries[rel_out] = {
+                        "sha256": None,
+                        "bytes": os.path.getsize(dst) if os.path.isfile(dst) else size,
+                        "upstream": os.path.relpath(ap, args.upstream),
+                        "adapted": True,
+                        "note": "adapted for the occam port; NOT overwritten by this script",
+                    }
+                    continue
                 if not args.dry_run:
                     os.makedirs(os.path.dirname(dst), exist_ok=True)
                     shutil.copy2(ap, dst)
@@ -198,6 +239,9 @@ def main(argv=None) -> int:
         if missing:
             print(f"       ⚠️ {len(missing)} allowlist path(s) absent upstream: "
                   f"{missing[:4]}")
+        if protected:
+            print(f"       🔒 {len(protected)} adapted file(s) PRESERVED, not overwritten: "
+                  f"{protected}")
         if n_bytes > MAX_ARM_BYTES:
             raise SystemExit(
                 f"{arm} would copy {n_bytes / 1e6:.1f} MB, over the {MAX_ARM_BYTES / 1e6:.0f} "
@@ -211,6 +255,7 @@ def main(argv=None) -> int:
             "bytes": n_bytes,
             "allowlist": ALLOWLIST[arm],
             "missing_upstream": missing,
+            "protected_adapted": protected,
             "files": entries,
         }
         grand_files += n_files

@@ -18,7 +18,7 @@
         "cellflow/LICENSE",
         "cellflow/uv.lock"
       ],
-      "bytes": 1426437,
+      "bytes": 1401131,
       "copied": "2026-09-17",
       "files": {
         ".python-version": {
@@ -352,8 +352,10 @@
           "upstream": "CellFlow/tests/test_hooke_bridge.py"
         },
         "train_cellflow.py": {
-          "bytes": 25306,
-          "sha256": "e65c96bdfa083c8a8128edaaa32874350b707adafefc3d4f9bf404c05cd23855",
+          "adapted": true,
+          "bytes": 28153,
+          "note": "adapted for the occam port; NOT overwritten by this script",
+          "sha256": null,
           "upstream": "CellFlow/train_cellflow.py"
         },
         "train_replogle_nadig_fewshot.sh": {
@@ -363,7 +365,10 @@
         }
       },
       "missing_upstream": [],
-      "n_files": 68,
+      "n_files": 67,
+      "protected_adapted": [
+        "train_cellflow.py"
+      ],
       "upstream_commit": "18e159145bdd7c59aa3db673603eab39e53dc263",
       "upstream_dir": "CellFlow"
     },
@@ -379,7 +384,7 @@
         "ZARR_BENCHMARK.md",
         "CLAUDE.md"
       ],
-      "bytes": 2830363,
+      "bytes": 2762735,
       "copied": "2026-09-17",
       "files": {
         ".python-version": {
@@ -663,8 +668,10 @@
           "upstream": "PerturbDiff/src/apps/training/__init__.py"
         },
         "src/apps/training/training_datamodule_builder.py": {
-          "bytes": 2583,
-          "sha256": "027591135b0d7ca8f1e57087fa46181f56f1a278c88484d0b8bc9ad279fe98cb",
+          "adapted": true,
+          "bytes": 3085,
+          "note": "adapted for the occam port; NOT overwritten by this script",
+          "sha256": null,
           "upstream": "PerturbDiff/src/apps/training/training_datamodule_builder.py"
         },
         "src/apps/training/training_model_builder.py": {
@@ -743,18 +750,24 @@
           "upstream": "PerturbDiff/src/data/data_module/ZARR_BENCHMARK.md"
         },
         "src/data/data_module/__init__.py": {
-          "bytes": 493,
-          "sha256": "5662b8e15d173ddc4675e1dcb92813e2b0f44ed9c211cb08b4aed539c7b3e12b",
+          "adapted": true,
+          "bytes": 561,
+          "note": "adapted for the occam port; NOT overwritten by this script",
+          "sha256": null,
           "upstream": "PerturbDiff/src/data/data_module/__init__.py"
         },
         "src/data/data_module/data_module.py": {
-          "bytes": 12511,
-          "sha256": "11f4118277de323dbd6338e8e0df977112febb18f8174d9df419d436a514a97e",
+          "adapted": true,
+          "bytes": 13902,
+          "note": "adapted for the occam port; NOT overwritten by this script",
+          "sha256": null,
           "upstream": "PerturbDiff/src/data/data_module/data_module.py"
         },
         "src/data/data_module/data_module_setup.py": {
-          "bytes": 30496,
-          "sha256": "4fe7839fff76cc9ed59bb7477ef7210902892c449aa85c5a95216ec17566d606",
+          "adapted": true,
+          "bytes": 37102,
+          "note": "adapted for the occam port; NOT overwritten by this script",
+          "sha256": null,
           "upstream": "PerturbDiff/src/data/data_module/data_module_setup.py"
         },
         "src/data/dataset/ZARR_BENCHMARK.md": {
@@ -768,8 +781,10 @@
           "upstream": "PerturbDiff/src/data/dataset/__init__.py"
         },
         "src/data/dataset/dataset_core.py": {
-          "bytes": 15275,
-          "sha256": "319a94737d5d0a9a1ed07073c48cacd036390e5bddefb24f389109fb8a6c66fb",
+          "adapted": true,
+          "bytes": 16538,
+          "note": "adapted for the occam port; NOT overwritten by this script",
+          "sha256": null,
           "upstream": "PerturbDiff/src/data/dataset/dataset_core.py"
         },
         "src/data/dataset/dataset_grouping.py": {
@@ -793,8 +808,10 @@
           "upstream": "PerturbDiff/src/data/file_handle.py"
         },
         "src/data/metadata_cache.py": {
-          "bytes": 6270,
-          "sha256": "9c5a6ac14d6631856823c614d7fe84d30a78d755028da4509ddc772c9c9f068d",
+          "adapted": true,
+          "bytes": 7490,
+          "note": "adapted for the occam port; NOT overwritten by this script",
+          "sha256": null,
           "upstream": "PerturbDiff/src/data/metadata_cache.py"
         },
         "src/data/sampler.py": {
@@ -939,7 +956,15 @@
         }
       },
       "missing_upstream": [],
-      "n_files": 111,
+      "n_files": 105,
+      "protected_adapted": [
+        "src/apps/training/training_datamodule_builder.py",
+        "src/data/metadata_cache.py",
+        "src/data/data_module/__init__.py",
+        "src/data/data_module/data_module.py",
+        "src/data/data_module/data_module_setup.py",
+        "src/data/dataset/dataset_core.py"
+      ],
       "upstream_commit": "18e159145bdd7c59aa3db673603eab39e53dc263",
       "upstream_dir": "PerturbDiff"
     },
@@ -958,7 +983,7 @@
         "hepg2_noval_fixedbatch.toml",
         "state/ihabxcell_hepg2_fewshot_zarr.toml"
       ],
-      "bytes": 1170472,
+      "bytes": 1125219,
       "copied": "2026-09-17",
       "files": {
         "hepg2.toml": {
@@ -1372,8 +1397,10 @@
           "upstream": "STATE/state/src/state/tx/data/dataset/scgpt_perturbation_dataset.py"
         },
         "state/src/state/tx/data/zarr_perturbation.py": {
-          "bytes": 45253,
-          "sha256": "2df980786e0fa28a62abd42a3500dbebac9002926278a72c7a22d60e4282636b",
+          "adapted": true,
+          "bytes": 50575,
+          "note": "adapted for the occam port; NOT overwritten by this script",
+          "sha256": null,
           "upstream": "STATE/state/src/state/tx/data/zarr_perturbation.py"
         },
         "state/src/state/tx/eval/__init__.py": {
@@ -1583,7 +1610,10 @@
         }
       },
       "missing_upstream": [],
-      "n_files": 124,
+      "n_files": 123,
+      "protected_adapted": [
+        "state/src/state/tx/data/zarr_perturbation.py"
+      ],
       "upstream_commit": "18e159145bdd7c59aa3db673603eab39e53dc263",
       "upstream_dir": "STATE"
     },
@@ -1601,7 +1631,7 @@
         "README_HOOKE_TX.md",
         "CLAUDE.md"
       ],
-      "bytes": 955710,
+      "bytes": 889829,
       "copied": "2026-09-17",
       "files": {
         ".python-version": {
@@ -1685,8 +1715,10 @@
           "upstream": "TxPert/gspp/data/data_utils.py"
         },
         "gspp/data/datamodule.py": {
-          "bytes": 65881,
-          "sha256": "753285bc1d2ec39de80ee492b84ebb05563483907bbd2ec6e83dd7fdb5ea8a1d",
+          "adapted": true,
+          "bytes": 69172,
+          "note": "adapted for the occam port; NOT overwritten by this script",
+          "sha256": null,
           "upstream": "TxPert/gspp/data/datamodule.py"
         },
         "gspp/data/datamodule_hybrid.py": {
@@ -1816,7 +1848,10 @@
         }
       },
       "missing_upstream": [],
-      "n_files": 42,
+      "n_files": 41,
+      "protected_adapted": [
+        "gspp/data/datamodule.py"
+      ],
       "upstream_commit": "18e159145bdd7c59aa3db673603eab39e53dc263",
       "upstream_dir": "TxPert"
     }
