@@ -198,6 +198,70 @@ perturbation sets, different metric, different scale.
 
 ---
 
+## ⛔⛔ F11 — the first model arm scores AT THE FLOOR. val 0.337 → cell-eval 0.002
+
+**Status: n = 1 (arm `a00`, split 0). The remaining 134 tasks are running.** Flagged
+immediately because if it holds across arms it is the finding of the whole campaign.
+
+Arm `a00` (`film_mode=full`, `fh0`, `fmf0`, `smooth_l1`), `best_model.pth`, epoch 29,
+**validation `pearson_delta` 0.3368**. Scored by cell-eval on split 0 as `model_cal`:
+
+| metric | `model_cal` | `ctrlcell` *(the zero-signal floor)* | `transfer` *(the bar)* | `experimental` |
+|---|---|---|---|---|
+| `pearson_delta` | **0.0020** | −0.0018 | 0.2332 | 0.3722 |
+| `overlap_at_N` | **0.0** | 0.0 | 0.0351 | 0.1942 |
+| `discrimination_score_l2` | **0.5063** | 0.5046 | 0.7023 | 0.8398 |
+| `de_direction_match` | **0.4839** | 0.4832 | 0.6891 | 0.7563 |
+| `de_nsig_counts_pred` | **0.0** | 0.0 | 238.9 | 118.7 |
+| `mae_delta` ↓ | **0.0297** | 0.0296 | 0.0299 | 0.0258 |
+
+**The model is indistinguishable from `ctrlcell` on every one of the six metrics.** Chance
+is 0.5 for discrimination and direction match, and it sits at 0.506 / 0.484. It calls
+**zero** genes differentially expressed, exactly like the arm whose prediction *is* the
+control cell.
+
+### What that most likely means
+
+`mae_delta` 0.0297 against `ctrlcell`'s 0.0296, and `de_nsig_counts_pred` 0.0 against 0.0,
+say the emitted profile is **almost exactly the control cell it was fed**. The model appears
+to have learned close to the identity — it reproduces its input and adds no
+perturbation-specific delta that survives to the scored axis.
+
+Quantile calibration cannot rescue that and does not: it maps the prediction's per-gene
+marginals onto the controls' marginals, which is a no-op for an output already at the
+control distribution.
+
+### Why validation said 0.337 and the benchmark says 0.002
+
+The two are not the same estimand, and the difference is structural rather than a bug:
+
+1. **The validation metric shares one control pseudobulk between the real and the predicted
+   side** (it falls back to group-mean with `stream_v2`, F7 / `metric_granularity`). Control
+   noise therefore *cancels* in both deltas, and any systematic control-relative offset the
+   model does reproduce counts as signal. The benchmark deliberately breaks that: half-A
+   controls on the real side, half-B on the predicted side, so nothing cancels.
+2. **Validation is 103 perturbations, group means. The benchmark is 611, single cells**, with
+   `m ≈ 22` per half.
+3. **Validation was read at the peak of a ±0.20 oscillation** (F7), so 0.3368 is the high
+   end of a swing, not a converged value.
+
+This project documented the risk in advance — selection and benchmark metrics ranking models
+*oppositely* — and this is that risk realised at full strength. **`best_metric` is not a
+proxy for this benchmark and must not be used to choose between arms.**
+
+### What would change this reading
+
+* **134 more tasks.** If every arm sits at the floor, the conclusion is about the approach.
+  If some arms separate, then `best_metric` is merely a *bad* proxy rather than an
+  anti-correlated one.
+* The adjacency-map sweep is a different architecture and a different optimisation regime;
+  F11 says nothing about it yet.
+* ⚠️ It does **not** implicate the benchmark. The five baselines span 0.000 → 0.372 with
+  split-to-split std 0.001–0.002 (F9), so the instrument resolves signal perfectly well
+  when signal is present.
+
+---
+
 ## ⭐ F9 — the reference ladder, measured by cell-eval on 4 of 5 splits
 
 **Status: 4 of 5 splits, all five reference arms** (split 4 rerunning after an OOM; split
