@@ -1,0 +1,37 @@
+{
+  "schema": 1,
+  "purpose": "Competitor models benchmarked on rhj_fewshot. Code and configs only -- they read OUR data in place via competitors/shared/occam_data.py; no competitor dataset is copied.",
+  "upstream_root": "/mnt/ps/home/CORP/ihab.bendidi/sandbox/bc-hooke/src/hooke-tx/competitors",
+  "benchmark": {
+    "id": "rhj_fewshot",
+    "benchmark_sha256": "d934211e5eb1e37e28c893fb8c5ff4211d607a1d77b0103d5c2b79221d21677f",
+    "gene_axis_sha256": "ef64f2ba7ff7816ed947796066cd8a68014884c6176619d750ef79462c78d4c0",
+    "n_axis_genes": 6983,
+    "cohort_sha256": "86c91f938024b2a25e2aeeece0532a36be16fe83ec9f2e41881d4a523a7b534a",
+    "n_cohort_perts": 611
+  },
+  "spaces": {
+    "train_target_sum": 10000.0,
+    "train_log1p": true,
+    "train_rationale": "their pipelines assume pre-normalised input and all pass target_sum=null, log1p=false; the hooke-tx data arrived already log1p(1e4). Our h5ads are raw counts.",
+    "eval_target_sum": 2000.0,
+    "eval_log1p": true,
+    "normalised_on": "FULL source gene panel row sum, taken BEFORE the 6,983-gene axis restriction",
+    "axis_umi_share_median": 0.866,
+    "map_to_eval": "log1p(expm1(x) * 0.2); bit-exact in float32 because the per-cell denominator cancels"
+  },
+  "scoring": {
+    "path": "ours -- occam.vcell.panel.protocol.run_split, NOT their scorer",
+    "cell_eval": "0.6.0",
+    "pdex": "0.1.24",
+    "flags": ["--profile full", "--allow-discrete", "--batch-size 2000", "--num-threads 16"],
+    "controls": "injctrl only (pred_ctrl = the half-B controls); reconctrl is not ported",
+    "calibration": "uncalibrated (model_nocal) is the like-for-like column",
+    "their_cell_eval_not_used": "0.7.2 / pdex 0.2.2-0.3.0, with a [0,14] clip and pearson_edistance + clustering_agreement skipped"
+  },
+  "arms": {},
+  "deviations_from_their_official_setup": [
+    "TxPert uses GO + STRING only (decision 2026-09-17), matching our graph_types: [go, string]. Their official recipe uses kg_list: [go, string, pxmap, txmap]; their 0.50787 was measured with four KGs."
+  ],
+  "note": "Per-arm entries with copied-file sha256s are added by the copy step."
+}
