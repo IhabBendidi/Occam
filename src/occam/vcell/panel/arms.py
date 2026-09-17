@@ -33,12 +33,13 @@ __all__ = ["Arm", "build_arms", "ANCHOR_TAGS", "REFERENCE_TAGS", "split_arms",
 # Arms that carry no biology by construction.
 ANCHOR_TAGS = ("ctrlmean", "ctrlcell")
 
-# Arms that are neither a zero-signal anchor nor a model prediction: the replicate reference
-# and the mean-training-delta baseline. They are supplied by the caller (they are not
-# derivable from `pred`), and they may NEVER be named like an anchor -- otherwise the anchor
+# Arms that are neither a zero-signal anchor nor a model prediction: the replicate
+# reference, the mean-training-delta baseline, and the cross-cell-line transfer baseline.
+# They are supplied by the caller (they are not derivable from `pred`), and they may NEVER
+# be named like an anchor -- otherwise the anchor
 # requirement below could be satisfied by a signal-carrying arm, which is exactly the
 # weakening this file exists to prevent.
-REFERENCE_TAGS = ("experimental", "meanpert")
+REFERENCE_TAGS = ("experimental", "meanpert", "transfer")
 
 Arm = Tuple[str, np.ndarray, np.ndarray]
 
@@ -164,7 +165,12 @@ def build_arms(
         for alpha in shrinks:
             arms.append((_tag("model_cal", alpha), shrink(calibrated, alpha), labels))
 
-    # ---- the mean-training-delta baseline, last -----------------------------
+    # ---- the non-learned delta baselines, last ------------------------------
+    # `transfer` before `meanpert`: it is the one that beat every model arm on the
+    # validation side (docs/rhj_fewshot.md F5), so a run truncated at the wall clock should
+    # have it.
+    if "transfer" in extra:
+        arms.append(("transfer", np.asarray(extra["transfer"], np.float32), labels))
     if "meanpert" in extra:
         arms.append(("meanpert", np.asarray(extra["meanpert"], np.float32), labels))
 

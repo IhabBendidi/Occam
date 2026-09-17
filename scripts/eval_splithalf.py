@@ -64,7 +64,7 @@ PANEL_DIR = os.path.join(REPO, "data", "benchmarks", "rhj_fewshot", "splithalf")
 
 
 def load_frozen(panel_dir: str, split_index: int, encoder_gene_names=None):
-    """(base Panel, labels, HalfSplit, cohort, grand_mean, manifest) from the artifact.
+    """(base Panel, labels, HalfSplit, cohort, grand_mean, manifest, transfer) from disk.
 
     `encoder_gene_names` is the checkpoint's 44,728-entry Ensembl vocabulary. The panel is
     stored on the 6,983-gene axis, but the model's encoder takes the full vector, so
@@ -125,7 +125,13 @@ def load_frozen(panel_dir: str, split_index: int, encoder_gene_names=None):
 
     gm_path = os.path.join(panel_dir, "train_grand_mean.npy")
     grand = np.load(gm_path) if os.path.isfile(gm_path) else None
-    return base, labels, split, cohort, grand, man
+
+    td_path = os.path.join(panel_dir, "transfer_deltas.npz")
+    transfer = None
+    if os.path.isfile(td_path):
+        tz = np.load(td_path, allow_pickle=True)
+        transfer = {str(p): tz["deltas"][i] for i, p in enumerate(tz["perts"])}
+    return base, labels, split, cohort, grand, man, transfer
 
 
 def load_model(ckpt_path: str, device: str, output_activation=None):
@@ -217,6 +223,18 @@ def main() -> int:
                          "very little. 'quantile' gives the protocol's 5 arms; 'both' "
                          "adds an uncalibrated 6th and a 6th cell-eval run.")
     ap.add_argument("--batch-size", type=int, default=512)
+    ap.add_argument("--mode", default="all", choices=["all", "reference", "model"],
+                    help="`reference` scores only the 5 MODEL-INDEPENDENT arms (the two "
+                         "anchors, experimental, transfer, meanpert) and needs NO "
+                         "checkpoint -- they are identical for every checkpoint, so "
+                         "scoring them once per split instead of once per checkpoint turns "
+                         "27x5x6 = 810 cell-eval runs into 25 + 135. `model` scores only "
+                         "the model arm and reuses the shared real-side DE cache.")
+    ap.add_argument("--de-real-cache-dir", default="",
+                    help="shared across splits AND checkpoints. The real-side DE depends "
+                         "only on the split's target file, so one cache serves every run; "
+                         "it is keyed on that file's own sha256, so a rebuilt panel misses "
+                         "by construction rather than being scored against a stale truth.")
     ap.add_argument("--probe-arms", default="ctrlcell,ctrlmean",
                     help="two arms, so the shared real-side DE cost is separable")
     ap.add_argument("--num-threads", type=int, default=16)
@@ -225,11 +243,19 @@ def main() -> int:
     ap.add_argument("--seed", type=int, default=42)
     args = ap.parse_args()
 
-    if args.probe == bool(args.checkpoint):
-        raise SystemExit("pass either --probe or --checkpoint, not both and not neither")
+    needs_ckpt = args.mode in ("all", "model") and not args.probe
+    if args.probe and args.checkpoint:
+        raise SystemExit("pass either --probe or --checkpoint, not both")
+    if needs_ckpt and not args.checkpoint:
+        raise SystemExit(f"--mode {args.mode} needs --checkpoint (only --mode reference "
+                         f"and --probe run without one)")
+    if args.mode == "reference" and args.checkpoint:
+        raise SystemExit("--mode reference scores only the model-INDEPENDENT arms; passing "
+                         "a checkpoint would imply otherwise. Use --mode model or all.")
 
     out_root = args.out_root or os.path.join(
-        REPO, "runs", "rhj_splithalf", "probe" if args.probe else "eval")
+        REPO, "runs", "rhj_splithalf",
+        "probe" if args.probe else ("reference" if args.mode == "reference" else "eval"))
     out_dir = os.path.join(out_root, f"split_{args.split:02d}")
     os.makedirs(out_dir, exist_ok=True)
 
@@ -242,39 +268,56 @@ def main() -> int:
 
     if args.probe:
         arms = [a.strip() for a in args.probe_arms.split(",") if a.strip()]
+    elif args.mode == "reference":
+        # The five arms that do not depend on the checkpoint. `predict_panel` still runs,
+        # with the identity, purely to draw `ctrl_used` -- and it draws it from the SAME
+        # seeded RNG the model runs use, so `ctrl_used` is bit-identical across every run
+        # of this split and `meanpert`/`transfer` cancel the model's control noise exactly.
+        arms = ["ctrlmean", "ctrlcell", "experimental", "transfer", "meanpert"]
     else:
         trainer = load_model(args.checkpoint, args.device, args.output_activation)
         model, pert2id, device = trainer.model, trainer.pert2id, trainer.device
         encoder_genes = trainer.encoder_gene_names
         calibrate, batch_size = args.calibrate, args.batch_size
 
-    base, labels, split, cohort, grand, man = load_frozen(
+    base, labels, split, cohort, grand, man, transfer = load_frozen(
         args.panel_dir, args.split, encoder_gene_names=encoder_genes)
     print(f"[splithalf] panel {base.real_X_model.shape[0]:,} x {base.n_keep:,} "
           f"(encoder width {base.n_enc:,}) · cohort {cohort['n_perts']} · "
           f"split {split.index} · benchmark {man['benchmark_sha256'][:16]}")
 
-    if args.probe:
-        # The probe's "model": prediction = the control input, verbatim. No checkpoint, no
-        # graph, and therefore no pert2id -- the dummy below is never read, because the
-        # identity predict_fn ignores its perturbation index. Stamped in the record.
+    if args.probe or args.mode == "reference":
+        # Prediction = the control input, verbatim. No checkpoint, no graph, and therefore
+        # no pert2id -- the dummy below is never read, because the identity predict_fn
+        # ignores its perturbation index.
         def predict_fn(ctrl_t, pert_indices):
             return ctrl_t
 
         pert2id = {p: 0 for p in cohort["perts"]}
-        print(f"[splithalf] PROBE: identity prediction, scoring {arms}")
+        what = "PROBE" if args.probe else "REFERENCE"
+        print(f"[splithalf] {what}: identity prediction, scoring {arms}")
     else:
         assert_checkpoint_matches(args.checkpoint, man)
+        if args.mode == "model":
+            arms = None      # build_arms emits them; score_only filters below
+
+    # `model` mode scores only the model arm; the other five come from the reference run.
+    score_only = arms
+    if args.mode == "model":
+        score_only = ["model_cal"] if calibrate == "quantile" else None
 
     t0 = time.time()
     rec = run_split(
         base, labels, split, cohort, out_dir,
         model=model, pert2id=pert2id, device=device, predict_fn=predict_fn,
         grand_mean=grand, grand_mean_info=man.get("train_grand_mean"),
+        transfer_deltas=transfer, transfer_info=man.get("transfer"),
         calibrate=calibrate, batch_size=batch_size, seed=args.seed,
         celleval_kwargs={"num_threads": args.num_threads,
-                         "de_batch_size": args.de_batch_size},
-        score_only=arms)
+                         "de_batch_size": args.de_batch_size,
+                         **({"de_real_cache_dir": args.de_real_cache_dir}
+                            if args.de_real_cache_dir else {})},
+        score_only=score_only)
     total = time.time() - t0
 
     if not args.probe:

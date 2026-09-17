@@ -313,3 +313,118 @@ def test_run_splithalf_protocol_records_a_failed_split_rather_than_losing_the_re
     man = json.load(open(os.path.join(tmp_path, "manifest.json")))
     assert man["n_splits_declared"] == 2 and man["n_splits_scored"] == 0
     assert len(man["splits"]) == 2
+
+
+def test_a_custom_predict_fn_also_drives_the_calibration_fit(tmp_path):
+    """Otherwise the quantile map corrects a distribution that was never emitted.
+
+    Found by a test that passed `predict_fn` and left `calibrate` at its "both" default:
+    `fit_control_quantile_map` fell back to `model(...)`, which with model=None is a
+    TypeError and with a real model is silently the wrong reference.
+    """
+    torch = pytest.importorskip("torch")
+    import torch.nn as nn
+
+    from occam.vcell.panel import run as run_mod
+    from occam.vcell.panel.protocol import run_split
+    from occam.vcell.panel.splithalf import draw_splits, freeze_cohort
+
+    X, labels, batches = _corpus()
+    perts = [f"P{i:02d}" for i in range(N_PERT)]
+    cohort = freeze_cohort(labels, eligible=perts, min_cells=10)
+    sp = draw_splits(labels, batches, cohort, n_splits=1, base_seed=2)[0]
+
+    seen = []
+
+    def spy(ctrl_t, pert_indices):
+        seen.append(tuple(ctrl_t.shape))
+        return ctrl_t
+
+    monkey_stub = lambda *a, **k: (os.makedirs(a[2], exist_ok=True) or {"pearson_delta": 0.1})
+    old_fn = run_mod.run_celleval_v1
+    run_mod.run_celleval_v1 = monkey_stub
+    try:
+        rec = run_split(_base_panel(X, labels), labels, sp, cohort, str(tmp_path),
+                        model=_tiny_model(torch, nn, X.shape[1], N_PERT),
+                        pert2id={p: i for i, p in enumerate(perts)}, device="cpu",
+                        predict_fn=spy, calibrate="both", batch_size=16,
+                        score_only=["ctrlcell"])
+    finally:
+        run_mod.run_celleval_v1 = old_fn
+
+    # the spy was called by BOTH the prediction pass and the calibration fit
+    assert len(seen) >= 2, seen
+    assert "model_cal" in rec["model_arms"] and "model_nocal" in rec["model_arms"]
+
+
+def test_the_transfer_arm_adds_each_perturbations_own_cross_line_delta(tmp_path):
+    """⭐ The arm that beat every model on validation (F5). It must be exactly
+    `ctrl_used + delta[pert]`, per row, with the row's OWN perturbation's delta — not a
+    pooled one. Getting this wrong makes it a second `meanpert` and hides the result.
+    """
+    from occam.vcell.panel.splithalf import transfer_arm
+
+    ctrl = np.zeros((4, 3), dtype="float32")
+    labels = np.asarray(["P0", "P0", "P1", "P1"], dtype=str)
+    deltas = {"P0": np.array([1.0, 2.0, 3.0], "float32"),
+              "P1": np.array([10.0, 20.0, 30.0], "float32")}
+
+    pred, frac = transfer_arm(ctrl, labels, deltas)
+    assert np.allclose(pred[:2], [1.0, 2.0, 3.0]), "row must use ITS OWN pert's delta"
+    assert np.allclose(pred[2:], [10.0, 20.0, 30.0])
+    assert frac == 0.0
+
+    # the control cell is carried through, so control-draw noise cancels against the model
+    ctrl2 = np.full((4, 3), 5.0, dtype="float32")
+    pred2, _ = transfer_arm(ctrl2, labels, deltas)
+    assert np.allclose(pred2[0], [6.0, 7.0, 8.0])
+
+    # clipping is reported, never silent
+    pred3, frac3 = transfer_arm(np.zeros((2, 3), "float32"),
+                                np.asarray(["P0", "P0"], dtype=str),
+                                {"P0": np.array([-1.0, -1.0, 1.0], "float32")})
+    assert frac3 == pytest.approx(2 / 3) and np.all(pred3 >= 0)
+
+    # a perturbation with no delta must RAISE, not silently become a control arm
+    with pytest.raises(ValueError) as exc:
+        transfer_arm(ctrl, np.asarray(["P0", "P0", "P9", "P9"], dtype=str), deltas)
+    assert "P9" in str(exc.value)
+
+
+def test_transfer_is_emitted_before_meanpert_and_counted_as_a_reference():
+    """Emission order matters: `transfer` is the arm a truncated run most needs."""
+    from occam.vcell.panel.arms import REFERENCE_TAGS, build_arms, split_arms
+
+    pred, labels, ctrl_used, panel = _arm_inputs()
+    arms = build_arms(pred, labels, ctrl_used, panel, calibrate="none",
+                      extra={"experimental": pred * 2, "transfer": pred * 3,
+                             "meanpert": pred * 4})
+    tags = [t for t, _, _ in arms]
+    assert tags == ["ctrlmean", "ctrlcell", "experimental", "model_nocal",
+                    "transfer", "meanpert"], tags
+    anchor, ref, model = split_arms(arms)
+    assert ref == ["experimental", "transfer", "meanpert"]
+    assert model == ["model_nocal"], "transfer must never be counted as a model arm"
+    assert "transfer" in REFERENCE_TAGS
+
+    # and it still may not masquerade as an anchor
+    with pytest.raises(ValueError):
+        build_arms(pred, labels, ctrl_used, panel, extra={"ctrlcell": pred})
+
+
+def test_run_split_refuses_both_a_grand_mean_and_train_perts(tmp_path):
+    """Two different estimands must not share one arm name."""
+    pytest.importorskip("torch")
+    from occam.vcell.panel.protocol import ProtocolError, run_split
+    from occam.vcell.panel.splithalf import draw_splits, freeze_cohort
+
+    X, labels, batches = _corpus()
+    perts = [f"P{i:02d}" for i in range(N_PERT)]
+    cohort = freeze_cohort(labels, eligible=perts, min_cells=10)
+    sp = draw_splits(labels, batches, cohort, n_splits=1, base_seed=1)[0]
+    with pytest.raises(ProtocolError) as exc:
+        run_split(_base_panel(X, labels), labels, sp, cohort, str(tmp_path),
+                  model=None, pert2id={p: 0 for p in perts}, device="cpu",
+                  predict_fn=lambda c, p: c, calibrate="none",
+                  train_perts=["TRAIN0"], grand_mean=np.zeros(X.shape[1], "float32"))
+    assert "not both" in str(exc.value)

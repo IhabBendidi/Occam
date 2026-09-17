@@ -4,13 +4,13 @@
   "benchmark_id": "rhj_fewshot",
   "benchmark_sha256": "d934211e5eb1e37e28c893fb8c5ff4211d607a1d77b0103d5c2b79221d21677f",
   "builder_version": "1.0.0",
-  "built": "2026-09-16",
+  "built": "2026-09-17",
   "cell_line": "HEPG2",
   "cohort_sha256": "86c91f938024b2a25e2aeeece0532a36be16fe83ec9f2e41881d4a523a7b534a",
   "command": "scripts/build_splithalf_panel.py",
   "control_label": "non-targeting",
   "gene_axis_sha256": "ef64f2ba7ff7816ed947796066cd8a68014884c6176619d750ef79462c78d4c0",
-  "git_sha": "0b94934c1d2e42849a80c4d4efcd4acb0fa4fa8f",
+  "git_sha": "c7a600b635d38235b6d184f6f5bc4704aa566d1f",
   "half_size_strata": {
     "m>=10": 568,
     "m>=25": 278,
@@ -103,5 +103,26 @@
     "n_perts": 1657,
     "total_cells": 95527,
     "weighting": "equal per perturbation"
+  },
+  "transfer": {
+    "cells_per_pert_median": 158.0,
+    "n_perts": 611,
+    "sources": [
+      {
+        "cell_line": "jurkat",
+        "file": "nadig_2024_jurkat.h5ad",
+        "n_cohort_perts_present": 611,
+        "n_controls": 12013,
+        "sha256": "b9196e13ecfad124e8154ef21ae52442870545d6cb52093c6fcd6781c898c654"
+      },
+      {
+        "cell_line": "RPE1",
+        "file": "replogle_2022_rpe1_e.h5ad",
+        "n_cohort_perts_present": 611,
+        "n_controls": 11485,
+        "sha256": "7871f29d81333a3c7d0566a0edf45630b0f913cbd2dc19125cce0120a4d10dd5"
+      }
+    ],
+    "weighting": "cells per (file, pert)"
   }
 }

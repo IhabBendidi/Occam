@@ -26,6 +26,7 @@ THE ARMS, AND WHAT EACH ONE IS THERE TO RULE OUT
 | `ctrlcell` | the drawn B control cell | the load-bearing floor: control-sampling noise at m |
 | `experimental` | the B perturbed cells | the reference: replicate agreement at m cells |
 | `model_nocal` / `model_cal` | model fed the drawn B controls | the measurement |
+| `transfer` | `ctrl_used + this pert's Jurkat/RPE1 delta` | ⭐ the non-learned version of the task itself |
 | `meanpert` | `ctrl_used + (train grand mean - B ctrl mean)` | "it learned the average knockdown" |
 
 `ctrlmean`'s prediction delta is **zero by construction** -- with B controls on the pred
@@ -60,7 +61,7 @@ from occam.vcell.panel.panel_io import Panel
 from occam.vcell.panel.run import score_arm
 from occam.vcell.panel.splithalf import (
     CONTROL, HalfSplit, assert_disjoint_halves, meanpert_arm, panel_for_split,
-    train_pert_grand_mean,
+    train_pert_grand_mean, transfer_arm,
 )
 
 __all__ = ["PROTOCOL", "UNDEFINED", "ProtocolError", "run_split", "run_splithalf_protocol"]
@@ -99,6 +100,8 @@ def run_split(
     train_perts: Sequence[str] = (),
     grand_mean: Optional[np.ndarray] = None,
     grand_mean_info: Optional[Mapping[str, object]] = None,
+    transfer_deltas: Optional[Mapping[str, np.ndarray]] = None,
+    transfer_info: Optional[Mapping[str, object]] = None,
     predict_fn=None,
     calibrate: str = "both",
     seed: int = 42,
@@ -153,9 +156,13 @@ def run_split(
 
     calibrated = None
     if calibrate in ("fit", "both"):
+        # `predict_fn` must reach the calibration fit too. Without it the quantile map is
+        # fitted on `model(...)` while the prediction came from `predict_fn`, so the map
+        # corrects a distribution that was never emitted -- and with model=None it is a
+        # TypeError inside the fit.
         src_q, ref_q = fit_control_quantile_map(
-            model, panel, dict(pert2id), device, batch_size=batch_size, seed=split_seed,
-            ctrl_avg_k=ctrl_avg_k)
+            model, panel, dict(pert2id), device, predict_fn=predict_fn,
+            batch_size=batch_size, seed=split_seed, ctrl_avg_k=ctrl_avg_k)
         calibrated = apply_quantile_map(pred, src_q, ref_q, device)
 
     # ---- the two reference arms -------------------------------------------
@@ -179,6 +186,13 @@ def run_split(
         extra["meanpert"] = mp
         meanpert_info = dict(info)
         meanpert_info["clipped_fraction"] = clipped
+
+    transfer_meta: Dict[str, object] = {}
+    if transfer_deltas is not None:
+        tp, tclip = transfer_arm(ctrl_used, arm_labels, transfer_deltas)
+        extra["transfer"] = tp
+        transfer_meta = dict(transfer_info or {})
+        transfer_meta["clipped_fraction"] = tclip
 
     arms = build_arms(pred, arm_labels, ctrl_used, panel,
                       calibrate=("both" if calibrate == "both" else calibrate),
@@ -212,6 +226,7 @@ def run_split(
         "half_size": {p: int(v) for p, v in dict(cohort["half_size"]).items()},
         "anchor_arms": anchor_tags, "reference_arms": ref_tags, "model_arms": model_tags,
         "meanpert": meanpert_info,
+        "transfer": transfer_meta,
         "arms": {}, "timings_s": {}, "notes": {},
         # The order arms were actually SCORED in, which is `build_arms`' fixed emission
         # order and not the caller's request order. The real-side DE is computed by the

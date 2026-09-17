@@ -52,7 +52,7 @@ __all__ = [
     "CONTROL", "SPLIT_SALT", "CohortDriftError", "HalfSplit",
     "freeze_cohort", "group_seed", "balanced_halves", "draw_splits",
     "assert_cohort", "assert_disjoint_halves", "panel_for_split",
-    "train_pert_grand_mean", "meanpert_arm",
+    "train_pert_grand_mean", "meanpert_arm", "transfer_arm",
 ]
 
 CONTROL = "non-targeting"
@@ -352,6 +352,41 @@ def train_pert_grand_mean(
     return grand, {"n_perts": len(want), "weighting": "equal per perturbation",
                    "cells_per_pert": counts,
                    "total_cells": int(sum(counts.values()))}
+
+
+def transfer_arm(
+    ctrl_used: np.ndarray, labels: Sequence[str], deltas: Mapping[str, np.ndarray],
+    clip: bool = True,
+) -> Tuple[np.ndarray, float]:
+    """``ctrl_used + delta[pert]`` per row: the cross-cell-line TRANSFER baseline.
+
+    `deltas[p]` is p's count-weighted mean (perturbed mean - control mean) over Jurkat and
+    RPE1 only -- never HepG2, which is the held-out context. So this arm is "take the same
+    perturbation's measured effect in the two other cell lines and add it to this control
+    cell", i.e. the NON-LEARNED version of exactly what the model is asked to do. On the
+    validation side it beat all 24 FiLM arms by 0.20 (docs/rhj_fewshot.md F5).
+
+    `ctrl_used` must be the SAME drawn control cells the model arm received, so the
+    control-draw noise cancels in the comparison this baseline exists to support.
+    """
+    ctrl_used = np.asarray(ctrl_used, dtype=np.float32)
+    labels = np.asarray(labels, dtype=str)
+    missing = sorted({str(p) for p in labels} - set(deltas))
+    if missing:
+        raise ValueError(
+            f"{len(missing)} perturbation(s) have no transfer delta (e.g. {missing[:5]}). "
+            f"Every scored perturbation needs one, or the arm is silently a control arm "
+            f"for those rows. Rebuild with scripts/build_splithalf_panel.py.")
+    D = np.stack([np.asarray(deltas[str(p)], dtype=np.float32) for p in labels])
+    if D.shape != ctrl_used.shape:
+        raise ValueError(f"transfer deltas gave {D.shape}, expected {ctrl_used.shape}")
+    pred = ctrl_used + D
+    frac = 0.0
+    if clip:
+        neg = pred < 0
+        frac = float(neg.mean())
+        pred = np.clip(pred, 0.0, None)
+    return pred, frac
 
 
 def meanpert_arm(
