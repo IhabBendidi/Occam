@@ -75,72 +75,91 @@ is +0.491, so "2nd best on val" says little about 2nd best on cell-eval.
 ❌ **Not licensed: claiming the selected arm is best on `disc_l1` or `overlap_at_N`.** rho +0.198
 and +0.444. If those matter for a decision, that arm must be scored directly.
 
-## F-adj3 — `s313` (the validation record) beats `s129` on every split so far. PARTIAL, 3/5.
+## ⭐ F-adj3 — CONFIRMED: `s313` beats `s129` on 5/5 splits. New best arm.
 
-⚠️ **3 OF 5 SPLITS.** Recorded per RULE 0b as they land; the claim is the mean of 5 paired
-splits. Splits 3 and 4 still running.
+**The argmax-only policy passed its second test.** `s313` held the validation record (0.3769 vs
+`s129`'s 0.3676) and takes the cell-eval lead too — on every split, on three of the four
+comparison metrics, with `mae` dead level.
 
-Paired per split, uncalibrated (`model_nocal`) `pearson_delta` — the like-for-like column:
+All 5 splits, uncalibrated (`model_nocal`) — the like-for-like column. ± is the across-split sd:
 
-| split | `s129` | `s313` | paired difference |
-|---|---|---|---|
-| 0 | 0.3358 | **0.3411** | **+0.0053** |
-| 1 | 0.3396 | **0.3464** | **+0.0068** |
-| 2 | 0.3319 | **0.3407** | **+0.0088** |
-| 3 | 0.3318 | *running* | |
-| 4 | 0.3351 | *running* | |
-| **mean so far** | 0.3358 | **0.3427** | **+0.0070** |
-
-**3 for 3 positive.** The four comparison metrics on split 0, where both arms are fully
-recorded:
-
-| arm | val | `pearson_delta` | `mae` ↓ | `overlap_at_N` | `disc_l1` |
+| metric | `s129` (previous best) | **`s313`** | paired diff | diff sd | signs |
 |---|---|---|---|---|---|
-| `s129` (previous best) | 0.3676 | 0.3358 | 0.0210 | 0.0620 | 0.6491 |
-| **`s313` (val record)** | **0.3769** | **0.3411** | 0.0210 | **0.0646** | **0.6541** |
-| paired difference | +0.0093 | **+0.0053** | **0.0000** | **+0.0026** | **+0.0050** |
+| `pearson_delta` | 0.3348 ± 0.0032 | **0.3415 ± 0.0031** | **+0.0067** | 0.0013 | **5/5** |
+| `mae` ↓ | 0.0210 ± 0.0000 | 0.0210 ± 0.0000 | −0.0000 | 0.0000 | 2/5 |
+| `overlap_at_N` | 0.0618 ± 0.0010 | **0.0642 ± 0.0010** | **+0.0024** | 0.0007 | **5/5** |
+| `discrimination_score_l1` | 0.6479 ± 0.0008 | **0.6534 ± 0.0007** | **+0.0055** | 0.0006 | **5/5** |
 
-Ahead on three of four, dead level on `mae`, nothing regressed.
+⭐ **The paired difference is 5x its own spread** — `pearson_delta` **+0.0067** against a diff sd
+of **0.0013**. That ratio is the result, not the margin against `s129`'s 0.0032 across-split sd.
+The two arms share their drawn control cells split for split, so control noise cancels in the
+difference; that is the entire point of the paired protocol, and it is why +0.0067 is a finding
+here while the same margin measured unpaired would not be.
 
-⚠️ **The margin is still inside `s129`'s own noise.** `s129`'s split-to-split range on
-`pearson_delta` is 0.3318–0.3396, i.e. **0.0078**, and the mean paired difference is **+0.0070**.
-Three splits all pointing the same way is much stronger than the raw margin suggests — the
-comparison is PAIRED, so the shared control noise cancels — but the 5-split paired mean is the
-claim, not this.
+| split | `s129` | `s313` | diff |
+|---|---|---|---|
+| 0 | 0.3358 | 0.3411 | +0.0053 |
+| 1 | 0.3396 | 0.3464 | +0.0068 |
+| 2 | 0.3319 | 0.3407 | +0.0088 |
+| 3 | 0.3318 | 0.3378 | +0.0060 |
+| 4 | 0.3351 | 0.3414 | +0.0063 |
 
-⭐ **The argmax policy's second test is passing so far.** F-adj2's evidence was 1 for 1 (`s129`
-was both the val and cell-eval argmax within the scored set). `s313` had the higher val score
-and is so far the higher cell-eval score, which is the prediction the policy makes.
+Against the anchors — `meanpert` 0.1324 · **`transfer` 0.2323** · `experimental` 0.3722 —
+`s313` clears the `transfer` bar by **+0.109** and sits **0.031 below** `experimental`, which is
+replicate agreement at m = 22 and is *not* a ceiling.
 
-⭐ **THE VAL → CELL-EVAL GAP IS NOT A CONSTANT, and this is the clearest evidence yet.**
-Predicted from the measured −0.0140 mean: ≈0.3629. Actual, mean of 3 splits: **0.3427**, a gap
-of **−0.0342** — 2.4x the fitted mean and outside the whole previously measured range
-(−0.0327 … −0.0019, n=95).
+⚠️ **`mae` is unmoved at 0.0210 ± 0.0000 for both arms**, to four decimals, across all ten
+measurements. This sweep is not improving `mae` at all; every gain is in the correlation and
+discrimination metrics. Say that alongside "the model got better", or the claim is broader than
+the evidence.
 
-`s129`'s gap was **−0.0327**, also at the extreme end. **The two highest-val arms in the sweep
-show the two widest gaps.** That is what mild validation overfitting looks like as val improves:
-the better an arm scores on 103 validation perturbations, the more of that score is fit to those
-103. The "`v` − 0.014" rule of thumb therefore **under-predicts at the top of the val range**,
-which is precisely the range the argmax policy operates in.
+### ⭐ The val → cell-eval gap is NOT a constant
 
-⚠️ Practical consequence: use the gap to sanity-check a run, never to report a number. A
-val-selected arm's cell-eval score must be measured, and for the top of the range expect
-**≈ `v` − 0.034**, not −0.014.
+| arm | val | cell-eval | gap |
+|---|---|---|---|
+| `s129` | 0.3676 | 0.3348 | **−0.0328** |
+| `s313` | 0.3769 | 0.3415 | **−0.0354** |
 
-⚠️ Calibration is WORSE on this arm than on `s129`, consistently across the three splits:
-`pearson_delta` 0.2740 / 0.2711 / 0.2764 against `s129`'s 0.2892 / 0.2877 / 0.2885, and `mae`
-~0.0889 against ~0.0857. It does buy more `disc_l1` (0.7750 / 0.7788 vs 0.7533 / 0.7550). Same
-trade as F12, and the uncalibrated column remains the one to compare on.
+Both sit outside the entire range measured over 95 arms (−0.0327 … −0.0019, mean −0.0140), and
+**the sweep's two highest-val arms show its two widest gaps.** That is what mild validation
+overfitting looks like as val improves: the better an arm scores on those 103 validation
+perturbations, the more of the score is fit to them.
 
-ⓘ **The better arm calibrates worse.** `s313` beats `s129` uncalibrated and loses to it
-calibrated, on the same splits. So the calibration penalty is not a fixed cost — it grows with
-the quality of the underlying model, which is an argument against ever reading a calibrated
-ranking as a model ranking.
+⚠️ This bites exactly where the argmax policy lives. At the top of the val range expect
+**≈ `v` − 0.035**, not −0.014. Use the gap to sanity-check a run; never report it as a number.
+(My own pre-registered prediction of 0.3629 for `s313` was made with the −0.0140 figure and was
+wrong by +0.021 — the measured value is 0.3415.)
 
-Run on hop01's idle H100 at ~16 min/split (Slurm job `18045714` was cancelled while PENDING);
-`--calibrate both`. ⚠️ hop01 **crashed** after splits 0–1, losing a partially written split 2;
-splits 2–4 were resumed with the split-aware `scripts/eval_val_winner.py --local`, which redid
-only the missing splits.
+### ⓘ The better arm calibrates worse
+
+| metric | `s129` calibrated | `s313` calibrated | diff |
+|---|---|---|---|
+| `pearson_delta` | 0.2883 | 0.2732 | **−0.0152** |
+| `mae` ↓ | 0.0856 | 0.0890 | +0.0034 (worse) |
+| `overlap_at_N` | 0.0250 | 0.0243 | −0.0007 |
+| `discrimination_score_l1` | 0.7528 | **0.7766** | **+0.0239** |
+
+**`s313` wins uncalibrated and loses calibrated, on the same splits.** The calibration penalty
+is therefore not a fixed cost — it grows with the quality of the underlying model. Two
+consequences: a calibrated ranking must never be read as a model ranking, and calibration's one
+real win (`disc_l1`, +0.12 absolute over uncalibrated) costs −0.068 `pearson_delta` and 4.2x the
+`mae`. Same trade as F12, now measured on two arms.
+
+### Provenance, and one thing that nearly cost this section
+
+Scored on hop01's idle H100, `--calibrate both`, 15.7–27.0 min/split. Slurm job `18045714` was
+cancelled while PENDING on `QOSGrpGRES`.
+
+⚠️ hop01 **crashed** after splits 0–1 and lost a partially written split 2. Splits 2–4 were
+resumed with the split-aware `scripts/eval_val_winner.py --local`, which redid only the missing
+splits and left 0–1 untouched.
+
+⚠️ **`scripts/collect_adjmap_eval.py` writes its output file WHOLESALE**, and it used to default
+to this file — running it deleted F-adj1, F-adj2 and F-adj3 outright. Recovered with
+`git checkout --`. Its default is now `docs/rhj_adjmap_tables.md`; the generated tables live
+there and this file holds the findings. **Do not point the collector at a hand-written doc.**
+
+Generated tables and the full per-arm listing: `docs/rhj_adjmap_tables.md`.
 
 ### Adopted 2026-09-17: `scripts/eval_val_winner.py`
 

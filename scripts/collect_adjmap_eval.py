@@ -95,7 +95,11 @@ def main(argv=None) -> int:
     ap.add_argument("--grid", default="configs/rhj_adjmap_sweep.tsv")
     ap.add_argument("--eval-root", default="runs/rhj_splithalf")
     ap.add_argument("--prefix", default="adjmap_")
-    ap.add_argument("--out", default="docs/rhj_adjmap_eval.md")
+    # ⚠️ WRITES THE WHOLE FILE. It must NOT default to docs/rhj_adjmap_eval.md, which carries
+    # the hand-written F-adj findings: running the collector there silently DELETED F-adj1,
+    # F-adj2 and F-adj3 (measured 2026-09-17, recovered with `git checkout --`). The generated
+    # tables live in their own file and the findings doc links to them.
+    ap.add_argument("--out", default="docs/rhj_adjmap_tables.md")
     args = ap.parse_args(argv)
 
     from occam.vcell.panel.celleval_v1 import _read_agg
