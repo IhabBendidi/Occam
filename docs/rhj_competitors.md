@@ -310,6 +310,66 @@ memory raised where our axis is 3.5× wider** (6,983 vs 2,000 genes) and nothing
   three of the four launchers missing `experimental` 0.3722 — the test is not decorative.
 * **no payload is tracked, and the tracked tree stays under 40 MB.**
 
+## C6 — STATE reads our data (step 4b)
+
+**Finding: STATE trains on `rhj_fewshot` through a third `source_format`, and the reason it
+needed one is the single most load-bearing detail in the port.**
+
+Measured on a 4,000-cell-per-line subsample, 2026-09-17:
+
+| | rows | note |
+|---|---|---|
+| train | 10,826 | HepG2 finetune 2,826 + jurkat 4,000 + RPE1 4,000 |
+| validation | 330 | 182 HepG2 perturbed rows + the controls that join them |
+| test | 1,140 | 992 HepG2 perturbed rows + their controls |
+| matrix | `4000 x 6983` float32, max 6.97 | axis order, `['DPM1','GCLC','NIPAL3']` |
+| cell types | `HEPG2`, `jurkat`, `RPE1` | exact casing, as its configs match on |
+| batch | `(64, 6983)` `pert_cell_emb` | full training batch flows |
+
+Controls joining a split is **their** semantics, not ours: a cell type's controls enter a
+split only when that type has a perturbed cell there (`cell_load` behaviour, kept).
+
+### Why a third format and not their existing `anndata` one
+
+Their `anndata` branch normalises, when asked, inside `_transform_expression` — which divides
+by `x.sum()` **after gene selection**, i.e. the row sum over 6,983 genes. Our whole
+emission-space argument depends on the denominator being the row sum over each file's **FULL**
+gene panel.
+
+⚠️ The two differ by a per-cell factor (the axis carries ~86.6% of the library, median ratio
+≈1.15). A per-cell factor leaves `pearson_delta` untouched — it is scale-invariant per delta
+vector — but it **shifts `mae` and moves the DE calls**, and `mae` is one of our four
+comparison metrics. It would also break the exact 10,000 → 2,000 bridge map, which is only
+exact because both spaces share a denominator.
+
+So normalisation happens **once**, in `occam_data`, on the full panel, and the datamodule
+**refuses to start** with `target_sum` or `log1p` set in occam mode rather than letting a
+second transform through.
+
+### What was changed, and what was not
+
+| file | change |
+|---|---|
+| `tx/data/occam_source.py` | NEW. One `_Source` per cell line, read via `occam_data`. |
+| `tx/data/zarr_perturbation.py` | `source_format="occam"` branch in `_Source`, `_ensure_open`, `_load_source`, `_read_split`; 5 new kwargs; the refusal above; `__getstate__` drops the matrix. |
+| `configs/data/occam_h5ad.yaml` | NEW. Every training value transcribed unchanged from the official recipe. |
+| `occam_rhj_fewshot.toml` | NEW. `[datasets]` names our three h5ads. **No `[splits]` table** — the fold is computed live from the benchmark, so it cannot drift from `splits.json`. |
+
+Two things deliberately NOT reused:
+
+* **`occam_split_indices` is not called per line.** It asserts over the *concatenated* panel
+  (validation must cover every val perturbation; every control must be in finetune), and
+  those are false for one line alone — jurkat contributes no validation rows at all. Reusing
+  it would mean weakening its assertions, which is the opposite of their purpose. Per-line
+  invariants are asserted separately in `occam_fold_for_line`.
+* **`selected_ensembl_gene_ids_path` is refused, not ignored.** The matrix already carries
+  exactly the frozen 6,983 genes in axis order, so a second subset could only reorder or
+  shrink it.
+
+`num_workers: 0`, matching upstream's own `${NUM_WORKERS:-0}`: an occam source holds its
+matrix in RAM and is dropped in `__getstate__`, so a worker is never sent several GB through a
+pickle — it raises with the reason instead.
+
 ## Status
 
 | step | state |
@@ -320,7 +380,8 @@ memory raised where our axis is 3.5× wider** (6,983 vs 2,000 genes) and nothing
 | 2 — `occam_data.py` reader | ✅ C2 above, bit-identical gate passed, 9 tests |
 | 3 — copy code per arm | ✅ 347 files, **6.6 MB** from a 141 GB upstream |
 | 4a — TxPert reads our data (GO + STRING only) | ✅ verified on real data, `12,000 x 6,983` csr |
-| 4b–4d — STATE / CellFlow / PerturbDiff wirings | next; all three environments now build (C4) |
+| 4b — STATE reads our data | ✅ C6 above, smoke-tested end to end |
+| 4c–4d — CellFlow / PerturbDiff wirings | next |
 | 5 — the prediction bridge | ✅ Phase A + Phase B written, control draw verified identical to `predict_panel`; **gate `18043091` running** |
 | 6 — launchers, collector | ✅ C5 above; `scripts/collect_competitors.py` writes `docs/rhj_competitors_results.md` |
 | 7 — tests | ✅ `test_competitor_bridge.py` (10) + `test_competitor_manifest.py` (7) |

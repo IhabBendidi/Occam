@@ -62,6 +62,7 @@ import csv
 import hashlib
 import json
 import os
+import sys
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Sequence, Set, Tuple
 
@@ -85,6 +86,16 @@ OCCAM_CELL_LINES = ("HEPG2", "jurkat", "RPE1")
 
 _REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 _DEFAULT_BENCH = os.path.join(_REPO, "data", "benchmarks", "rhj_fewshot")
+
+# This module runs inside FOUR competitor interpreters, none of which has `occam` installed,
+# and it needs exactly one thing from it: `occam.h5ad_columns.read_column`. That reader
+# resolves anndata's two categorical encodings and was written twice before it was shared, so
+# re-vendoring it here is how `var['gene_name']`-is-a-categorical-group becomes a bug again.
+# `occam/__init__.py` imports nothing heavy and `h5ad_columns` imports nothing at all, so
+# putting `src/` on the path costs an interpreter nothing and keeps one source of truth.
+_SRC = os.path.join(_REPO, "src")
+if os.path.isdir(_SRC) and _SRC not in sys.path:
+    sys.path.insert(0, _SRC)
 
 
 class OccamDataError(RuntimeError):

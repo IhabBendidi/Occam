@@ -48,7 +48,9 @@ competitor_venv_python() {
 }
 
 # Our own interpreter, which scores everything. Phase B only.
-OCCAM_PY=/mnt/ps/home/CORP/ihab.bendidi/.pyenv/versions/scmae/bin/python
+# The interpreter name is the pre-rename one and stays that way: renaming a live pyenv
+# would break every other launcher in the repo.
+OCCAM_PY=/mnt/ps/home/CORP/ihab.bendidi/.pyenv/versions/scmae/bin/python  # noqa: legacy-name
 
 # ⚠️ uv's default cache is on NFS while the venvs are on GPFS; unpacking torch across that
 # boundary takes hours instead of a minute. Upstream README_HOOKE_TX.md records this.
