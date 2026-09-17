@@ -18,6 +18,63 @@ Comparison metrics (decision 2026-09-17): `pearson_delta`, `mae` ↓, `overlap_a
 | `transfer` | 0.2323 | 0.0299 | 0.0351 | 0.6404 |
 | `experimental` | 0.3722 | 0.0257 | 0.1942 | 0.7821 |
 
+## ⭐ F-adj2 — CONFIRMED: the validation ARGMAX is the cell-eval argmax. But the top-10 RANK is not.
+
+**Decision-relevant finding, measured 2026-09-17 on 95 uncalibrated arms (up from 64).**
+
+The correlation holds, and the thing the selection policy actually needs holds strongly:
+
+| | value |
+|---|---|
+| Spearman(val, cell-eval `pearson_delta`), full scored set | **+0.941** (n=95) |
+| best VAL arm within the scored set | `s129`, val 0.3676 |
+| best CELL-EVAL arm within the scored set | `s129`, 0.3348 |
+| **same arm** | **YES** |
+
+⚠️ **BUT THE CORRELATION COLLAPSES INSIDE THE TOP OF THE RANGE.** This is the restricted-range
+effect and it is the caveat that bounds what the policy can be used for:
+
+| subset | val range | rho(`pearson_delta`) |
+|---|---|---|
+| all 95 scored | 0.2682 – 0.3676 | **+0.941** |
+| top 47 by val | 0.3068 – 0.3676 | +0.805 |
+| top 30 by val | 0.3140 – 0.3676 | +0.700 |
+| top 20 by val | 0.3159 – 0.3676 | +0.729 |
+| **top 10 by val** | 0.3214 – 0.3676 | **+0.491** |
+
+**Reading: validation reliably separates a good arm from a mediocre one, and reliably picks the
+single best arm, but it CANNOT rank ten near-tied arms.** Those are different claims and only
+the first two support an argmax-only policy.
+
+⚠️ **VALIDATION PREDICTS `pearson_delta` AND ESSENTIALLY NOTHING ELSE.** Over the same 95 arms:
+
+| cell-eval metric | rho vs val | usable as a proxy? |
+|---|---|---|
+| `pearson_delta` | **+0.941** | yes |
+| `mae` ↓ | **−0.704** (negative is the good sign) | yes |
+| `overlap_at_N` | **+0.444** | weak |
+| `discrimination_score_l1` | **+0.198** | **no** |
+
+So a val-only selection policy optimises `pearson_delta` and `mae` and is **blind to
+`disc_l1`** — one of the four comparison metrics, and the one calibration wins. An arm chosen
+this way is the best arm *on two of four metrics*, which is what the record must say.
+
+**The val → cell-eval gap is systematically negative and tight:** mean **−0.0140**, range
+**−0.0327 … −0.0019**, spread 0.0309. Validation overestimates by ~1–3 points of
+`pearson_delta` every time. Useful: a val score of `v` predicts a cell-eval score of roughly
+`v − 0.014`, and never above `v`.
+
+### What this licenses, and what it does not
+
+✅ **Licensed: evaluate only the arm that sets a new validation record.** The argmax test passed
+(1 for 1), the full-range rho is +0.941, and the gap is one-sided.
+
+❌ **Not licensed: reading the val ranking as a cell-eval ranking below the argmax.** Top-10 rho
+is +0.491, so "2nd best on val" says little about 2nd best on cell-eval.
+
+❌ **Not licensed: claiming the selected arm is best on `disc_l1` or `overlap_at_N`.** rho +0.198
+and +0.444. If those matter for a decision, that arm must be scored directly.
+
 ## ⚠️ F-adj1 — THE VALIDATION LEADERS HAVE NOT BEEN SCORED YET
 
 **Read the table below knowing this: the 94 arms with a cell-eval number are NOT the 94 best
