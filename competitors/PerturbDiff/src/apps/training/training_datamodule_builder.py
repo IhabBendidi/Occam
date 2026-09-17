@@ -39,11 +39,21 @@ def build_datamodule(cfg, logger):
             data_args=cfg.data,
             py_logger=logger,
         )
+    elif cfg.data.data_name in ["OccamH5adFinetune"]:
+        # Occam's rhj_fewshot: OUR three h5ads, OUR frozen 6,983-gene axis, OUR splits, read
+        # in place. See configs/data/occam_h5ad.yaml and src/data/occam_bridge.py.
+        datamodule = data_module.OccamPerturbationDataModule(
+            seed=cfg.optimization.seed,
+            micro_batch_size=cfg.optimization.micro_batch_size,
+            data_args=cfg.data,
+            py_logger=logger,
+        )
     else:
         raise ValueError(
             f"Unknown data.data_name={cfg.data.data_name!r}. Known values: "
             "PBMCFinetune, Tahoe100mFinetune, ReplogleFinetune, "
-            "Tahoe100mPBMCReplogleCellxGenePretrain, IhabxcellZarrFinetune."
+            "Tahoe100mPBMCReplogleCellxGenePretrain, IhabxcellZarrFinetune, "
+            "OccamH5adFinetune."
         )
 
     datamodule.replace_pert_dict = cfg.cov_encoding.get("replace_pert_dict", False)

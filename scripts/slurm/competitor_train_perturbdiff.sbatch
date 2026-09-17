@@ -23,7 +23,11 @@
 #      competitors/shared/occam_data.py, not a hooke-tx zarr dump. Its h5ad dataset IO already
 #      exists, and it RAISES on a missing gene rather than zero-filling, which is the behaviour
 #      we want and is kept.
-#   2. Our 6,983-gene axis instead of their 2,000, which also sets model.input_dim.
+#   2. Our 6,983-gene axis instead of their 2,000. ⚠️ THREE values must move together:
+#      `data.pad_length` (in the config), `model.input_dim` and `model.hidden_num[0]`
+#      (overridden below). `data.embed_shape` interpolates `model.input_dim` and the
+#      collate ASSERTS embed_shape == pad_length, so a half-applied change fails at the
+#      first batch rather than training on a silently wrong width.
 #
 # WHAT EACH OUTCOME MEANS
 #   * above `transfer` 0.2323 -> earning its parameters here
@@ -105,6 +109,8 @@ cd "$HERE/competitors/PerturbDiff"
 "$PY" ./src/apps/run/rawdata_diffusion_training.py \
     data=occam_h5ad path=occam_path cov_encoding=occam_h5ad \
     path.occam_bench_dir="$HERE/data/benchmarks/rhj_fewshot" \
+    model.input_dim=6983 \
+    "model.hidden_num=[6983,512]" \
     cov_encoding.replogle_gene_encoding="$PD_PENC" \
     run_name="$PD_RUN_NAME" \
     trainer.devices=[0] trainer.max_steps="$PD_MAX_STEPS" \

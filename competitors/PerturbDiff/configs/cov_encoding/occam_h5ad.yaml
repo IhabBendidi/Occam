@@ -1,0 +1,62 @@
+# Covariate encoding for Occam's `rhj_fewshot`.
+#
+# Derived from `hooke_tx_zarr.yaml`, which was written for the hooke-tx zarr dumps. ONE delta:
+#
+#   `pert_key_type: symbol` instead of `ensembl`.
+#
+# ⚠️ WHY. Their zarr path derives an Ensembl perturbation string from canonical `gene_pert`
+# tuples, because that is what their dumps carry, and then translates Ensembl -> symbol to
+# look up GenePT embeddings. `rhj_fewshot` identifies perturbations by SYMBOL throughout --
+# the splits, the exclusions, the 611-perturbation cohort and cell-eval's own `target_gene`
+# column -- so our `pert_dict` keys are already symbols and the translation must NOT run.
+# With `ensembl` set, every lookup would miss and `max_zero_embedding_frac: 0.5` would abort
+# the run; the failure is loud, but the fix belongs here.
+#
+# Everything else is unchanged, including `control_pert_key: "empty"` (which is what
+# `occam_data` is asked to label controls in this arm) and the official
+# `replogle_gene_encoding` default. The launcher passes `genept`, as upstream does.
+
+# Encoding type selection
+pert_encoding: onehot
+celltype_encoding: onehot     # "llm" needs a pickle keyed by HepG2/Jurkat/K562/RPE1
+drug_encoding: onehot
+replogle_gene_encoding: onehot   # set to "genept" to use pretrained gene embeddings
+batch_encoding: onehot
+
+# Embedding dimensions
+hidden_dim: 128
+output_dim: ${..model.hidden_num.0}
+
+# Runtime-populated cardinalities
+num_pert: null
+num_celltype: null
+num_batch: null
+
+# Runtime-populated dictionaries
+pert_dict: null
+cell_type_dict: null
+batch_dict: null
+
+# --- zarr-specific key handling ---------------------------------------------
+# pert_dict keys are Ensembl ids; the embedding tables are keyed by gene symbol.
+pert_key_type: symbol               # rhj_fewshot identifies perturbations by SYMBOL
+control_pert_key: "empty"
+gene_id_map_path: null              # null -> configs/metadata/gene_id_map.csv
+max_zero_embedding_frac: 0.5
+
+# Dictionary replacement controls
+replace_pert_dict: false
+
+# Multi-embedding gather strategy
+gather_strategy: concat
+
+# External embedding resources. Only read by the non-onehot branches; the paths
+# just have to resolve for OmegaConf.resolve().
+gene_embedding_path: ["${...path.tmp_dir}/gene_names/pbmc_highly_variavle_gene_emb_dict_emb_dict.pkl",
+                      "${...path.tmp_dir}/gene_names/replogle_gene_emb_dict_perturbation_emb_dict.pkl",
+                      "${...path.tmp_dir}/gene_names/replogle_highly_variavle_gene_emb_dict_emb_dict.pkl",
+                      "${...path.tmp_dir}/gene_names/tahoe100m_highly_variavle_gene_emb_dict_emb_dict.pkl"]
+pert_embedding_path: ${..path.tmp_dir}/meta_data/idx_to_pertemb.pkl
+celltype_embedding_path: ${..path.tmp_dir}/meta_data/new_all_emb.pkl
+drug_embedding_path: ${..path.tmp_dir}/meta_data/drug_embed_chemberta_cls_dict.pkl
+replogle_gene_embedding_path: ${..path.tmp_dir}/gene_names/replogle_gene_emb_dict_perturbation_emb_dict.pkl

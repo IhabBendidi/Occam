@@ -319,11 +319,27 @@ class H5adSentenceDataset(Dataset):
                 feature_loading=getattr(data_args, "feature_loading", "ram"),
                 max_open=data_args.max_open_files,
             )
+        elif self.source_format == "occam":
+            # Occam's `rhj_fewshot`: OUR h5ads, OUR frozen 6,983-gene axis, OUR splits, read
+            # in place and already normalised on the FULL source panel row sum. See
+            # src/data/occam_bridge.py for why that denominator is load-bearing.
+            from src.data.occam_bridge import OccamStore
+
+            self.store = OccamStore(
+                self.dataset_path_map,
+                bench_dir=str(data_args.occam_bench_dir),
+                target_sum=float(getattr(data_args, "occam_target_sum", 10_000.0)),
+                log1p=bool(getattr(data_args, "occam_log1p", True)),
+                verify_sources=bool(getattr(data_args, "occam_verify_sources", True)),
+                max_cells=getattr(data_args, "occam_max_cells_per_line", None),
+                max_open=data_args.max_open_files,
+            )
         elif self.source_format == "h5ad":
             self.store = H5Store(self.dataset_path_map, max_open=data_args.max_open_files)
         else:
             raise ValueError(
-                f"Unknown data.source_format={self.source_format!r}; expected 'h5ad' or 'zarr'."
+                f"Unknown data.source_format={self.source_format!r}; expected 'h5ad', "
+                f"'zarr' or 'occam'."
             )
 
         # split data_indices into perturb & control
@@ -354,6 +370,10 @@ class H5adSentenceDataset(Dataset):
 
     def _get_selected_gene_vars(self):
         """Execute `_get_selected_gene_vars` and return values used by downstream logic."""
+        if self.source_format == "occam":
+            from src.data.occam_bridge import get_selected_gene_vars_occam
+
+            return get_selected_gene_vars_occam(self)
         if self.source_format == "zarr":
             return get_selected_gene_vars_zarr(self)
         return get_selected_gene_vars(self)
@@ -372,6 +392,10 @@ class H5adSentenceDataset(Dataset):
 
     def _retrieve_counts(self, h5f, ds_name, local_idx):
         """Execute `_retrieve_counts` and return values used by downstream logic."""
+        if self.source_format == "occam":
+            from src.data.occam_bridge import retrieve_counts_occam
+
+            return retrieve_counts_occam(self, h5f, ds_name, local_idx)
         if self.source_format == "zarr":
             return retrieve_counts_zarr(self, h5f, ds_name, local_idx)
         return retrieve_counts(self, h5f, ds_name, local_idx)

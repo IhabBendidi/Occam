@@ -38,9 +38,27 @@ ARMS = ("STATE", "TxPert", "CellFlow", "PerturbDiff")
 # Files we adapt on purpose. Their sha256 is EXPECTED to differ from the upstream record --
 # that is the port. Everything else must still match.
 ADAPTED = (
+    # TxPert (step 4a)
     "gspp/data/occam_loader.py",
     "gspp/data/datamodule.py",
     "configs/config-txpert-occam.yaml",
+    # STATE (step 4b) -- the third source_format and its three call sites
+    "tx/data/occam_source.py",
+    "tx/data/zarr_perturbation.py",
+    "configs/data/occam_h5ad.yaml",
+    # CellFlow (step 4c) -- the occam bridge and the branch that selects it
+    "hooke_bridge/occam.py",
+    "train_cellflow.py",
+    "configs/occam_rhj_fewshot.yaml",
+    # PerturbDiff (step 4d) -- the third store, cache, split and datamodule
+    "src/data/occam_bridge.py",
+    "src/data/metadata_cache.py",
+    "src/data/dataset/dataset_core.py",
+    "src/data/data_module/data_module.py",
+    "src/data/data_module/data_module_setup.py",
+    "src/data/data_module/__init__.py",
+    "src/apps/training/training_datamodule_builder.py",
+    # every arm's Phase-A adapter
     "export_occam.py",
 )
 

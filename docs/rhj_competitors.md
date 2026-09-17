@@ -370,6 +370,127 @@ Two things deliberately NOT reused:
 matrix in RAM and is dropped in `__getstate__`, so a worker is never sent several GB through a
 pickle — it raises with the reason instead.
 
+## C7 — ⛔ THE BRIDGE GATE PASSES, to four decimal places
+
+**Finding: the two-phase bridge is inert. It adds no signal and no bias.**
+
+Job `18043091`, 9 min 21 s on the `cpu` partition, 2026-09-17. The "competitor" was the
+IDENTITY function on its own control input, so the exported matrix IS the `ctrlcell` baseline
+— routed the long way round: `load_panel_split` → eval space → **10,000** → the arm →
+**2,000** → `assert_same_space` → `pred.npy` → `scripts/eval_competitor.py` →
+`protocol.run_split` → cell-eval 0.6.0.
+
+Compared against **split 0's own** `ctrlcell` row, not the 5-split mean:
+
+| metric | direct `ctrlcell`, split 0 | through the bridge | difference |
+|---|---|---|---|
+| `pearson_delta` | −0.00031878 | **−0.0003** | **0** to 4 dp |
+| `mae` ↓ | 0.029577 | **0.0296** | **0** to 4 dp |
+| `overlap_at_N` | 0.0 | **0.0000** | **0** |
+| `discrimination_score_l1` | 0.50456 | **0.5046** | **0** to 4 dp |
+
+⚠️ Read against **split 0**, not the all-5-split `ctrlcell` mean (−0.0018 / 0.0296 / 0.0000 /
+0.5038). The split-to-split std on `pearson_delta` is 0.001–0.003, so the 5-split mean and any
+single split differ by more than this gate's own resolution. Comparing to the mean would have
+made an exact pass look like a 0.0015 discrepancy.
+
+**What this rules out.** The double conversion (eval → 10,000 on the way in, 10,000 → 2,000 on
+the way out) is exact: if the analytic map were wrong by even a per-cell factor, `mae` would
+have moved — it is the metric that is *not* scale-invariant, and it did not move. The control
+draw, the row order, the cohort enforcement and the `pred_ctrl = ctrl_B` asymmetry all
+survived the file round-trip.
+
+**Competitor training is unblocked** by the plan's own condition: *"⛔ This is the gate — no
+competitor training launches before it passes."*
+
+Reproduce with:
+
+```bash
+PYTHONPATH=src:competitors/shared python scripts/export_gate_ctrlcell.py --split 0
+sbatch --qos=hooke-predict --wckey=hooke-predict scripts/slurm/rhj_competitor_gate.sbatch
+```
+
+## C8 — CellFlow reads our data (step 4c)
+
+**Finding: CellFlow trains on `rhj_fewshot` through a `load.py` sibling, and its model block
+is byte-identical to the official recipe.**
+
+Measured on the FULL benchmark, 2026-09-17 (its own venv, no subsampling):
+
+| | value |
+|---|---|
+| train | **612,122 × 6,983** float32, max 8.36 |
+| per source | HepG2 finetune **101,252** · jurkat **262,956** · RPE1 **247,914** |
+| train perturbations | 2,394 · **28,474 controls** |
+| validation | **6,731** cells, **103** perturbations, **0 controls** |
+| var index | `['ENSG00000000419', 'ENSG00000001084', ...]`, symbols alongside |
+| `gene_pert` | `[('genetic', 'KIAA1143', '')]` — the tuple shape their schema parses |
+| vocabulary | **2,381** tokens |
+| axis train == val | True |
+
+`pca`, `model` and `train` blocks verified **identical** to
+`configs/replogle_nadig_fewshot.yaml` by parsing both, not by reading the diff.
+
+### The three things that needed deciding
+
+1. **The perturbation token is a gene SYMBOL, not an Ensembl id.** `load.py`'s docstring says
+   Ensembl because their dumps carry Ensembl; the code one-hot encodes an opaque string.
+   `rhj_fewshot` identifies perturbations by symbol throughout — splits, exclusions, the
+   611-perturbation cohort, cell-eval's own `target_gene` — so the symbol IS the identity, and
+   a perturbation target need not even be on the gene axis.
+2. **The gene axis is Ensembl in `var_names`,** matching their convention, while our
+   evaluation h5ads use symbols so cell-eval can exclude each target gene by name. Safe
+   because the bridge is **positional** — `assert_axis_order` refuses any other order, since a
+   reordered axis would silently relabel every gene while every metric still looked fine.
+3. **The vocabulary is read from the benchmark's split lists, not from the loaded cells.**
+   ⚠️ It fixes the model's condition-input width and cannot grow after training: a test
+   perturbation with no column makes `cf.predict` raise `Representation ... not found` and
+   produce NO predictions. Upstream hit exactly this on 8 of their 380 test perturbations.
+
+⚠️ `pca.n_comps: 256` is a **PCA rank, not a gene count**, and stays 256 while the axis
+widens. It is the dimensionality the flow is learned in; the axis change affects what PCA is
+fitted *on*.
+
+`train_cellflow.py` **refuses** if both `occam_bench_dir` and `split_path` are set — the
+benchmark owns the split, and a second split file could only disagree with it silently.
+
+## C9 — PerturbDiff reads our data (step 4d)
+
+**Finding: PerturbDiff trains on `rhj_fewshot` through a third store, and the surface is
+larger than the other three arms because of its cache/store abstraction.**
+
+| file | change |
+|---|---|
+| `src/data/occam_bridge.py` | NEW. `OccamMetadataCache`, `OccamStore`, `get_selected_gene_vars_occam`, `retrieve_counts_occam`, `split_index_occam` — duck-typed twins of the five zarr equivalents. |
+| `src/data/metadata_cache.py` | `get_occam_cache`, keyed by path like `get_zarr_cache`. |
+| `src/data/dataset/dataset_core.py` | `source_format == "occam"` in the store constructor and both format-specific methods. |
+| `src/data/data_module/data_module{,_setup}.py` | `OccamPerturbationDataModule` + `occam_setup` / `occam_setup_dataset`. |
+| `src/apps/training/training_datamodule_builder.py` | `data_name: OccamH5adFinetune`. |
+| `configs/{data,path,cov_encoding}/occam*.yaml`, `configs/manifests/occam_rhj_fewshot.toml` | NEW. |
+
+### Four details that would each have been silent
+
+* **`pert_key_type: symbol`, not `ensembl`.** Their zarr path derives an Ensembl perturbation
+  string and then translates Ensembl → symbol for the GenePT lookup. Our `pert_dict` keys are
+  already symbols, so that translation must not run — with `ensembl` set, every lookup misses
+  and `max_zero_embedding_frac: 0.5` aborts the run. Loud, but the fix belongs in the config.
+* **THREE width values must move together:** `data.pad_length`, `model.input_dim` and
+  `model.hidden_num[0]`. `data.embed_shape` interpolates `model.input_dim` and the collate
+  **asserts** `embed_shape == pad_length`, so a half-applied change fails at the first batch
+  rather than training on a silently wrong width. The launcher overrides all three.
+* **`selected_gene_file` is refused, not ignored.** A silently ignored gene panel is how an arm
+  ends up scored on a different axis than it trained on.
+* **The split is computed live and nothing is cached or written.** `split_index_occam` matches
+  `split_index_json`'s semantics exactly — HepG2 splits three ways over PERTURBED rows, jurkat
+  and RPE1 contribute every row, and **all controls are added to every non-empty split** — but
+  reads the benchmark instead of a JSON, so there is no stale-index surface at all. It
+  **raises** if HepG2's validation or test split comes out empty, because an arm with no
+  validation split silently keeps its final weights instead of selecting a checkpoint.
+
+One matrix per cell line lives in a process-global cache and is **never pickled**, the same
+discipline `zarr_store.py` documents: three `H5adSentenceDataset`s are built over the same
+files, and HepG2 alone is 145,473 × 6,983 float32 ≈ 4.1 GB.
+
 ## Status
 
 | step | state |
@@ -381,8 +502,9 @@ pickle — it raises with the reason instead.
 | 3 — copy code per arm | ✅ 347 files, **6.6 MB** from a 141 GB upstream |
 | 4a — TxPert reads our data (GO + STRING only) | ✅ verified on real data, `12,000 x 6,983` csr |
 | 4b — STATE reads our data | ✅ C6 above, smoke-tested end to end |
-| 4c–4d — CellFlow / PerturbDiff wirings | next |
-| 5 — the prediction bridge | ✅ Phase A + Phase B written, control draw verified identical to `predict_panel`; **gate `18043091` running** |
+| 4c — CellFlow reads our data | ✅ C8 above, smoke-tested on the FULL benchmark |
+| 4d — PerturbDiff reads our data | ✅ C9 above, written; smoke test next |
+| 5 — the prediction bridge | ✅ Phase A + Phase B written, control draw verified identical to `predict_panel`; **gate PASSED** (C7) |
 | 6 — launchers, collector | ✅ C5 above; `scripts/collect_competitors.py` writes `docs/rhj_competitors_results.md` |
 | 7 — tests | ✅ `test_competitor_bridge.py` (10) + `test_competitor_manifest.py` (7) |
 

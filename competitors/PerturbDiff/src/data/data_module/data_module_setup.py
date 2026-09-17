@@ -180,6 +180,154 @@ def zarr_setup_dataset(dm, stage=None):
         getattr(dm, "train_dataset").store.preload()
 
 
+def occam_setup(dm, stage=None):
+    """Build the global covariate vocabularies from Occam's `rhj_fewshot` benchmark.
+
+    Occam counterpart to ``zarr_setup``. One dataset is one CELL LINE: ``[datasets]`` names our
+    three h5ads and each is read in place through ``competitors/shared/occam_data.py``.
+
+    ⚠️ THERE IS NO ``[splits]`` TABLE, deliberately. The frozen benchmark owns the split, and
+    ``split_index_occam`` computes it live, so there is no row-index JSON that can go stale.
+    ``key_info`` carries ``occam_bench_dir`` instead of ``split_file``.
+
+    ⚠️ ASYMMETRY BY DESIGN: HepG2 is the evaluated line and splits three ways; jurkat and RPE1
+    are wholly training data. The very same perturbation held out of HepG2 still TRAINS from
+    them, which is what makes the task few-shot-in-a-new-context rather than
+    never-seen-at-all.
+    """
+    from src.data.occam_bridge import occam_line_from_path, read_occam_line
+
+    cfg = dm.data_args
+    bench_dir = str(cfg.occam_bench_dir)
+    datasets, training, splits, split_folds = read_zarr_manifest(cfg.toml_config_path)
+    if splits:
+        raise ValueError(
+            f"the manifest has a [splits] table ({sorted(splits)}) but source_format='occam' "
+            f"reads the split from the benchmark itself. A second split file could only "
+            f"disagree with it silently; remove the table.")
+
+    dm.dataset_name_list, dm.file_list, dm.key_info_list = [], [], []
+    seen = {}
+    for label, path in datasets.items():
+        line = occam_line_from_path(path)
+        if line in seen:
+            raise ValueError(
+                f"two manifest entries resolve to the same cell line {line!r}: "
+                f"{seen[line]!r} and {label!r}")
+        seen[line] = label
+        dm.dataset_name_list.append(line)
+        dm.file_list.append(str(path))
+        dm.key_info_list.append(
+            {
+                "control_pert": cfg.control_pert,
+                "cell_type_key": cfg.cell_line_key,
+                "batch_col": cfg.perturbseq_batch_col,
+                "occam_bench_dir": bench_dir,
+                "occam_line": line,
+                "split_file": None,
+                "split_fold": 0,
+                "is_training": training.get(label, "train") == "train",
+            }
+        )
+        if label != line:
+            dm.py_logger.info("manifest '%s' -> cell line '%s'", label, line)
+
+    n = len(dm.dataset_name_list)
+    dm.data_type_list = ["Perturb-seq"] * n
+    # The gene panel IS the frozen axis; there is nothing to select.
+    dm.selected_genes_list = [None] * n
+    dm.original_dataset_name_list = list(dm.dataset_name_list)
+
+    meta_cache = GlobalH5MetadataCache()
+    all_perts, all_batches, all_celltypes = set(), set(), set()
+    for name, path, key_info in zip(dm.dataset_name_list, dm.file_list, dm.key_info_list):
+        cache = meta_cache.get_occam_cache(
+            path,
+            bench_dir=bench_dir,
+            cell_type_key=key_info["cell_type_key"],
+            batch_col=key_info["batch_col"],
+            control_pert=key_info["control_pert"],
+            target_sum=float(getattr(cfg, "occam_target_sum", 10_000.0)),
+            log1p=bool(getattr(cfg, "occam_log1p", True)),
+            verify_sources=bool(getattr(cfg, "occam_verify_sources", True)),
+            max_cells=getattr(cfg, "occam_max_cells_per_line", None),
+        )
+        all_perts.update(cache.pert_categories.tolist())
+        all_celltypes.update(cache.cell_type_categories.tolist())
+        # Batch labels are namespaced by dataset, matching dataset_core.get_covarates and
+        # sampling's collect_batch_covariates.
+        all_batches.update(f"{name}_{b}" for b in cache.batch_categories.tolist())
+
+    dm.pert_dict = {x: i for i, x in enumerate(sorted(all_perts))}
+    dm.batch_dict = {x: i for i, x in enumerate(sorted(all_batches))}
+    dm.cell_type_dict = {x: i for i, x in enumerate(sorted(all_celltypes))}
+
+    dm.py_logger.info(
+        f"#datasets: {n}, #perturbation: {len(all_perts)}, "
+        f"#cell type: {len(all_celltypes)}, #batch: {len(all_batches)}"
+    )
+
+
+def occam_setup_dataset(dm, stage=None):
+    """Split each cell line live from the benchmark and build the per-split datasets."""
+    from src.data.occam_bridge import split_index_occam
+
+    cfg = dm.data_args
+    bench_dir = str(cfg.occam_bench_dir)
+
+    meta_cache = GlobalH5MetadataCache()
+    meta_cache.register_covariate_dict(dm.pert_dict, dm.batch_dict, dm.cell_type_dict)
+
+    for split_stage in ["train"] + dm.all_split_names:
+        setattr(dm, f"{split_stage}_num_cell", {})
+        setattr(dm, f"{split_stage}_indices", {})
+
+    dataset_path_map = dict(zip(dm.dataset_name_list, dm.file_list))
+    selected_genes_list = dict(zip(dm.dataset_name_list, dm.selected_genes_list))
+    control_type = {name: cfg.control_pert for name in dm.dataset_name_list}
+
+    for name, path, key_info in zip(dm.dataset_name_list, dm.file_list, dm.key_info_list):
+        cache = meta_cache.get_occam_cache(
+            path,
+            bench_dir=bench_dir,
+            cell_type_key=key_info["cell_type_key"],
+            batch_col=key_info["batch_col"],
+            control_pert=key_info["control_pert"],
+            target_sum=float(getattr(cfg, "occam_target_sum", 10_000.0)),
+            log1p=bool(getattr(cfg, "occam_log1p", True)),
+            verify_sources=False,
+            max_cells=getattr(cfg, "occam_max_cells_per_line", None),
+        )
+        dm.py_logger.info("[%s] splitting ...", name)
+        split_indices = split_index_occam(dm, cache, "pert", key_info)
+        for split_stage, indices in split_indices.items():
+            getattr(dm, f"{split_stage}_indices")[name] = indices
+            getattr(dm, f"{split_stage}_num_cell")[name] = len(indices)
+
+    for split_stage in ["train"] + dm.all_split_names:
+        total = sum(getattr(dm, f"{split_stage}_num_cell").values())
+        dm.py_logger.info(">>>>> stage: %s (%d cells)", split_stage, total)
+        setattr(
+            dm,
+            f"{split_stage}_dataset",
+            H5adSentenceDataset(
+                split_stage,
+                meta_cache,
+                dataset_path_map,
+                selected_genes_list,
+                getattr(dm, f"{split_stage}_indices"),
+                getattr(dm, f"{split_stage}_num_cell"),
+                control_type,
+                cfg,
+                dm.py_logger,
+            ),
+        )
+
+    # Preload expression in the MAIN process so forked workers share it copy-on-write
+    # instead of each re-reading gigabytes.
+    getattr(dm, "train_dataset").store.preload()
+
+
 def pretraining_setup_dataset(dm, stage=None):
     """
     Set up datasets by looping through all processed cellxgene / tahoe100m datasets.

@@ -173,3 +173,38 @@ class GlobalH5MetadataCache(metaclass=Singleton):
                 control_pert=control_pert,
             )
         return self._cache[data_dir]
+
+    def get_occam_cache(
+        self,
+        path: str,
+        bench_dir: str,
+        cell_type_key: str = "cell_type",
+        batch_col: str = "batch_center",
+        control_pert: str = "empty",
+        target_sum: float = 10_000.0,
+        log1p: bool = True,
+        verify_sources: bool = True,
+        max_cells=None,
+    ):
+        """Cache entry for one cell line of Occam's `rhj_fewshot` benchmark.
+
+        Stored in the same ``_cache`` dict keyed by the dataset's path, because the dataset
+        looks entries up as ``meta_cache._cache[dataset_path_map[ds_name]]`` (see
+        ``dataset_core.get_covarates`` / ``mapping_cells``).
+        """
+        from src.data.occam_bridge import OccamMetadataCache
+
+        path = str(path)
+        if path not in self._cache:
+            self._cache[path] = OccamMetadataCache(
+                path,
+                bench_dir=bench_dir,
+                cell_type_key=cell_type_key,
+                batch_col=batch_col,
+                control_pert=control_pert,
+                target_sum=target_sum,
+                log1p=log1p,
+                verify_sources=verify_sources,
+                max_cells=max_cells,
+            )
+        return self._cache[path]

@@ -6,6 +6,7 @@ from .data_module import (
     PerturbationPretrainingDataModule,
     PretrainingDataModule,
     Tahoe100mPerturbationDataModule,
+    OccamPerturbationDataModule,
     ZarrPerturbationDataModule,
 )
 
@@ -15,5 +16,6 @@ __all__ = [
     "Tahoe100mPerturbationDataModule",
     "CellxGeneDataModule",
     "PerturbationPretrainingDataModule",
+    "OccamPerturbationDataModule",
     "ZarrPerturbationDataModule",
 ]

@@ -30,6 +30,8 @@ from src.data.data_module.data_module_setup import (
     perturbation_pretraining_setup_dataset,
     pretraining_setup,
     pretraining_setup_dataset,
+    occam_setup,
+    occam_setup_dataset,
     zarr_setup,
     zarr_setup_dataset,
 )
@@ -269,6 +271,33 @@ class ZarrPerturbationDataModule(PBMCPerturbationDataModule):
     def setup_dataset(self, stage=None):
         """Execute `setup_dataset` and return values used by downstream logic."""
         return zarr_setup_dataset(self, stage=stage)
+
+
+class OccamPerturbationDataModule(PBMCPerturbationDataModule):
+    """DataModule for Occam's `rhj_fewshot` benchmark: OUR h5ads, OUR axis, OUR splits.
+
+    The sibling of ``ZarrPerturbationDataModule``. Inherits ``__init__``,
+    ``train_dataloader`` and ``val_dataloader`` from the PBMC/Pretraining hierarchy and
+    replaces only the two data-bound phases:
+
+    * ``setup()``          -- covariate vocabularies from our h5ads, one dataset per CELL
+      LINE, and the dataset list from a TOML manifest rather than a glob.
+    * ``setup_dataset()``  -- the split computed LIVE from the frozen benchmark, so there is
+      no row-index JSON that can go stale.
+
+    ``all_split_names`` stays ``["validation", "test"]``, and unlike the zarr benchmark BOTH
+    are non-empty here: HepG2 carries 103 validation and 621 test perturbations.
+    ``split_index_occam`` raises if either comes out empty, because an arm with no validation
+    split silently keeps its final weights instead of selecting a checkpoint.
+    """
+
+    def setup(self, stage=None):
+        """Execute `setup` and return values used by downstream logic."""
+        return occam_setup(self, stage=stage)
+
+    def setup_dataset(self, stage=None):
+        """Execute `setup_dataset` and return values used by downstream logic."""
+        return occam_setup_dataset(self, stage=stage)
 
 
 class Tahoe100mPerturbationDataModule(PBMCPerturbationDataModule):
