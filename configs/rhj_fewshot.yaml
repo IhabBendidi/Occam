@@ -117,6 +117,15 @@ stages:
       graph_type: go
       graph_types: [go, string]     # NB: the source recipe also used pxmap+txmap
       graph_edge_filter_mode: top_20
+      # Perturbation model. `gnn` is the 4-layer GATv2 over 18,216 nodes / 515,063 edges,
+      # which costs 48.8 ms forward+backward PER OPTIMISER STEP (measured) -- 30% of a
+      # 161 ms step at batch 256, and it does not shrink with batch size because the GNN is
+      # trained and cannot be cached. `adjacency_map` is SimpleAdjacencyMapModel: each
+      # gene's embedding is MLP(its adjacency row), no learned message passing. `no_gnn`
+      # with pert_model_type=adjacency_map swaps in a plain learnable embedding table,
+      # which is the falsifier for the graph itself.
+      pert_model_type: gnn          # gnn | adjacency_map
+      no_gnn: false
       master_gene_set_path: ${paths.kg_graph_dir}/master_gene_set_sorted.csv
       graph_cache_dir: ${paths.kg_graph_dir}
       gnn_layer_type: gat_v2
@@ -126,6 +135,17 @@ stages:
       # ⚠️ Must stay false: film_mean_free averages over the WHOLE node table, so
       #    restricting the table silently changes the reference it subtracts.
       data_perts_only: false
+      # Adjacency-map settings; inert while pert_model_type is `gnn`. Values are the
+      # research tree's defaults.
+      adj_hidden_dim: 128
+      adj_dropout: 0.2
+      adj_deg: 1
+      adj_normalize: none
+      adj_self_loops: false
+      adj_only_reverse: true
+      adj_make_undirected: true
+      adj_use_ffn: true
+      adj_activation: relu
 
     interaction:
       interaction_type: film
@@ -160,6 +180,8 @@ stages:
       vc_load_dispersion: true
 
     guards:
+      # >0 stops the first epoch after N batches and prints samples/s. 0 = train normally.
+      bench_batches: 0
       nan_guard_max_frac: 0.10
       weight_check_every: 500
 

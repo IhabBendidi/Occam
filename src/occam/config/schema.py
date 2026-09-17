@@ -304,6 +304,16 @@ VCELL_SCHEMA: Dict[str, Dict[str, Optional[str]]] = {
     },
     "encoder": {"freeze_encoder": "freeze_encoder", "freeze_decoder": "freeze_decoder"},
     "graph": {
+        # Perturbation-model selection. `adjacency_map` is SimpleAdjacencyMapModel: each
+        # gene's embedding is MLP(its adjacency row), with no learned message passing, so
+        # it costs a fraction of the 4-layer GATv2's per-step time. `no_gnn` swaps in a
+        # plain learnable embedding table -- the falsifier for the graph itself.
+        "pert_model_type": "pert_model_type", "no_gnn": "no_gnn",
+        "adj_hidden_dim": "adj_hidden_dim", "adj_dropout": "adj_dropout",
+        "adj_deg": "adj_deg", "adj_normalize": "adj_normalize",
+        "adj_self_loops": "adj_self_loops", "adj_only_reverse": "adj_only_reverse",
+        "adj_make_undirected": "adj_make_undirected", "adj_use_ffn": "adj_use_ffn",
+        "adj_activation": "adj_activation",
         "graph_type": "graph_type", "graph_cache_dir": "graph_cache_dir",
         "master_gene_set_path": "master_gene_set_path",
         "graph_types": "graph_types", "graph_edge_filter_mode": "graph_edge_filter_mode",
@@ -337,6 +347,9 @@ VCELL_SCHEMA: Dict[str, Dict[str, Optional[str]]] = {
         "vc_load_dispersion": "vc_load_dispersion",
     },
     "guards": {
+        # >0 stops the first epoch after N batches and prints samples/s. The throughput
+        # measurement knob; it existed on the config but was unreachable from a stage file.
+        "bench_batches": "bench_batches",
         "nan_guard_max_frac": "nan_guard_max_frac",
         "weight_check_every": "weight_check_every",
     },
