@@ -75,6 +75,43 @@ is +0.491, so "2nd best on val" says little about 2nd best on cell-eval.
 ❌ **Not licensed: claiming the selected arm is best on `disc_l1` or `overlap_at_N`.** rho +0.198
 and +0.444. If those matter for a decision, that arm must be scored directly.
 
+## F-adj3 — `s313` (the validation record) beats `s129` on split 0. PARTIAL.
+
+⚠️ **ONE SPLIT IS NOT A RESULT.** Recorded now per RULE 0b; the claim is the mean of 5 paired
+splits. 4 of 5 still running.
+
+Paired on split 0, uncalibrated (`model_nocal`) — the like-for-like column:
+
+| arm | val | `pearson_delta` | `mae` ↓ | `overlap_at_N` | `disc_l1` |
+|---|---|---|---|---|---|
+| `s129` (previous best) | 0.3676 | 0.3358 | 0.0210 | 0.0620 | 0.6491 |
+| **`s313` (val record)** | **0.3769** | **0.3411** | 0.0210 | **0.0646** | **0.6541** |
+| **paired difference** | +0.0093 | **+0.0053** | **0.0000** | **+0.0026** | **+0.0050** |
+
+**`s313` is ahead on three of the four comparison metrics and dead level on `mae`.** No metric
+regressed. `s129`'s own split-to-split spread on `pearson_delta` is 0.3318–0.3396 (range
+0.0078), so a +0.0053 margin on one split is **inside that spread** and is not yet a result —
+it is one paired split pointing the right way.
+
+⭐ **The argmax policy's second test is passing so far.** F-adj2's evidence was 1 for 1 (`s129`
+was both the val and cell-eval argmax within the scored set). `s313` had the higher val score
+and is so far the higher cell-eval score, which is the prediction the policy makes.
+
+**The gap held.** Predicted from the measured −0.0140: cell-eval ≈ 0.3629. Actual on split 0:
+**0.3411**, i.e. a gap of **−0.0358** — *larger* than the mean and just outside the
+previously measured range (−0.0327 … −0.0019). Worth watching once all 5 land: if `s313`'s gap
+is genuinely ~−0.036, the gap is not a constant and the "`v` − 0.014" rule of thumb
+under-predicts at the top of the val range. `s129`'s gap was −0.0327, also at the wide end, so
+the two highest-val arms both show the widest gaps — consistent with mild val overfitting as
+val improves.
+
+⚠️ Calibration is WORSE on this arm than on `s129`: `pearson_delta` 0.2740 vs 0.2892,
+`mae` 0.0886 vs 0.0854. It does buy more `disc_l1` (0.7750 vs 0.7533). Same trade as F12, and
+the uncalibrated column remains the one to compare on.
+
+Run on hop01's idle H100 at ~16 min/split (Slurm job `18045714` was cancelled while PENDING);
+`--calibrate both`.
+
 ### Adopted 2026-09-17: `scripts/eval_val_winner.py`
 
 The blanket 164-arm eval array (`18038018`) was **cancelled**; the sweep itself was not
