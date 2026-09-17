@@ -54,6 +54,7 @@ import json
 import os
 import subprocess
 import sys
+from typing import List
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(REPO, "src"))
@@ -93,14 +94,86 @@ def _completed_arms(grid: str):
     return out
 
 
-def _scored_splits(arm: str, eval_root: str, prefix: str, tag: str = "model_nocal") -> int:
+def _missing_splits(arm: str, eval_root: str, prefix: str,
+                    tag: str = "model_nocal") -> List[int]:
+    """Which splits still have no scored `tag` arm.
+
+    ⚠️ Returns IDENTITIES, not a count, because resuming a crashed run needs to know WHICH
+    splits to redo. An earlier version returned a count and the caller could only ask "are all
+    5 done?", which is why a crash left the policy refusing to continue.
+
+    A split counts as done only if its `agg_results.csv` exists. That is the right test and it
+    is what makes a half-written split read as NOT done: when hop01 crashed mid-split-2 it left
+    the two h5ads and an EMPTY `celleval_model_nocal/` directory behind, which this correctly
+    ignores.
+    """
     d = glob.glob(os.path.join(REPO, eval_root, f"{prefix}{arm}__*"))
     if not d:
-        return 0
-    return sum(
-        1 for s in range(N_SPLITS)
-        if os.path.isfile(os.path.join(d[0], f"split_{s:02d}", f"celleval_{tag}",
-                                       "agg_results.csv")))
+        return list(range(N_SPLITS))
+    return [s for s in range(N_SPLITS)
+            if not os.path.isfile(os.path.join(d[0], f"split_{s:02d}", f"celleval_{tag}",
+                                               "agg_results.csv"))]
+
+
+def _arm_paths(arm: str, grid: str, eval_root: str, prefix: str):
+    """(checkpoint, out_dir) for an arm, from its grid row. Raises if either is absent."""
+    rows = [ln.split("\t") for ln in open(os.path.join(REPO, grid)).read().split("\n")
+            if ln and not ln.startswith("#")][1:]
+    for r in rows:
+        if r[0] == arm:
+            tag = r[2]
+            ckpt = os.path.join(REPO, "runs", f"rhj_fewshot_{arm}__{tag}", "vcell",
+                                "checkpoints", "best_model.pth")
+            if not os.path.isfile(ckpt):
+                raise SystemExit(f"no checkpoint for {arm} at {ckpt}")
+            return ckpt, os.path.join(REPO, eval_root, f"{prefix}{arm}__{tag}")
+    raise SystemExit(f"{arm} is not a row of {grid}")
+
+
+def _run_local(arm: str, splits: List[int], ckpt: str, out: str, *, calibrate: str,
+               threads: int, cache: str) -> int:
+    """Run the missing splits sequentially on THIS node, re-checking before each one.
+
+    ⚠️ RE-RUNNABLE ON PURPOSE. It re-tests for `agg_results.csv` immediately before each
+    split, so a second crash costs only the split that was in flight -- which is exactly the
+    failure this whole code path exists to absorb.
+    """
+    import subprocess
+
+    os.makedirs(out, exist_ok=True)
+    os.makedirs(cache, exist_ok=True)
+    env = dict(os.environ)
+    env["PYTHONPATH"] = os.path.join(REPO, "src") + (
+        ":" + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
+    env["PYENV_VERSION"] = env.get("PYENV_VERSION", "scmae")
+
+    done, failed = [], []
+    for sp in splits:
+        agg = os.path.join(out, f"split_{sp:02d}", "celleval_model_nocal", "agg_results.csv")
+        if os.path.isfile(agg):
+            print(f"[winner] split {sp} landed since we started — skipping")
+            continue
+        # A half-written split dir is harmless (eval_splithalf overwrites), but an empty
+        # celleval_*/ is confusing to read later, so clear it first.
+        sd = os.path.join(out, f"split_{sp:02d}")
+        if os.path.isdir(sd):
+            import shutil
+            shutil.rmtree(sd)
+            print(f"[winner] cleared partial {os.path.relpath(sd, REPO)}")
+        print(f"\n########## {arm} split {sp} ##########", flush=True)
+        rc = subprocess.call(
+            [sys.executable, "scripts/eval_splithalf.py",
+             "--mode", "model", "--checkpoint", ckpt, "--split", str(sp),
+             "--out-root", out, "--de-real-cache-dir", cache,
+             "--calibrate", calibrate, "--num-threads", str(threads)],
+            cwd=REPO, env=env)
+        (done if rc == 0 else failed).append(sp)
+        if rc:
+            print(f"[winner] ⚠️ split {sp} exited {rc}; continuing with the rest so one bad "
+                  f"split does not cost the others", file=sys.stderr)
+    print(f"\n[winner] local run: {len(done)} split(s) scored {done}, "
+          f"{len(failed)} failed {failed}")
+    return 1 if failed else 0
 
 
 def main(argv=None) -> int:
@@ -123,6 +196,15 @@ def main(argv=None) -> int:
     ap.add_argument("--min-gain", type=float, default=0.0,
                     help="only score a new record if it beats the last SCORED record by this "
                          "much on validation. 0.0 = any new record.")
+    ap.add_argument("--local", action="store_true",
+                    help="run the missing splits sequentially on THIS node instead of "
+                         "submitting to Slurm. Re-runnable: a crash costs only the split in "
+                         "flight.")
+    ap.add_argument("--no-resume", action="store_true",
+                    help="refuse when the ledger says this arm was already submitted, even if "
+                         "splits are missing. The old (pre-crash) behaviour.")
+    ap.add_argument("--threads", type=int, default=10)
+    ap.add_argument("--de-cache", default="runs/rhj_splithalf/_de_real_shared")
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args(argv)
 
@@ -140,21 +222,35 @@ def main(argv=None) -> int:
     print(f"[winner]   lr {row.get('lr','?')} · decoder_lr {row.get('decoder_lr','?')} · "
           f"cos {row.get('cosine_loss_weight','?')} · film {row.get('film_mode','?')}")
 
-    n = _scored_splits(arm, args.eval_root, args.prefix)
-    if n >= N_SPLITS:
+    missing = _missing_splits(arm, args.eval_root, args.prefix)
+    n_done = N_SPLITS - len(missing)
+    if not missing:
         print(f"[winner] already scored on all {N_SPLITS} splits — nothing to do")
         return 0
-    if arm in hist["scored"] and hist["scored"][arm].get("submitted"):
-        print(f"[winner] already submitted as job "
-              f"{hist['scored'][arm].get('job')} ({n}/{N_SPLITS} splits landed) — "
-              f"nothing to do")
-        return 0
 
-    prev = max((r["val"] for r in hist["scored"].values()), default=None)
-    if prev is not None and val - prev < args.min_gain:
-        print(f"[winner] {arm} val {val:.4f} does not beat the last scored record "
-              f"{prev:.4f} by --min-gain {args.min_gain} — nothing to do")
+    already = bool(hist["scored"].get(arm, {}).get("submitted"))
+    resuming = already and n_done > 0
+    if already and args.no_resume:
+        print(f"[winner] already submitted as job {hist['scored'][arm].get('job')} "
+              f"({n_done}/{N_SPLITS} landed) and --no-resume was passed — nothing to do")
         return 0
+    if resuming:
+        # ⚠️ THIS IS THE CASE THE CRASH EXPOSED. The old check saw `submitted: true` and
+        # refused, so a run that died at split 2 could never be finished by the same script.
+        print(f"[winner] RESUMING {arm}: {n_done}/{N_SPLITS} splits landed under job "
+              f"{hist['scored'][arm].get('job')}, redoing only {missing}")
+    elif already:
+        print(f"[winner] {arm} was submitted as {hist['scored'][arm].get('job')} but NO split "
+              f"landed; treating it as a fresh run of {missing}")
+
+    # The record gate is skipped on a resume: the arm already won its record, and
+    # re-litigating it here would block the arm from finishing its own evaluation.
+    if not already:
+        prev = max((r["val"] for r in hist["scored"].values()), default=None)
+        if prev is not None and val - prev < args.min_gain:
+            print(f"[winner] {arm} val {val:.4f} does not beat the last scored record "
+                  f"{prev:.4f} by --min-gain {args.min_gain} — nothing to do")
+            return 0
 
     # ⚠️ THE ARRAY INDEX IS NOT THE ARM NUMBER. `rhj_splithalf_models.sbatch` computes
     #     ARM_I = IDX / N_SPLITS ; SPLIT = IDX % N_SPLITS
@@ -168,18 +264,49 @@ def main(argv=None) -> int:
     if arm not in rows:
         raise SystemExit(f"{arm} is not a row of {args.grid}")
     arm_row = rows.index(arm)
-    lo, hi = arm_row * N_SPLITS, arm_row * N_SPLITS + N_SPLITS - 1
+    tasks = ",".join(str(arm_row * N_SPLITS + sp) for sp in missing)
     cmd = ["sbatch", "--parsable", f"--qos={args.qos}", f"--wckey={args.qos}",
-           f"--job-name={args.job_name}", f"--array={lo}-{hi}", args.sbatch]
-    print(f"[winner] {arm} is grid row {arm_row} -> array tasks {lo}-{hi} "
-          f"(5 splits of ONE arm)")
+           f"--job-name={args.job_name}", f"--array={tasks}", args.sbatch]
+    print(f"[winner] {arm} is grid row {arm_row} -> array tasks {tasks} "
+          f"(split(s) {missing} of ONE arm)")
     print(f"[winner] expectation, from the measured gap ({VAL_TO_CE_GAP:+.4f}): "
           f"cell-eval pearson_delta ~ {val + VAL_TO_CE_GAP:.4f}, and NOT above {val:.4f}")
     print(f"[winner] anchors: meanpert 0.1324 · transfer 0.2323 · experimental 0.3722")
     print(f"[winner] $ {' '.join(cmd)}")
+    ckpt, out = _arm_paths(arm, args.grid, args.eval_root, args.prefix)
+    if args.local:
+        print(f"[winner] --local: running split(s) {missing} on {os.uname().nodename} "
+              f"sequentially, {args.threads} threads, calibrate={args.calibrate}")
+        print(f"[winner]   ckpt {os.path.relpath(ckpt, REPO)}")
+        print(f"[winner]   out  {os.path.relpath(out, REPO)}")
     if args.dry_run:
-        print("[winner] --dry-run: nothing submitted")
+        print("[winner] --dry-run: nothing run or submitted")
         return 0
+
+    if args.local:
+        rc = _run_local(arm, missing, ckpt, out, calibrate=args.calibrate,
+                        threads=args.threads,
+                        cache=os.path.join(REPO, args.de_cache))
+        rec = hist["scored"].setdefault(arm, {"val": val})
+        rec.update({"submitted": True, "calibrate": args.calibrate,
+                    "grid_row": arm_row, "local_node": os.uname().nodename})
+        rec.setdefault("job", f"local:{os.uname().nodename}")
+        runs = rec.setdefault("local_runs", [])
+        runs.append({"splits_requested": missing,
+                     "splits_landed": [s for s in missing
+                                       if s not in _missing_splits(arm, args.eval_root,
+                                                                   args.prefix)],
+                     "resumed": resuming})
+        os.makedirs(os.path.dirname(LEDGER), exist_ok=True)
+        with open(LEDGER, "w") as fh:
+            json.dump(hist, fh, indent=2, sort_keys=True)
+        still = _missing_splits(arm, args.eval_root, args.prefix)
+        print(f"[winner] {N_SPLITS - len(still)}/{N_SPLITS} splits now scored"
+              + (f"; still missing {still}" if still else " — COMPLETE"))
+        if not still:
+            print(f"[winner] next: PYENV_VERSION=scmae python scripts/paired_report.py "
+                  f"--model-arm model_nocal {os.path.relpath(out, REPO)}")
+        return rc
 
     env = dict(os.environ)
     env["GRID"] = args.grid
@@ -193,7 +320,8 @@ def main(argv=None) -> int:
           + (f" CALIBRATE={args.calibrate}" if args.calibrate else ""))
     job = subprocess.check_output(cmd, text=True, cwd=REPO, env=env).strip()
     hist["scored"][arm] = {"val": val, "job": job, "submitted": True,
-                           "grid_row": arm_row, "array": f"{lo}-{hi}",
+                           "grid_row": arm_row, "array": tasks,
+                           "splits_requested": missing, "resumed": resuming,
                            "config": {k: row.get(k) for k in
                                       ("lr", "decoder_lr", "cosine_loss_weight",
                                        "film_mode", "film_hidden_dim", "film_mean_free")}}
