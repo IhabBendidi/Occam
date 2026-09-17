@@ -198,6 +198,57 @@ perturbation sets, different metric, different scale.
 
 ---
 
+## ⭐ F9 — the reference ladder, measured by cell-eval on 4 of 5 splits
+
+**Status: 4 of 5 splits, all five reference arms** (split 4 rerunning after an OOM; split
+3's `ctrlmean` lost to a transient pdex shared-memory race and is being retried). 611
+perturbations, 18,575 rows per arm, 2,488 half-B controls, `ddof=1` across splits.
+
+| arm | `pearson_delta` | `overlap_at_N` | `discrimination_score_l2` | `de_direction_match` | `mae_delta` ↓ |
+|---|---|---|---|---|---|
+| `ctrlmean` | 0.0010 ± 0.0010 | 0.0077 | 0.5040 | 0.4684 | 0.0231 |
+| `ctrlcell` | **−0.0005 ± 0.0013** | **0.0000** | 0.5050 | 0.4832 | 0.0296 |
+| `meanpert` | 0.1335 ± 0.0020 | 0.0109 | **0.5060** | 0.5776 | 0.0290 |
+| **`transfer`** | **0.2332 ± 0.0010** | 0.0351 | 0.7023 | 0.6891 | 0.0299 |
+| **`experimental`** | **0.3720 ± 0.0011** | 0.1949 | 0.8392 | 0.7563 | 0.0258 |
+
+Chance is **0.5** for `discrimination_score_l2` and `de_direction_match`.
+
+### The split-to-split std is 0.001–0.002, and that is the headline
+
+Every arm's spread across independent splits is **one to two thousandths**. The paired
+design is doing exactly what the reviewer asked it to: split choice contributes almost
+nothing, so a model-vs-reference gap larger than about **0.005** will be resolvable.
+
+Put that beside F7: the *validation* metric swings **±0.20** between consecutive epochs,
+while this benchmark's split-to-split noise is **±0.001**. The benchmark is ~200× the
+cleaner measurement, and it is the one that should decide anything.
+
+### The ladder reads correctly, top to bottom
+
+* **`ctrlcell` is a true zero** — `pearson_delta` −0.0005, `overlap_at_N` exactly 0,
+  discrimination at chance. The floor is a floor.
+* **`meanpert` gains delta accuracy but cannot discriminate**: 0.1335 `pearson_delta`, yet
+  `discrimination_score_l2` **0.5060**, i.e. chance. Exactly right — it predicts the *same*
+  delta for every perturbation, so it captures the average response direction and nothing
+  perturbation-specific. This is the arm that makes "the model learned something
+  per-perturbation" a testable claim.
+* **`transfer` genuinely discriminates**: 0.7023, well above chance, at 0.2332
+  `pearson_delta` — **63% of the way to replicate agreement**. This is the bar.
+* **`experimental` 0.3720** is replicate agreement at median m = 22, not an upper bound.
+
+### ⚠️ This is a different picture from F5, and both are right
+
+On the *validation* side, `MeanBaseline` scored **0.5567** and beat every model arm. Here
+`transfer` scores **0.2332**, below `experimental`. The two are not the same quantity:
+`MeanBaseline` compares group means on 103 perturbations with the internal metric, while
+`transfer` adds a cross-line delta to a *single* drawn control cell and is scored by
+cell-eval on 611 with the A/B control asymmetry. **The F5 headline does not carry over
+numerically** — what carries over is the question: can the model beat a plain cross-line
+average? On this benchmark that bar is **0.2332 ± 0.0010**.
+
+---
+
 ## F5b — the first full-eval launch failed: 135 tasks on one tuple, 1 split on memory
 
 **Status: diagnosed and fixed; relaunched.** Recorded because the failure mode is worth

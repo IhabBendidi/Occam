@@ -242,6 +242,10 @@ def main() -> int:
                          "only on the split's target file, so one cache serves every run; "
                          "it is keyed on that file's own sha256, so a rebuilt panel misses "
                          "by construction rather than being scored against a stale truth.")
+    ap.add_argument("--arms", default="",
+                    help="in --mode reference, score only these arms. For retrying a "
+                         "single arm after the transient pdex shared-memory race "
+                         "(FileNotFoundError: /psm_...) without repaying the other four.")
     ap.add_argument("--probe-arms", default="ctrlcell,ctrlmean",
                     help="two arms, so the shared real-side DE cost is separable")
     ap.add_argument("--num-threads", type=int, default=16)
@@ -281,6 +285,15 @@ def main() -> int:
         # seeded RNG the model runs use, so `ctrl_used` is bit-identical across every run
         # of this split and `meanpert`/`transfer` cancel the model's control noise exactly.
         arms = ["ctrlmean", "ctrlcell", "experimental", "transfer", "meanpert"]
+        if args.arms:
+            want = [a.strip() for a in args.arms.split(",") if a.strip()]
+            unknown = sorted(set(want) - set(arms))
+            if unknown:
+                raise SystemExit(f"--arms {unknown} are not reference arms; "
+                                 f"choose from {arms}")
+            arms = want
+            print(f"[splithalf] --arms restricts this pass to {arms}; the record it "
+                  f"writes will cover only those, so merge it rather than overwrite")
     else:
         trainer, loaded_ckpt = load_model(
             args.checkpoint, args.device, args.output_activation)
@@ -321,6 +334,7 @@ def main() -> int:
         grand_mean=grand, grand_mean_info=man.get("train_grand_mean"),
         transfer_deltas=transfer, transfer_info=man.get("transfer"),
         calibrate=calibrate, batch_size=batch_size, seed=args.seed,
+        probe=args.probe,
         celleval_kwargs={"num_threads": args.num_threads,
                          "de_batch_size": args.de_batch_size,
                          **({"de_real_cache_dir": args.de_real_cache_dir}

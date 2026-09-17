@@ -110,12 +110,19 @@ def run_split(
     batch_size: int = 512,
     celleval_kwargs: Optional[Mapping] = None,
     score_only: Optional[Sequence[str]] = None,
+    probe: bool = False,
 ) -> Dict[str, object]:
     """Score every arm of ONE split. Returns the split's record (also written as JSON).
 
-    `score_only` restricts which arms reach cell-eval. It is the **timing probe** switch and
-    nothing else: the record is then stamped `probe: true` and written to
-    `metrics_probe.json`, so a probe can never be read as a result.
+    `score_only` restricts which arms reach cell-eval. `probe` is a SEPARATE flag: it stamps
+    the record `probe: true` and writes `metrics_probe.json` instead of `metrics.json`, so a
+    cost measurement can never be read as a result.
+
+    ⚠️ These two were one flag until 2026-09-17 and it was wrong. The reference pass
+    legitimately uses `score_only` to skip the model arm -- the other five arms do not
+    depend on the checkpoint -- and it was therefore stamped a probe and written to
+    `metrics_probe.json`, where `paired_report.py` refuses it. Restricting the arm set and
+    being a throwaway measurement are different things.
 
     The `meanpert` baseline comes either from `train_perts` (averaged out of `base` here) or
     from a precomputed `grand_mean`. The precomputed form is the normal one: the training
@@ -202,20 +209,23 @@ def run_split(
           f"anchors {anchor_tags}, reference {ref_tags}, model {model_tags}")
 
     wanted = None
-    if score_only is not None:
+    if score_only is not None:  # noqa: SIM102 -- kept flat for the message below
         wanted = [str(t) for t in score_only]
         emitted = [t for t, _, _ in arms]
         unknown = sorted(set(wanted) - set(emitted))
         if unknown:
             raise ProtocolError(f"score_only names arm(s) {unknown} that were not emitted; "
                                 f"emitted: {emitted}")
-        print(f"[splithalf] TIMING PROBE: scoring only {wanted} — this output is not a "
-              f"result and is written to metrics_probe.json")
+        if probe:
+            print(f"[splithalf] TIMING PROBE: scoring only {wanted} — this output is not "
+                  f"a result and is written to metrics_probe.json")
+        else:
+            print(f"[splithalf] scoring {len(wanted)} of the arms: {wanted}")
 
     record: Dict[str, object] = {
         "protocol": PROTOCOL,
         "split": int(split.index),
-        "probe": wanted is not None,
+        "probe": bool(probe),
         "seed": split_seed,
         "cohort_sha256": cohort["cohort_sha256"],
         "n_perts": int(cohort["n_perts"]),
@@ -237,7 +247,9 @@ def run_split(
 
     for tag, matrix, lbls in arms:
         if wanted is not None and tag not in wanted:
-            record["arms"][tag] = {"status": "not scored (timing probe)"}
+            record["arms"][tag] = {
+                "status": "not scored (timing probe)" if probe
+                else "not scored in this pass"}
             continue
         t0 = time.time()
         record["scored_order"].append(tag)
@@ -258,7 +270,7 @@ def run_split(
         record["arms"][tag] = metrics
         record.setdefault("target_file", target_path)
 
-    name = "metrics_probe.json" if wanted is not None else "metrics.json"
+    name = "metrics_probe.json" if probe else "metrics.json"
     with open(os.path.join(out_dir, name), "w") as fh:
         json.dump(record, fh, indent=2, sort_keys=True, default=str)
     print(f"[splithalf] split {split.index}: wrote {os.path.join(out_dir, name)}")

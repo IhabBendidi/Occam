@@ -264,7 +264,7 @@ def test_the_timing_probe_scores_one_arm_and_cannot_be_read_as_a_result(tmp_path
 
     rec = run_split(base, labels, sp, cohort, str(tmp_path), model=model,
                     pert2id=pert2id, device="cpu", calibrate="none", batch_size=16,
-                    score_only=["ctrlcell"])
+                    score_only=["ctrlcell"], probe=True)
     assert calls == ["celleval_ctrlcell"]
     assert rec["probe"] is True
     assert os.path.isfile(os.path.join(tmp_path, "metrics_probe.json"))
@@ -274,7 +274,50 @@ def test_the_timing_probe_scores_one_arm_and_cannot_be_read_as_a_result(tmp_path
     with pytest.raises(ProtocolError):
         run_split(base, labels, sp, cohort, str(tmp_path / "x"), model=model,
                   pert2id=pert2id, device="cpu", calibrate="none",
-                  score_only=["not_an_arm"])
+                  score_only=["not_an_arm"], probe=True)
+
+
+def test_restricting_the_arm_set_does_not_make_a_run_a_probe(tmp_path, monkeypatch):
+    """⭐ The reference pass uses `score_only` to skip the checkpoint-dependent arm.
+
+    These were one flag until 2026-09-17, so four completed reference splits were stamped
+    `probe: true` and written to metrics_probe.json, where paired_report.py refuses them.
+    Restricting the arm set and being a throwaway cost measurement are different things.
+    """
+    pytest.importorskip("torch")
+
+    from occam.vcell.panel import run as run_mod
+    from occam.vcell.panel.protocol import run_split
+    from occam.vcell.panel.splithalf import draw_splits, freeze_cohort
+
+    X, labels, batches = _corpus()
+    perts = [f"P{i:02d}" for i in range(N_PERT)]
+    cohort = freeze_cohort(labels, eligible=perts, min_cells=10)
+    sp = draw_splits(labels, batches, cohort, n_splits=1, base_seed=11)[0]
+
+    def _stub(pred_path, target_path, out_dir, **kw):
+        os.makedirs(out_dir, exist_ok=True)
+        return {"pearson_delta": 0.2}
+
+    monkeypatch.setattr(run_mod, "run_celleval_v1", _stub)
+
+    common = dict(model=None, pert2id={p: 0 for p in perts}, device="cpu",
+                  predict_fn=lambda c, p: c, calibrate="none", batch_size=16,
+                  score_only=["ctrlcell", "ctrlmean"])
+
+    rec = run_split(_base_panel(X, labels), labels, sp, cohort,
+                    str(tmp_path / "ref"), **common)
+    assert rec["probe"] is False, "a restricted arm set is not a probe"
+    assert os.path.isfile(os.path.join(tmp_path, "ref", "metrics.json"))
+    assert not os.path.isfile(os.path.join(tmp_path, "ref", "metrics_probe.json"))
+    assert rec["arms"]["experimental"]["status"] == "not scored in this pass"
+
+    rec2 = run_split(_base_panel(X, labels), labels, sp, cohort,
+                     str(tmp_path / "probe"), probe=True, **common)
+    assert rec2["probe"] is True
+    assert os.path.isfile(os.path.join(tmp_path, "probe", "metrics_probe.json"))
+    assert not os.path.isfile(os.path.join(tmp_path, "probe", "metrics.json"))
+    assert rec2["arms"]["experimental"]["status"] == "not scored (timing probe)"
 
 
 def test_a_cohort_perturbation_missing_from_pert2id_refuses_before_predicting(tmp_path):
