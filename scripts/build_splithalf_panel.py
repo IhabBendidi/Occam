@@ -77,6 +77,10 @@ PERT_COL = "gene_name"
 BATCH_COL = "dataset_batch_num"
 CONTROL = "non-targeting"
 
+# The two contexts the transfer arm reads its per-perturbation deltas from. HepG2 is
+# excluded on purpose: it is the held-out context, and including it would leak the answer.
+TRANSFER_SOURCES = ("nadig_2024_jurkat.h5ad", "replogle_2022_rpe1_e.h5ad")
+
 
 def _sha256_bytes(b: bytes) -> str:
     return hashlib.sha256(b).hexdigest()
@@ -235,6 +239,64 @@ def main() -> int:
               f"perturbations ({grand_info['total_cells']:,} cells, equal weight per "
               f"perturbation)")
 
+    # ---- the CROSS-CELL-LINE TRANSFER deltas ------------------------------
+    # For each cohort perturbation: the count-weighted mean of its (perturbed mean - that
+    # file's control mean) over Jurkat and RPE1, on this same axis. Adding this to a HepG2
+    # control cell is the non-learned version of exactly what the model is asked to do, and
+    # on the validation side it beat every one of the 24 FiLM arms by 0.20 (docs
+    # rhj_fewshot.md F5). It must therefore appear in the benchmark table, or the report
+    # omits the thing that wins.
+    #
+    # ⚠️ HepG2 is deliberately NOT one of the source files. Including it would read the
+    # held-out context's own answer.
+    deltas = np.zeros((cohort["n_perts"], Xp.shape[1]), dtype=np.float64)
+    weights = np.zeros(cohort["n_perts"], dtype=np.float64)
+    pert_index = {p: i for i, p in enumerate(cohort["perts"])}
+    transfer_info: Dict[str, object] = {"sources": [], "weighting": "cells per (file, pert)"}
+    for name in TRANSFER_SOURCES:
+        rec = dict(bench.raw["sources"][name])
+        with open(os.path.join(args.bench_dir, "files",
+                               name.replace(".h5ad", ".json"))) as fh:
+            rec.update(json.load(fh))
+        have = _file_sha256(rec["path"])
+        if have != rec["sha256"]:
+            raise SystemExit(f"{name} has changed since the benchmark was built "
+                             f"({have[:16]} != {rec['sha256'][:16]})")
+        print(f"[panel] transfer source {name} on the axis")
+        Xs, ls, _bs = _load_axis_restricted(rec["path"], bench.axis_ensembl, target_sum)
+        cmean = Xs[ls == CONTROL].mean(axis=0)
+        n_hit = 0
+        for pert, i in pert_index.items():
+            rows = np.flatnonzero(ls == pert)
+            if rows.size == 0:
+                continue
+            deltas[i] += (Xs[rows].mean(axis=0) - cmean) * rows.size
+            weights[i] += rows.size
+            n_hit += 1
+        transfer_info["sources"].append(
+            {"file": name, "sha256": rec["sha256"], "cell_line": rec.get("cell_line"),
+             "n_controls": int((ls == CONTROL).sum()),
+             "n_cohort_perts_present": n_hit})
+        print(f"[panel]   {n_hit}/{cohort['n_perts']} cohort perturbations present, "
+              f"{int((ls == CONTROL).sum()):,} controls")
+        del Xs, ls, _bs
+
+    missing_transfer = [p for p, i in pert_index.items() if weights[i] == 0]
+    if missing_transfer:
+        raise SystemExit(
+            f"{len(missing_transfer)} cohort perturbation(s) appear in NEITHER transfer "
+            f"source (e.g. {missing_transfer[:5]}). Every cohort perturbation is supposed "
+            f"to be present in all three files; refusing to write a transfer arm with "
+            f"holes in it.")
+    deltas /= weights[:, None]
+    np.savez_compressed(os.path.join(out_dir, "transfer_deltas.npz"),
+                        deltas=deltas.astype(np.float32),
+                        perts=np.asarray(cohort["perts"], dtype=object))
+    transfer_info["n_perts"] = int(len(pert_index))
+    transfer_info["cells_per_pert_median"] = float(np.median(weights))
+    print(f"[panel] transfer deltas: {deltas.shape}, median "
+          f"{int(np.median(weights))} source cells per perturbation")
+
     # ---- the splits -------------------------------------------------------
     splits = draw_splits(lp, bp, cohort, n_splits=args.n_splits, base_seed=args.seed)
     for sp in splits:
@@ -285,6 +347,7 @@ def main() -> int:
         "half_size_strata": {"m>=5": int((m >= 5).sum()), "m>=10": int((m >= 10).sum()),
                              "m>=25": int((m >= 25).sum()), "m_median": int(np.median(m))},
         "train_grand_mean": {k: v for k, v in grand_info.items() if k != "cells_per_pert"},
+        "transfer": transfer_info,
         "splits": [],
     }
     for sp in splits:
@@ -331,6 +394,16 @@ def main() -> int:
              for i in range(args.n_splits))),
         ("grand mean is on the axis",
          grand is None or grand.shape == (len(bench.axis_ensembl),)),
+        ("transfer deltas cover every cohort perturbation",
+         np.load(os.path.join(out_dir, "transfer_deltas.npz"),
+                 allow_pickle=True)["deltas"].shape
+         == (cohort["n_perts"], len(bench.axis_ensembl))),
+        ("transfer deltas are finite",
+         bool(np.isfinite(np.load(os.path.join(out_dir, "transfer_deltas.npz"),
+                                  allow_pickle=True)["deltas"]).all())),
+        ("transfer perts are the cohort, in order",
+         list(np.load(os.path.join(out_dir, "transfer_deltas.npz"),
+                      allow_pickle=True)["perts"]) == list(cohort["perts"])),
         ("no non-finite value in the panel", bool(np.isfinite(z["X"]).all())),
     ]
     bad = [n for n, ok in checks if not ok]

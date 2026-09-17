@@ -104,8 +104,19 @@ alternation appears in every arm checked:
 | `a06` | 0.2172 | 0.1628 | **0.3359** | 0.1332 | **0.3454** | 0.0899 |
 | `a17` | 0.2349 | 0.1850 | **0.3019** | 0.1401 | **0.2889** | 0.0715 |
 
-### The mechanism
+### Two candidate mechanisms, neither yet tested
 
+**Both are live. The diagnosis below is a hypothesis, not a finding.**
+
+**(a) Learning rate.** `lr` is 1e-3 with a cosine schedule — the research tree's value, for
+a different estimand. At `target_pb_k=1` the label noise per sample is ~√59× higher than the
+`target_pb_k=0` configuration the recipe was tuned on, so the effective gradient noise is
+much larger and 1e-3 may simply be past the stability edge. **A learning-rate sweep is the
+direct test and is planned.** ⚠️ The one thing that does not obviously fit: a cosine
+schedule decays smoothly, so it does not by itself explain strict epoch-*parity*
+alternation.
+
+**(b) Eval-time BatchNorm statistics.**
 `src/occam/decoder/external.py` — the decoder carries **11 `BatchNorm1d` layers**.
 `pipeline.py:2622` calls `model.eval()` before validating, so those layers score the val
 set with their **running** mean/var, accumulated over the training epoch just finished. With
@@ -117,6 +128,8 @@ This is precisely the failure the plan anticipated and chose `proportional` inte
 avoid: *"round-robin leaves a single-source epoch tail that poisons eval-time BatchNorm
 stats (±0.007, larger than the effect being chased)."* **The anticipated size was ±0.007.
 The measured size is ±0.20 — about 30× larger**, and `proportional` did not prevent it.
+This mechanism does explain the parity alternation, which is why it is the first suspect —
+but it is a suspect, and (a) has not been ruled out.
 
 ### What it invalidates
 
@@ -140,16 +153,24 @@ The measured size is ±0.20 — about 30× larger**, and `proportional` did not 
   that oscillation, so the true gap is if anything wider.
 * The split-half benchmark is **not** affected the same way: it scores a fixed checkpoint
   once, in `eval()` mode, with no further training, so there is no epoch-tail to vary. What
-  it inherits is a **checkpoint chosen on a noisy peak** — which is exactly why the protocol
-  scores both `best_model.pth` and `final_model.pth`.
+  it inherits is a **checkpoint chosen on a noisy peak**. `final_model.pth` is not a remedy
+  here and is not being scored: at epoch 30 every arm sits in the LOW phase of the
+  oscillation (`a16` 0.1143, `a06` 0.0899, `a17` 0.0715), so the final weights are
+  systematically the unlucky ones rather than an unbiased alternative.
 
 ### What would fix it, for whoever runs this next
 
-Not run here, not implied: recompute the BatchNorm running statistics on a **fixed,
-cell-line-balanced** batch stream immediately before each eval; or switch the decoder's
-`BatchNorm1d` to `LayerNorm`, which has no running state; or freeze the BN statistics after
-a warmup. The first is cheapest and testable — if the oscillation disappears, the diagnosis
-is confirmed.
+Two independent tests, and they separate the two hypotheses:
+
+1. **A learning-rate sweep** (planned). If lower `lr` removes the oscillation, (a) is the
+   cause and the recipe simply does not transfer to this estimand.
+2. **Recompute the BatchNorm running statistics on a fixed, cell-line-balanced batch stream
+   immediately before each eval** — or switch the 11 `BatchNorm1d` layers to `LayerNorm`,
+   which has no running state, or freeze the statistics after a warmup. If the oscillation
+   disappears with the *same* `lr`, (b) is the cause.
+
+Neither is run here. Run (1) first since it is already planned; if the oscillation survives
+a 10× lower `lr`, (b) is implicated and the BN fix is the next move.
 
 ---
 
