@@ -112,8 +112,14 @@ def main(argv=None) -> int:
     ap.add_argument("--sbatch", default="scripts/slurm/rhj_splithalf_models.sbatch")
     ap.add_argument("--qos", default="vco")
     ap.add_argument("--job-name", default="rhj_adj_eval")
-    ap.add_argument("--calibrate", default="",
-                    help="passed through as CALIBRATE; empty = the launcher's own default")
+    # ⚠️ NOT the launcher's `quantile` default. `quantile` emits ONLY `model_cal`, and every
+    # number this policy rests on (F-adj2: Spearman +0.941, the val argmax winning cell-eval,
+    # the -0.0140 gap) was measured on `model_nocal`. MEASURED 2026-09-17: a local run left at
+    # the default produced `model_cal 0.2740` for s313 and no uncalibrated number at all --
+    # a value that is not comparable to s129's 0.3348 and would have been read as one.
+    ap.add_argument("--calibrate", default="both",
+                    help="CALIBRATE for the launcher. Keep 'both': 'quantile' emits only "
+                         "model_cal, which is NOT the arm this policy's evidence is on.")
     ap.add_argument("--min-gain", type=float, default=0.0,
                     help="only score a new record if it beats the last SCORED record by this "
                          "much on validation. 0.0 = any new record.")
@@ -180,6 +186,9 @@ def main(argv=None) -> int:
     env["OUT_PREFIX"] = args.prefix
     if args.calibrate:
         env["CALIBRATE"] = args.calibrate
+    if args.calibrate != "both":
+        print(f"[winner] ⚠️ --calibrate {args.calibrate!r}: this policy's evidence is on "
+              f"`model_nocal`. Anything but 'both' may produce no uncalibrated number.")
     print(f"[winner]   GRID={args.grid} OUT_PREFIX={args.prefix}"
           + (f" CALIBRATE={args.calibrate}" if args.calibrate else ""))
     job = subprocess.check_output(cmd, text=True, cwd=REPO, env=env).strip()
