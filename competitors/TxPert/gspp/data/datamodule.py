@@ -110,6 +110,10 @@ class PertDataModule(L.LightningDataModule):
         xcell_v2_data_path: str = None,
         zarr: bool = False,
         zarr_manifest_path: str = None,
+        occam: bool = False,
+        occam_bench_dir: str = None,
+        occam_target_sum: float = 10_000.0,
+        occam_verify_sources: bool = True,
     ):
         """
         Initialize the PertDataModule with various parameters.
@@ -175,6 +179,26 @@ class PertDataModule(L.LightningDataModule):
         if self.zarr:
             if not self.zarr_manifest_path:
                 raise ValueError("datamodule.zarr=true requires datamodule.zarr_manifest_path")
+
+        # Occam's rhj_fewshot benchmark, read from ITS OWN h5ads in place -- no conversion and
+        # no second copy. See gspp/data/occam_loader.py. Mutually exclusive with `zarr`: they
+        # are different benchmarks on different gene axes, and silently preferring one would
+        # make the run unattributable.
+        self.occam = occam
+        self.occam_bench_dir = occam_bench_dir
+        self.occam_target_sum = occam_target_sum
+        self.occam_verify_sources = occam_verify_sources
+        self._occam_bench = None
+        if self.occam:
+            if not self.occam_bench_dir:
+                raise ValueError(
+                    "datamodule.occam=true requires datamodule.occam_bench_dir "
+                    "(e.g. <repo>/data/benchmarks/rhj_fewshot)")
+            if self.zarr:
+                raise ValueError(
+                    "datamodule.occam and datamodule.zarr are mutually exclusive: they are "
+                    "different benchmarks (6,983 genes / 611 test perturbations / 3 cell "
+                    "lines vs 2,000 / 380 / 4), and their scores are not comparable.")
             self.xcell_v2 = True  # reuse the no-val / HepG2-holdout wiring
 
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -588,6 +612,9 @@ class PertDataModule(L.LightningDataModule):
         a single pre-merged, pre-HVG'd file -- is the only supported source. The zarr loader
         lands alongside it as a second branch.
         """
+        if self.occam:
+            return self._load_occam_data()
+
         if self.zarr:
             return self._load_zarr_data()
 
@@ -595,10 +622,45 @@ class PertDataModule(L.LightningDataModule):
             return self._load_xcellv2_data()
 
         raise NotImplementedError(
-            "This TxPert copy supports the canonical zarr source (datamodule.zarr=true) or the "
+            "This TxPert copy supports Occam's rhj_fewshot benchmark "
+            "(datamodule.occam=true), the canonical zarr source (datamodule.zarr=true) or the "
             "pre-merged xcell_v2 h5ad (datamodule.xcell_v2=true). The upstream multi-h5ad "
             "loading path was removed; see competitors/TxPert/README_HOOKE_TX.md."
         )
+
+    def _load_occam_data(self) -> sc.AnnData:
+        """Load Occam's rhj_fewshot benchmark from its own h5ads.
+
+        Deliberately does NOT re-normalize: `occam_loader` returns
+        `log1p(target_sum=occam_target_sum)`, the same scale the zarr path receives and the
+        one every arm's config assumes (`target_sum=null, log1p=false`). HVG selection is
+        likewise skipped -- the axis is already the frozen 6,983 genes.
+        """
+        from gspp.data.occam_loader import (
+            load_occam_datasets,
+            load_occam_split_perturbations,
+        )
+
+        logger.info(f"occam: loading benchmark {self.occam_bench_dir}")
+        adata, bench = load_occam_datasets(
+            self.occam_bench_dir,
+            target_sum=self.occam_target_sum,
+            verify_sources=self.occam_verify_sources,
+        )
+        self._occam_bench = bench
+
+        # Resolve the split to perturbation NAMES before any further filtering, and store it
+        # where _load_zarr_splits expects it.
+        self._zarr_split = load_occam_split_perturbations(bench, adata)
+
+        self._extend_pert_vocabulary(adata)
+
+        adata = _standardize_obs_format(adata, GENE_NAME)
+        logger.info(
+            f"occam: {adata.shape[0]} cells, {adata.shape[1]} genes, "
+            f"cell lines {sorted(adata.obs[CELL_TYPE].unique())}"
+        )
+        return adata
 
     def _load_zarr_data(self) -> sc.AnnData:
         """Load the hooke-tx canonical zarr datasets named in the manifest TOML.
@@ -776,6 +838,14 @@ class PertDataModule(L.LightningDataModule):
         """
         Load predefined splits for the data.
         """
+        if self.occam:
+            # _load_zarr_splits is reused verbatim: it consumes self._zarr_split, a
+            # {train, validation, test} dict of perturbation NAMES, and its exclusion rule --
+            # hold the named perturbations out of HepG2 rows only while leaving them in
+            # condition_group["train"] so they still train from the other lines -- is exactly
+            # the rhj_fewshot design. Nothing about it is zarr-specific.
+            self._load_zarr_splits()
+            return
         if self.zarr:
             self._load_zarr_splits()
             return
