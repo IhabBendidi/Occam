@@ -400,6 +400,46 @@ def test_a_custom_predict_fn_also_drives_the_calibration_fit(tmp_path):
     assert "model_cal" in rec["model_arms"] and "model_nocal" in rec["model_arms"]
 
 
+def test_every_calibrate_value_that_build_arms_accepts_also_works_end_to_end(tmp_path,
+                                                                             monkeypatch):
+    """⭐ `calibrate="quantile"` must actually fit the map.
+
+    The gate in run_split read `calibrate in ("fit", "both")`. "fit" was never a valid
+    value, so `quantile` silently skipped the fit, `calibrated` stayed None, and build_arms
+    refused -- after loading the checkpoint and predicting 18,575 cells. Two launches of 135
+    array tasks died on it, because every test used "none" or "both" and only the model
+    launcher passes "quantile". This parametrises over all three.
+    """
+    torch = pytest.importorskip("torch")
+    import torch.nn as nn
+
+    from occam.vcell.panel import run as run_mod
+    from occam.vcell.panel.protocol import run_split
+    from occam.vcell.panel.splithalf import draw_splits, freeze_cohort
+
+    X, labels, batches = _corpus()
+    perts = [f"P{i:02d}" for i in range(N_PERT)]
+    cohort = freeze_cohort(labels, eligible=perts, min_cells=10)
+    sp = draw_splits(labels, batches, cohort, n_splits=1, base_seed=3)[0]
+    model = _tiny_model(torch, nn, X.shape[1], N_PERT)
+
+    def _stub(pred_path, target_path, out_dir, **kw):
+        os.makedirs(out_dir, exist_ok=True)
+        return {"pearson_delta": 0.3}
+
+    monkeypatch.setattr(run_mod, "run_celleval_v1", _stub)
+
+    expected = {"none": {"model_nocal"},
+                "quantile": {"model_cal"},
+                "both": {"model_cal", "model_nocal"}}
+    for mode, want in expected.items():
+        rec = run_split(_base_panel(X, labels), labels, sp, cohort,
+                        str(tmp_path / mode), model=model,
+                        pert2id={p: i for i, p in enumerate(perts)}, device="cpu",
+                        calibrate=mode, batch_size=16, score_only=["ctrlcell"])
+        assert set(rec["model_arms"]) == want, (mode, rec["model_arms"])
+
+
 def test_the_transfer_arm_adds_each_perturbations_own_cross_line_delta(tmp_path):
     """⭐ The arm that beat every model on validation (F5). It must be exactly
     `ctrl_used + delta[pert]`, per row, with the row's OWN perturbation's delta — not a

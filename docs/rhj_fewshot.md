@@ -112,7 +112,38 @@ and `proportional` interleave is unchanged, so if BN were the whole story the os
 should have survived. That it did not makes (b) less likely — but batch 2048 also changes
 how many batches contribute to the running statistics, so (b) is not excluded either.
 
-### The isolating experiment
+### ⭐ RESOLVED: it is NOT the learning rate
+
+Sweep indices 0 / 162 / 324 differ **only** in `lr`. All three completed (job `18034957`,
+~29 min each). Last 9–10 epochs of the validation `pearson_delta`:
+
+| `lr` | curve | span |
+|---|---|---|
+| 3e-4 | 0.297 0.288 0.276 0.300 0.267 0.299 0.310 0.291 0.303 0.279 | **0.043** |
+| **1e-3** *(the old grid's value)* | 0.283 0.273 0.294 0.239 0.269 0.299 0.298 0.294 0.265 | **0.060** |
+| 3e-3 | 0.239 0.201 0.264 0.235 0.242 0.265 0.230 0.248 0.195 | **0.070** |
+
+**At `lr` 1e-3 — exactly the old grid's learning rate — the span is 0.060 against the old
+grid's 0.240.** Four times smaller, with the learning rate held identical. Even at 3e-3,
+three times higher than the old grid, the span is 0.070.
+
+**So F7(a) is falsified: the ±0.20 oscillation was not a learning-rate artefact.** The
+credit belongs to the other two changes — batch 256 → 2048, or `gnn` → `adjacency_map`, or
+both. Given F8 showed the GNN was a fixed per-step cost recomputed every batch while being
+trained, and the adjacency map has no message passing to amplify a graph-wide embedding
+perturbation between epochs, either remains plausible; separating them would need a
+`gnn` × batch-2048 arm, which is not currently planned.
+
+⚠️ **What this means for the old 27-arm grid: its rankings stay dead.** The oscillation was
+real and F6 is still uninterpretable. But the cause does not apply to any run in the new
+setting, so the adjacency-map sweep's rankings are trustworthy at the ~0.02 level rather
+than the ~0.20 level.
+
+**Side finding, and it is a real one:** lower `lr` is better here, monotonically — best
+observed value 0.310 at 3e-4, 0.299 at 1e-3, 0.265 at 3e-3. The sweep will confirm across
+the other axes.
+
+### The isolating experiment (as originally planned)
 
 The sweep's TSV puts `lr` as its outermost axis, so all 162 `lr=3e-4` arms run before the
 first `lr=1e-3` — which means the sweep alone will not answer this for hours. Two dedicated

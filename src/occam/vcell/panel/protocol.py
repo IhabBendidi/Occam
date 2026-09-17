@@ -162,7 +162,11 @@ def run_split(
             f"cell-for-cell, which is the entire basis of the paired gap.")
 
     calibrated = None
-    if calibrate in ("fit", "both"):
+    # `build_arms` accepts none|quantile|both. "fit" was never a valid value -- this gate
+    # silently skipped the fit for `quantile`, so `calibrated` stayed None and build_arms
+    # refused. It cost two launches of 135 array tasks, because every test used "none" or
+    # "both" and only the model launcher passes "quantile".
+    if calibrate in ("quantile", "both"):
         # `predict_fn` must reach the calibration fit too. Without it the quantile map is
         # fitted on `model(...)` while the prediction came from `predict_fn`, so the map
         # corrects a distribution that was never emitted -- and with model=None it is a
@@ -202,7 +206,7 @@ def run_split(
         transfer_meta["clipped_fraction"] = tclip
 
     arms = build_arms(pred, arm_labels, ctrl_used, panel,
-                      calibrate=("both" if calibrate == "both" else calibrate),
+                      calibrate=calibrate,
                       calibrated=calibrated, extra=extra)
     anchor_tags, ref_tags, model_tags = split_arms(arms)
     print(f"[splithalf] split {split.index}: {len(arms)} arm(s) — "
