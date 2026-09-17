@@ -74,9 +74,18 @@ echo "slurm   : job ${SLURM_ARRAY_JOB_ID:-?} task ${SPLIT}  qos ${SLURM_JOB_QOS:
 echo "de cache: $CACHE  (shared across splits AND checkpoints)"
 echo
 
+# ARMS=ctrlmean retries a single arm after the transient pdex shared-memory race
+# (FileNotFoundError: /psm_...) without repaying the other four.
+ARMS_ARG=()
+if [ -n "${ARMS:-}" ]; then
+    ARMS_ARG=(--arms "$ARMS")
+    echo "arms    : ${ARMS}  (restricted pass -- merge, do not overwrite)"
+fi
+
 python scripts/eval_splithalf.py \
     --mode reference \
     --split "$SPLIT" \
+    "${ARMS_ARG[@]+"${ARMS_ARG[@]}"}" \
     --out-root runs/rhj_splithalf/reference \
     --de-real-cache-dir "$CACHE" \
     --num-threads 16
