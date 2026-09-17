@@ -33,8 +33,17 @@ the per-cell denominator cancels:
 
     x_eval = log1p( expm1(x_10k) * 0.2 )            # 2000 / 10000
 
-MEASURED on real panel rows: max |round-trip - original| = 8.88e-16 in float64 and
-**exactly 0.0 in float32** (float32 eps at the max value is 4.77e-07). The map is bit-exact.
+MEASURED on real panel rows, two ways -- and the distinction matters:
+
+  * DERIVED (build the 10k matrix from the 2k one in float64, map back):
+    max |diff| = 8.88e-16 in float64, **exactly 0.0 in float32**.
+  * INDEPENDENT (compute both matrices from raw counts in float32, map the 10k one back):
+    max |diff| = **4.768e-07 = exactly one float32 ULP at the max value 5.0**.
+
+So the map is exact in exact arithmetic, and agrees to a single ULP when each matrix carries
+its own float32 rounding -- which is the real situation, since competitors are handed a
+10k matrix computed independently of the 2k panel. `assert_same_space` passes on it. One ULP
+is ~7 orders of magnitude below the +/-10% library-size tolerance and cannot move a metric.
 
 That exactness holds ONLY because both sides use the same full-panel denominator. Normalising
 competitors on the 6,983-axis sum instead would leave a per-cell factor (median 0.866, and
@@ -146,8 +155,10 @@ def to_eval_space(x: np.ndarray, *, from_target_sum: float = TRAIN_TARGET_SUM,
 
         out = log1p( expm1(x) * EVAL_TARGET_SUM / from_target_sum )
 
-    and the per-cell denominator cancels identically. Measured bit-exact in float32 for
-    10,000 -> 2,000.
+    and the per-cell denominator cancels identically. Measured for 10,000 -> 2,000: bit-exact
+    in float32 when the 10k matrix is derived from the 2k one, and agreeing to one float32
+    ULP (4.7683716e-07 at the max value 5.0) when both are computed independently from
+    counts -- which is the real case. See the module docstring.
 
     `from_log1p=False`: the input is library-normed LINEAR at `from_target_sum`, so it is
     rescaled and then log1p'd once. Use this only for an arm that genuinely emits linear, and

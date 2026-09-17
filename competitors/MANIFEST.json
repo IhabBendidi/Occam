@@ -18,7 +18,7 @@
     "eval_log1p": true,
     "normalised_on": "FULL source gene panel row sum, taken BEFORE the 6,983-gene axis restriction",
     "axis_umi_share_median": 0.866,
-    "map_to_eval": "log1p(expm1(x) * 0.2); bit-exact in float32 because the per-cell denominator cancels"
+    "map_to_eval": "log1p(expm1(x) * 0.2); exact in exact arithmetic because the per-cell denominator cancels. Measured: bit-exact in float32 when the 10k matrix is derived from the 2k one; agrees to one float32 ULP (4.768e-07) when both are computed independently from counts, which is the real case."
   },
   "scoring": {
     "path": "ours -- occam.vcell.panel.protocol.run_split, NOT their scorer",

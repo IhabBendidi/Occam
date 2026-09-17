@@ -74,9 +74,16 @@ x_eval = log1p( expm1(x_10k) * 0.2 )                    # 2000 / 10000
 
 | measured | value |
 |---|---|
-| max \|round-trip − original\|, float64 | 8.88e-16 |
-| max \|round-trip − original\|, **float32** | **0.0 — bit-exact** |
-| float32 eps at the max value | 4.77e-07 |
+| **derived** (build 10k from the 2k panel in float64, map back), float64 | 8.88e-16 |
+| **derived**, float32 | **0.0 — bit-exact** |
+| **independent** (both computed from raw counts in float32) | **4.768e-07 = one float32 ULP** |
+| float32 ULP at the max value 5.0 | 4.768e-07 |
+
+⚠️ The independent figure is the one that applies in practice: competitors receive a 10k
+matrix computed from counts, not derived from the 2k panel, so each carries its own float32
+rounding. One ULP is ~7 orders of magnitude below the ±10% library-size tolerance and cannot
+move a metric. An earlier version of this note claimed bit-exactness without distinguishing
+the two cases.
 
 ⚠️ **This exactness holds only because both sides use the full-panel denominator.**
 Normalising competitors on the axis sum would leave a per-cell factor (median 0.866, and
@@ -155,6 +162,46 @@ exercised.
 
 ---
 
+## C2 — the reader is bit-identical to our own pipeline
+
+`competitors/shared/occam_data.py` reads our three h5ads and the frozen artifact **in
+place**. No conversion, no second copy, no format to keep in sync.
+
+**The gate, measured:** at `target_sum=2000.0` the reader reproduces
+`splithalf/panel.npz` **bit for bit** — `max |diff| = 0.0` over 42,402 × 6,983 float32, zero
+differing values, labels matching. That is what proves competitors see exactly the data the
+five baselines were measured on.
+
+It depends on reproducing `build_splithalf_panel.py::_load_axis_restricted` **dtype for
+dtype**: float32 values, a float64 row-sum accumulation over the full gene panel, cast back
+to float32 before the divide. Any change to that sequence breaks the equivalence while still
+"working", so `tests/test_occam_data_reader.py` asserts it.
+
+| measured | value |
+|---|---|
+| all three lines, shipping `target_sum=10_000` | 656,343 × 6,983 float32, **18.3 GB**, 178 s |
+| HepG2 only | 145,473 × 6,983, 48 s |
+| `finetune` | **612,122** rows, including all **28,474** controls |
+| `validation` | **6,731** rows, exactly the 103 HepG2 val perturbations |
+| `test` | **37,490** rows, exactly the 621 HepG2 test perturbations |
+| val + test | **44,221** — matches `exclusions.json` exactly |
+| Jurkat, RPE1 | **wholly `finetune`** — the positive half of the exclusion |
+
+The name-level split (which TxPert needs) keeps all 724 held-out symbols in `train`,
+deliberately: they legitimately train from Jurkat and RPE1, and within HepG2 the three sets
+are disjoint, which is what TxPert's straddle check actually requires.
+
+Emitted schema: `gene_pert` / `pert` / `target_gene` / `gene` (controls → `"empty"`, or
+`"non-targeting"` on request), `negative_control` / `is_control` (bool), `cell_type` /
+`cell_line` (exact casing `HEPG2` / `jurkat` / `RPE1`), `batch_center` (line-prefixed) /
+`dataset_batch_num`, `dataset_name`. `var.index` is **symbols**; both `ensembl_gene_id` and
+`gene_symbol` are carried. `uns["occam"]` records the axis hash and the space, so a
+downstream arm can assert what it was given.
+
+9 tests, including the gate and a refusal on an edited artifact.
+
+---
+
 ## Status
 
 | step | state |
@@ -162,8 +209,8 @@ exercised.
 | 0 — commit and push | ✅ 26 commits pushed (`0b94934..b567a8b`) |
 | 1 — `competitors/` skeleton + gitignore | ✅ rules verified; only `MANIFEST.json` is trackable |
 | 5b — emission space | ✅ C1 above, 13 tests |
-| 2 — `occam_data.py` reader | next |
-| 3 — copy code per arm | pending |
+| 2 — `occam_data.py` reader | ✅ C2 above, bit-identical gate passed, 9 tests |
+| 3 — copy code per arm | next |
 | 4 — wire each dataloader to our data | pending |
 | 5 — the prediction bridge | pending |
 | 6 — launchers, collector | pending |
