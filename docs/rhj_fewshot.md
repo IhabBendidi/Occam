@@ -80,7 +80,84 @@ protocol reports a count-stratified gap rather than a single ceiling number.
 
 ---
 
+## ⛔⛔ F7 — the validation metric oscillates by ±0.20 between consecutive epochs
+
+**This invalidates the arm ranking in F6, and it is the most important finding of the run.**
+
+The val `pearson_delta` does not converge. It alternates, violently, with epoch parity.
+`a16`, every epoch of 30:
+
+```
+ 1:0.0575   2:0.0799   3:0.1605   4:0.1331   5:0.1120   6:0.0583
+ 7:0.2523   8:0.1264   9:0.0739  10:0.0591  11:0.2165  12:0.1420
+13:0.0140  14:0.1261  15:0.1277  16:0.3275  17:0.3141  18:0.1578
+19:0.3164  20:0.0858  21:0.3241  22:0.3280  23:0.2256  24:0.1926
+25:0.2226  26:0.1387  27:0.3407  28:0.1740  29:0.3543  30:0.1143
+```
+
+The last four epochs are **0.3407 → 0.1740 → 0.3543 → 0.1143**. The same phase-locked
+alternation appears in every arm checked:
+
+| arm | ep 25 | 26 | 27 | 28 | 29 | 30 |
+|---|---|---|---|---|---|---|
+| `a16` | 0.2226 | 0.1387 | **0.3407** | 0.1740 | **0.3543** | 0.1143 |
+| `a06` | 0.2172 | 0.1628 | **0.3359** | 0.1332 | **0.3454** | 0.0899 |
+| `a17` | 0.2349 | 0.1850 | **0.3019** | 0.1401 | **0.2889** | 0.0715 |
+
+### The mechanism
+
+`src/occam/decoder/external.py` — the decoder carries **11 `BatchNorm1d` layers**.
+`pipeline.py:2622` calls `model.eval()` before validating, so those layers score the val
+set with their **running** mean/var, accumulated over the training epoch just finished. With
+`proportional` interleave over three files of different sizes, the tail of an epoch is not
+balanced across cell lines, so the running statistics carry whichever context the epoch
+ended on — and the val set is HepG2 only.
+
+This is precisely the failure the plan anticipated and chose `proportional` interleave to
+avoid: *"round-robin leaves a single-source epoch tail that poisons eval-time BatchNorm
+stats (±0.007, larger than the effect being chased)."* **The anticipated size was ±0.007.
+The measured size is ±0.20 — about 30× larger**, and `proportional` did not prevent it.
+
+### What it invalidates
+
+1. **`best_metric` selects the peak of an oscillation, not a converged model.** Every arm's
+   `best_model.pth` is whichever high-parity epoch happened to land highest. The
+   between-arm differences in F6 (0.3543 vs 0.3454 vs 0.3427, spread 0.012) are an order of
+   magnitude **smaller** than the within-arm epoch-to-epoch swing (0.20).
+2. **No arm ordering in F6 survives except `smooth_l1` > `nb`**, whose 0.048 gap with no
+   range overlap is still larger than... no: it is *smaller* than 0.20, so strictly even
+   that is not safe on this metric alone. It is supported instead by being 12/12
+   consistent — every one of the twelve pairs agrees — which a symmetric ±0.20 noise process
+   would produce with probability 2⁻¹² ≈ 0.0002.
+3. **The ±0.007 noise floor quoted in F6 is wrong by 30×** and any caveat framed around it
+   understates the problem.
+
+### What it does NOT invalidate
+
+* **F5 stands.** `MeanBaseline` (0.5567) is computed **before training starts**, from data
+  only — no BatchNorm, no checkpoint, no epoch. Its 0.2024 margin over the best arm is
+  larger than the full oscillation amplitude, and the best arm's number is the *peak* of
+  that oscillation, so the true gap is if anything wider.
+* The split-half benchmark is **not** affected the same way: it scores a fixed checkpoint
+  once, in `eval()` mode, with no further training, so there is no epoch-tail to vary. What
+  it inherits is a **checkpoint chosen on a noisy peak** — which is exactly why the protocol
+  scores both `best_model.pth` and `final_model.pth`.
+
+### What would fix it, for whoever runs this next
+
+Not run here, not implied: recompute the BatchNorm running statistics on a **fixed,
+cell-line-balanced** batch stream immediately before each eval; or switch the decoder's
+`BatchNorm1d` to `LayerNorm`, which has no running state; or freeze the BN statistics after
+a warmup. The first is cheapest and testable — if the oscillation disappears, the diagnosis
+is confirmed.
+
+---
+
 ## F6 — the ablation's own ordering, and the falsifier firing
+
+⚠️ **Read F7 first.** The within-arm epoch-to-epoch swing is ±0.20; the between-arm
+differences below span 0.012. Only the `smooth_l1` > `nb` result survives, and it survives
+on its 12/12 consistency rather than on its margin.
 
 **Every pre-registered prediction about the axes held. The one that matters went against the
 hypothesis the grid was built to test.**
@@ -161,10 +238,13 @@ Top 8, all smooth_l1:
 
 Stated because someone could act wrongly on F5 and F6 specifically.
 
-1. **n = 1 per arm.** The `a16`-over-`a18` margin is 0.0064 and the mode means span 0.0025,
-   both **below the ±0.007 noise floor**. No arm ordering here is resolved except
-   `smooth_l1` > `nb`, which is a 0.048 gap with no range overlap. Seed replication
-   (`scripts/build_seed_grid.py`) exists for exactly this.
+1. **n = 1 per arm, and the metric itself swings ±0.20 (F7).** The `a16`-over-`a18` margin
+   is 0.0064 and the mode means span 0.0025, against a within-arm epoch-to-epoch swing of
+   0.20. **No arm ordering here is resolved by margin.** `smooth_l1` > `nb` survives only
+   because it is 12/12 consistent across pairs, which symmetric noise would produce with
+   probability ~0.0002. Seed replication (`scripts/build_seed_grid.py`) will not fix F7 —
+   the BatchNorm statistics need fixing first, or the replicates measure the same
+   oscillation three times.
 2. **This is the selection metric, not the benchmark.** Group-mean `pearson_delta` on 103
    validation perturbations. This project has a documented case of selection and benchmark
    metrics ranking models *oppositely*. `MeanBaseline` beating the models on val does not
