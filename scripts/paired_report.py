@@ -62,8 +62,12 @@ REFERENCES_ALL = ("experimental", "meanpert")
 FLOOR_ARM = "ctrlcell"
 BASELINE_ARM = "meanpert"
 
-HEADLINE = ("pearson_delta", "overlap_at_N", "discrimination_score_l2",
-            "de_direction_match", "mae_delta", "mse_delta")
+# ⛔ THE COMPARISON SET, by decision 2026-09-17: every cell-eval comparison is made on
+# these four. `discrimination_score_l1` -- NOT l2 -- is the distance to use. `mae` and
+# `mae_delta` are both carried because they answer different questions (control-independent
+# vs control-dependent error) and the decision named "MAE" without disambiguating.
+HEADLINE = ("pearson_delta", "mae", "overlap_at_N", "discrimination_score_l1",
+            "mae_delta", "de_direction_match")
 LOWER_IS_BETTER = ("mae_delta", "mse_delta", "mae", "mse")
 STRATA = ((5, "m>=5"), (10, "m>=10"), (25, "m>=25"))
 

@@ -198,6 +198,61 @@ perturbation sets, different metric, different scale.
 
 ---
 
+## ⛔ THE COMPARISON SET — decision 2026-09-17
+
+**Every comparison between arms on this benchmark is made on these four cell-eval metrics:**
+
+| metric | direction | chance |
+|---|---|---|
+| `pearson_delta` | higher better | 0 |
+| `mae` | **lower better** | — |
+| `overlap_at_N` | higher better | 0 |
+| `discrimination_score_l1` | higher better | **0.5** |
+
+Note **l1**, not l2. `discrimination_score_l2` and the other 24 metrics stay in the tables
+for completeness but are not used for ranking. Wired into `scripts/paired_report.py` and
+`scripts/write_baseline_results.py`, so regenerating either puts these four first.
+
+`mae` is control-**independent** (error against the real pseudobulk); `mae_delta` is
+control-dependent. Both are carried, because "MAE" was named without disambiguating and
+they answer different questions.
+
+### The table, on the comparison set
+
+All 5 splits unless noted. `±` is `ddof=1` across splits.
+
+| arm | `pearson_delta` | `mae` ↓ | `overlap_at_N` | `disc_l1` *(chance .5)* | n |
+|---|---|---|---|---|---|
+| `ctrlcell` | −0.0018 ± 0.0031 | 0.0296 | 0.0000 | 0.5038 | 5 |
+| `ctrlmean` | 0.0016 ± 0.0028 | 0.0231 | 0.0081 | 0.5014 | 5 |
+| `meanpert` | 0.1324 ± 0.0030 | 0.0290 | 0.0108 | 0.5037 | 5 |
+| `transfer` | 0.2323 ± 0.0021 | 0.0299 | 0.0351 | **0.6404** | 5 |
+| **`experimental`** | **0.3722 ± 0.0010** | 0.0257 | **0.1942** | **0.7821** | 5 |
+| **adjmap `s129` uncalibrated** | **0.3348 ± 0.0032** | **0.0210** | 0.0618 | 0.6479 | 5 |
+| adjmap `s129` calibrated | 0.2883 ± 0.0008 | 0.0856 | 0.0250 | **0.7528** | 5 |
+| gnn `a00` calibrated | 0.0020 | 0.0298 | 0.0000 | 0.5051 | **1** |
+
+Reading on the agreed four:
+
+* **`pearson_delta`** — adjmap uncalibrated 0.3348 beats `transfer` 0.2323 by **+0.1025** and
+  sits **0.0374** under `experimental`. Calibration costs 0.0465.
+* **`mae`** — adjmap uncalibrated **0.0210 is the best value in the table**, better than
+  `experimental`'s 0.0257 and every baseline. Calibration makes it **4× worse** (0.0856),
+  the single largest calibration effect anywhere here.
+* **`overlap_at_N`** — adjmap 0.0618 beats `transfer` 0.0351 but is **3.1× below**
+  `experimental` 0.1942. This is the weakest axis for the model and the one the DE over-call
+  (3,263 predicted significant against 111.6 real) directly explains.
+* **`discrimination_score_l1`** — adjmap uncalibrated 0.6479 is just above `transfer`
+  0.6404; **calibrated 0.7528 is far better** and approaches `experimental` 0.7821.
+  `meanpert` sits at chance (0.5037), exactly as its construction requires.
+
+**The two settings win different metrics.** Uncalibrated wins `pearson_delta` and `mae`;
+calibrated wins `discrimination_score_l1`. `overlap_at_N` prefers uncalibrated. So on the
+agreed set it is **3–1 for uncalibrated**, and no single setting dominates — which is itself
+the finding, and the reason both are now scored.
+
+---
+
 ## ⭐⭐ F12 — the adjacency-map model BEATS the transfer baseline, and calibration HURTS
 
 **Status: 5 of 5 splits, one checkpoint (`s129`), both calibration settings.** Job

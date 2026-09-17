@@ -35,6 +35,10 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # written, which is what keeps model scores out of this document.
 ARMS = ("ctrlmean", "ctrlcell", "meanpert", "transfer", "experimental")
 
+# ⛔ THE COMPARISON SET, by decision 2026-09-17. Reported first and flagged in the doc;
+# every other cell-eval metric still appears, but comparisons are made on these.
+COMPARISON = ("pearson_delta", "mae", "overlap_at_N", "discrimination_score_l1")
+
 LOWER_IS_BETTER = ("mae", "mse", "mae_delta", "mse_delta", "de_nsig_counts_pred")
 CHANCE_IS_HALF = ("discrimination_score_l1", "discrimination_score_l2",
                   "discrimination_score_cosine", "de_direction_match", "roc_auc")
@@ -237,6 +241,11 @@ def main(argv=None) -> int:
           "`--batch-size 2000`, 16 threads.\n\n")
         W("`↓` marks metrics where **lower is better**. **Chance is 0.5**, not 0, for "
           "`discrimination_score_*`, `de_direction_match` and `roc_auc`.\n\n")
+        W("> ⛔ **The comparison set** (decision 2026-09-17): every comparison between arms "
+          "is made on **`pearson_delta`, `mae`, `overlap_at_N` and "
+          "`discrimination_score_l1`** — note **l1**, not l2. They are listed first in "
+          "every table below. The other 24 metrics are reported for completeness, not for "
+          "ranking.\n\n")
 
         W("---\n\n## The five baselines\n\n")
         for arm in ARMS:
@@ -252,7 +261,8 @@ def main(argv=None) -> int:
             W("| metric | " + " | ".join(f"split {s}" for s in splits)
               + " | mean | std | n |\n")
             W("|---|" + "---|" * (len(splits) + 3) + "\n")
-            for k in metrics:
+            for k in [m for m in COMPARISON if m in metrics] + \
+                     [m for m in metrics if m not in COMPARISON]:
                 vals, cells = [], []
                 for s in splits:
                     v = data.get((s, arm), {}).get(k)
