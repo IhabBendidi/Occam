@@ -80,6 +80,54 @@ protocol reports a count-stratified gap rather than a single ceiling number.
 
 ---
 
+## ⭐ F10 — the F7 oscillation is 5.9× smaller in the new setting, cause not yet isolated
+
+**Status: MEASURED on one configuration; the isolating experiment is running.**
+
+Last 10 epochs of the validation `pearson_delta`, same metric, same benchmark:
+
+| setting | curve | span | mean \|Δ epoch-to-epoch\| |
+|---|---|---|---|
+| **old**: `gnn`, batch 256, lr 1e-3 | 0.324 0.328 0.226 0.193 0.223 0.139 **0.341 0.174 0.354 0.114** | **0.2400** | **0.1158** |
+| **new**: `adjacency_map`, batch 2048, lr 3e-4 | 0.297 0.288 0.276 0.300 0.267 0.299 0.310 0.291 0.303 0.279 | **0.0433** | **0.0196** |
+
+The phase-locked ±0.20 alternation is **gone**. Epoch-to-epoch movement is down **5.9×** and
+the curve now looks like a converged model with ordinary noise. Four arms checked, all the
+same shape.
+
+### ⚠️ Three things changed at once, so the cause is still open
+
+`gnn → adjacency_map`, `batch 256 → 2048`, and `lr 1e-3 → 3e-4` all moved together. Each is
+a plausible cause on its own:
+
+* **lr** — the original F7(a) hypothesis. 3e-4 is 3.3× lower.
+* **batch size** — 8× larger means 8× fewer optimiser steps per epoch and a much lower
+  gradient variance per step, which would damp exactly this.
+* **the perturbation model** — the adjacency map has no message passing, so it cannot
+  amplify a graph-wide perturbation of the embedding table between epochs.
+
+⚠️ **Note what this does NOT support.** The F7(b) hypothesis was eval-time BatchNorm
+statistics from an unbalanced epoch tail. The decoder still has its 11 `BatchNorm1d` layers
+and `proportional` interleave is unchanged, so if BN were the whole story the oscillation
+should have survived. That it did not makes (b) less likely — but batch 2048 also changes
+how many batches contribute to the running statistics, so (b) is not excluded either.
+
+### The isolating experiment
+
+The sweep's TSV puts `lr` as its outermost axis, so all 162 `lr=3e-4` arms run before the
+first `lr=1e-3` — which means the sweep alone will not answer this for hours. Two dedicated
+arms, identical to sweep index 0 except for `lr` (1e-3 and 3e-3), are running under the
+`f7probe_` prefix so they cannot collide with the sweep's run dirs.
+
+Reading, pre-registered:
+* **oscillation returns at lr 1e-3** → F7 is a learning-rate artefact. The old grid's
+  rankings are noise, and the fix is simply a lower lr.
+* **curve stays smooth at lr 1e-3 and 3e-3** → lr is *not* the cause, and the credit goes to
+  batch size or the adjacency map. Then the old grid's F6 ranking is still dead, but for a
+  reason that no longer applies to any new run.
+
+---
+
 ## F8 — the 8.9× slowdown is batch size and the GNN, not I/O and not the estimand
 
 **Status: MEASURED.** Job `18033959`, 6 arms × 200 real training batches on one H100.
