@@ -75,6 +75,32 @@ is +0.491, so "2nd best on val" says little about 2nd best on cell-eval.
 ❌ **Not licensed: claiming the selected arm is best on `disc_l1` or `overlap_at_N`.** rho +0.198
 and +0.444. If those matter for a decision, that arm must be scored directly.
 
+### Adopted 2026-09-17: `scripts/eval_val_winner.py`
+
+The blanket 164-arm eval array (`18038018`) was **cancelled**; the sweep itself was not
+touched. Evaluation is now argmax-only:
+
+```bash
+python scripts/eval_val_winner.py --dry-run     # what it would do
+python scripts/eval_val_winner.py --qos vco     # submit, if there is a new record
+```
+
+Idempotent: it records each record-holder it scores in
+`runs/rhj_splithalf/val_winners.json` and does nothing if the current argmax is already
+scored, already submitted, or has not beaten the last scored record by `--min-gain`.
+
+⚠️ **`--array` IS NOT THE ARM NUMBER.** `rhj_splithalf_models.sbatch` computes
+`ARM_I = IDX / 5` and `SPLIT = IDX % 5`, where `ARM_I` is the arm's 0-based ROW POSITION in the
+grid — so one arm is five tasks, `row*5 … row*5+4`. My first attempt passed `--array=313` for
+`s313`, which would have scored **arm row 62, split 3** — a different arm entirely, and it
+would have produced a perfectly plausible number under `s313`'s name. The script now derives
+the row from the grid and prints it.
+
+First submission under the new policy: **`s313`** (val **0.3769**; lr 1e-3, decoder_lr 1e-3,
+cos 0.5, multiplicative_only, film_hidden 256, mean-free) → job **`18045714`**, tasks
+1565–1569. Predicted cell-eval `pearson_delta` ≈ **0.3629** from the measured −0.0140 gap, and
+by F-adj2 it should not come out above 0.3769.
+
 ## ⚠️ F-adj1 — THE VALIDATION LEADERS HAVE NOT BEEN SCORED YET
 
 **Read the table below knowing this: the 94 arms with a cell-eval number are NOT the 94 best
