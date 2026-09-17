@@ -325,7 +325,13 @@ def main() -> int:
     # `model` mode scores only the model arm; the other five come from the reference run.
     score_only = arms
     if args.mode == "model":
-        score_only = ["model_cal"] if calibrate == "quantile" else None
+        # Only the model arms; the other five come from the reference pass. With
+        # `both` that is the calibrated AND uncalibrated prediction, which is how the
+        # ~0.37 pearson_delta that calibration is worth on comparable panels gets
+        # measured on THIS one rather than assumed.
+        score_only = {"quantile": ["model_cal"],
+                      "none": ["model_nocal"],
+                      "both": ["model_cal", "model_nocal"]}[calibrate]
 
     t0 = time.time()
     rec = run_split(

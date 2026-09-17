@@ -72,6 +72,9 @@ mkdir -p runs/slurm runs/rhj_splithalf
 
 export PYTHONPATH="$HERE/src${PYTHONPATH:+:$PYTHONPATH}"
 
+# GRID also accepts configs/rhj_adjmap_sweep.tsv: the adjacency-map sweep writes to the
+# same runs/rhj_fewshot_<arm>__<tag>/ prefix, because the orchestrator derives the run dir
+# from the config's `name` and not from the launcher.
 GRID="${GRID:-configs/rhj_fewshot_grid.tsv}"
 N_SPLITS="${N_SPLITS:-5}"
 IDX="${SLURM_ARRAY_TASK_ID:-0}"
@@ -93,7 +96,7 @@ fi
 
 CACHE="${DE_CACHE:-runs/rhj_splithalf/_de_real_shared}"
 mkdir -p "$CACHE"
-OUT="runs/rhj_splithalf/${ARM}__${TAG}"
+OUT="runs/rhj_splithalf/${OUT_PREFIX:-}${ARM}__${TAG}"
 mkdir -p "$OUT"
 
 echo "=== rhj split-half MODEL arm · ${ARM} (${KIND}) · split ${SPLIT} ==="
@@ -102,6 +105,7 @@ echo "started : $(date -Is)"
 echo "git sha : $(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
 echo "slurm   : job ${SLURM_ARRAY_JOB_ID:-?} task ${IDX} -> arm ${ARM_I}, split ${SPLIT}"
 echo "ckpt    : $CKPT"
+echo "calib   : ${CALIBRATE:-quantile}"
 echo "de cache: $CACHE"
 echo "out     : $OUT/split_$(printf %02d "$SPLIT")"
 echo
@@ -119,7 +123,7 @@ python scripts/eval_splithalf.py \
     --split "$SPLIT" \
     --out-root "$OUT" \
     --de-real-cache-dir "$CACHE" \
-    --calibrate quantile \
+    --calibrate "${CALIBRATE:-quantile}" \
     --num-threads 16
 
 echo

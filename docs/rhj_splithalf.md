@@ -198,6 +198,79 @@ perturbation sets, different metric, different scale.
 
 ---
 
+## ⭐⭐ F12 — the adjacency-map model BEATS the transfer baseline, and calibration HURTS
+
+**Status: 5 of 5 splits, one checkpoint (`s129`), both calibration settings.** Job
+`18035791`, all 10 tasks COMPLETED. This answers the question F11 raised.
+
+`s129` = the best adjacency-map arm so far by validation (**0.3676**), config
+`lr 3e-4, decoder_lr 1e-3, cosine 0.25, data_perts_only 0, film_mode full, fh256, fmf1`,
+batch 2048, `adjacency_map`.
+
+| metric | **`model_nocal`** | **`model_cal`** | `transfer` | `experimental` | `ctrlcell` |
+|---|---|---|---|---|---|
+| `pearson_delta` | **0.3348 ± 0.0032** | 0.2883 ± 0.0008 | 0.2332 | **0.3722** | −0.0018 |
+| `overlap_at_N` | 0.0618 ± 0.0010 | 0.0250 ± 0.0008 | 0.0351 | 0.1942 | 0.0000 |
+| `discrimination_score_l2` | 0.6912 ± 0.0011 | **0.7792 ± 0.0029** | 0.7023 | 0.8398 | 0.5046 |
+| `de_direction_match` | 0.6806 ± 0.0045 | 0.6978 ± 0.0060 | 0.6891 | 0.7563 | 0.4832 |
+| `de_nsig_counts_pred` *(real 111.6)* | 3,263 ± 11 | 4,239 ± 26 | 238.9 | 118.7 | 0.0 |
+| `mae_delta` ↓ | **0.0211 ± 0.0000** | 0.0856 ± 0.0016 | 0.0299 | 0.0258 | 0.0296 |
+
+### The model is not at the floor. It beats the bar.
+
+**`model_nocal` `pearson_delta` 0.3348 against `transfer`'s 0.2332 — a gap of +0.1016**, and
+it reaches **90% of replicate agreement** (0.3348 / 0.3722). The paired gap to
+`experimental` is only **0.0374**, against a split-to-split std of 0.003.
+
+On `mae_delta` it is **better than the experimental arm** (0.0211 vs 0.0258) — expected, and
+not a triumph: a low-variance predictor is attenuated on one side only, which is exactly the
+asymmetry F9 warns about. Read the `pearson_delta` and discrimination rows for the claim.
+
+**So F11 was not a statement about the approach.** The identity-learning reading of `a00` was
+specific to that run, not to the method.
+
+### ⚠️ Calibration HURTS here, and the two metric families disagree about it
+
+| | `pearson_delta` | `discrimination_score_l2` | `mae_delta` ↓ |
+|---|---|---|---|
+| uncalibrated | **0.3348** | 0.6912 | **0.0211** |
+| calibrated | 0.2883 | **0.7792** | 0.0856 |
+| effect of calibration | **−0.0465** | **+0.0880** | **+0.0645 (worse)** |
+
+Control-fit quantile calibration **costs 0.047 `pearson_delta` and quadruples `mae_delta`,
+while adding 0.088 to discrimination**. The project's standing note is that calibration is
+worth roughly **+0.37** `pearson_delta` on the H1 panel and that "an uncalibrated comparison
+of decoder heads measures almost nothing". **That does not transfer to this benchmark** — the
+sign is reversed on the headline metric.
+
+The mechanism is consistent with the split-half design: calibration maps the prediction's
+per-gene marginals onto the *model-visible controls'* marginals. Here the model-visible
+controls are the **half-B** controls, which are also the prediction file's own control
+pseudobulk — so the mapping pulls the prediction toward the very reference its delta is
+measured against, shrinking the delta. It preserves *ranking* between perturbations (hence
+discrimination improves) while compressing magnitude (hence `pearson_delta` and `mae_delta`
+degrade).
+
+⚠️ **Consequence for the 27-arm GNN sweep now running:** it was launched with
+`--calibrate quantile`, i.e. **calibrated only**. On this evidence that is the worse of the
+two settings for the headline metric, so those numbers will understate every arm. They are
+still internally comparable, but `model_nocal` should be added.
+
+### What it does and does not establish
+
+* **n = 1 checkpoint.** Five splits agree to ±0.003, so the *measurement* is solid; whether
+  0.3348 is typical of adjacency-map arms needs more of them.
+* **`a00` vs `s129` differ in more than the perturbation model** — also batch size, `lr`,
+  `decoder_lr`, `cosine_loss_weight`, `film_hidden_dim` and `film_mean_free`. The 134 GNN
+  tasks in flight will show whether *every* GNN arm sits at the floor; only then is
+  "GNN vs adjacency map" the right axis to name.
+* **Both model arms over-call DE by 29–38×** (3,263 and 4,239 against 111.6 real), far worse
+  than `transfer`'s 239. The emitted cells are under-dispersed, which is the
+  pseudobulk-variance artefact this repo documents, and it is why `overlap_at_N` stays at
+  0.06 while `pearson_delta` reaches 0.33.
+
+---
+
 ## ⛔⛔ F11 — the first model arm scores AT THE FLOOR. val 0.337 → cell-eval 0.002
 
 **Status: n = 1 (arm `a00`, split 0). The remaining 134 tasks are running.** Flagged
@@ -248,6 +321,13 @@ The two are not the same estimand, and the difference is structural rather than 
 This project documented the risk in advance — selection and benchmark metrics ranking models
 *oppositely* — and this is that risk realised at full strength. **`best_metric` is not a
 proxy for this benchmark and must not be used to choose between arms.**
+
+### ⚠️ SUPERSEDED IN SCOPE BY F12
+
+F12 scores the best adjacency-map checkpoint at `pearson_delta` **0.3348**, above the
+`transfer` bar. So F11 is a fact about `a00` and not about the approach, and the
+identity-learning reading applies to that run only. Whether it applies to every GNN arm is
+what the 134 tasks in flight will say.
 
 ### What would change this reading
 
