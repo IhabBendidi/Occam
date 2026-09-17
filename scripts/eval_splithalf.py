@@ -135,7 +135,14 @@ def load_frozen(panel_dir: str, split_index: int, encoder_gene_names=None):
 
 
 def load_model(ckpt_path: str, device: str, output_activation=None):
-    """A `VirtualCellTrainer` for eval only, with the activation trap closed."""
+    """`(trainer, ckpt)` for eval only, with the activation trap closed.
+
+    ⚠️ `from_vcell_checkpoint` returns a TUPLE `(trainer, ckpt)`. Binding it to one name
+    gives a tuple that looks like a trainer until the first attribute access -- which is
+    how 135 array tasks died at `trainer.current_epoch`. `scripts/eval_panel.py` had the
+    same bug. The checkpoint dict is returned here so callers reuse it instead of loading
+    898 MB twice.
+    """
     import torch
 
     from occam.vcell.pipeline import VirtualCellTrainer
@@ -157,23 +164,23 @@ def load_model(ckpt_path: str, device: str, output_activation=None):
     act = output_activation or recorded
     print(f"[splithalf] output activation: {act}"
           f"{' (from the checkpoint)' if recorded else ' (from the flag)'}")
-    trainer = VirtualCellTrainer.from_vcell_checkpoint(
+    trainer, loaded = VirtualCellTrainer.from_vcell_checkpoint(
         ckpt_path, device=device, output_activation=act)
     print(f"[splithalf] checkpoint epoch {trainer.current_epoch}, "
           f"best_metric {trainer.best_metric:.6f}, {len(trainer.pert2id):,} pert2id entries")
-    return trainer
+    return trainer, loaded
 
 
-def assert_checkpoint_matches(ckpt_path: str, manifest) -> None:
+def assert_checkpoint_matches(ckpt_path: str, manifest, ckpt=None) -> None:
     """Refuse a checkpoint trained on a different gene axis or a different benchmark.
 
     A model trained on 6,983 input columns and scored on 9,624 is silent and severe: every
     column it never saw arrives as a real number instead of a structural zero, and nothing
     in the scoring path notices.
     """
-    import torch
-
-    ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
+    if ckpt is None:
+        import torch
+        ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
     b = ckpt.get("benchmark")
     if not b:
         raise SystemExit(
@@ -261,7 +268,7 @@ def main() -> int:
 
     from occam.vcell.panel.protocol import run_split
 
-    model = pert2id = predict_fn = None
+    model = pert2id = predict_fn = loaded_ckpt = None
     device, calibrate, batch_size = "cpu", "none", 4096
     encoder_genes = None
     arms = None
@@ -275,7 +282,8 @@ def main() -> int:
         # of this split and `meanpert`/`transfer` cancel the model's control noise exactly.
         arms = ["ctrlmean", "ctrlcell", "experimental", "transfer", "meanpert"]
     else:
-        trainer = load_model(args.checkpoint, args.device, args.output_activation)
+        trainer, loaded_ckpt = load_model(
+            args.checkpoint, args.device, args.output_activation)
         model, pert2id, device = trainer.model, trainer.pert2id, trainer.device
         encoder_genes = trainer.encoder_gene_names
         calibrate, batch_size = args.calibrate, args.batch_size
@@ -297,7 +305,7 @@ def main() -> int:
         what = "PROBE" if args.probe else "REFERENCE"
         print(f"[splithalf] {what}: identity prediction, scoring {arms}")
     else:
-        assert_checkpoint_matches(args.checkpoint, man)
+        assert_checkpoint_matches(args.checkpoint, man, ckpt=loaded_ckpt)
         if args.mode == "model":
             arms = None      # build_arms emits them; score_only filters below
 

@@ -99,7 +99,9 @@ def main(argv=None) -> int:
     from occam.vcell.panel.calibrate import apply_quantile_map, fit_control_quantile_map
     from occam.vcell.pipeline import VirtualCellTrainer
 
-    trainer = VirtualCellTrainer.from_vcell_checkpoint(
+    # `from_vcell_checkpoint` returns (trainer, ckpt). Binding it to one name gave a
+    # tuple that looked like a trainer until the first attribute access.
+    trainer, _loaded = VirtualCellTrainer.from_vcell_checkpoint(
         args.checkpoint, device=args.device, output_activation=activation)
     config = trainer.config
     config.panel_dir = args.panel_dir

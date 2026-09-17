@@ -198,6 +198,43 @@ perturbation sets, different metric, different scale.
 
 ---
 
+## F5b — the first full-eval launch failed: 135 tasks on one tuple, 1 split on memory
+
+**Status: diagnosed and fixed; relaunched.** Recorded because the failure mode is worth
+knowing and because the reference numbers are partial until the rerun lands.
+
+| job | outcome |
+|---|---|
+| `18033268_[0-3]` reference, splits 0–3 | **COMPLETED**, 38–56 min each |
+| `18033268_4` reference, split 4 | **OUT_OF_MEMORY** at 64 GB, 27 min |
+| `18033290_[0-134]` model arm, 27 ckpts × 5 splits | **all 135 FAILED** |
+
+### The 135
+
+`VirtualCellTrainer.from_vcell_checkpoint` returns a **tuple** `(trainer, ckpt)`.
+`eval_splithalf.load_model` bound it to one name, so every task loaded 898 MB of weights,
+printed `Loaded vcell checkpoint: epoch=29`, and then died on
+`AttributeError: 'tuple' object has no attribute 'current_epoch'`.
+
+**`scripts/eval_panel.py:102` had the identical bug**, unnoticed — the H1 panel scorer was
+broken the same way.
+
+`scripts/check_call_arity.py` does cover `scripts/`, and still could not catch this: it
+resolves module-level `def`s, and this is a **classmethod on an imported class**. Extending
+it to cross-module attribute calls is real work, so the guard is instead
+`tests/test_checkpoint_loader_arity.py`, which asserts the return really is a 2-tuple and
+that every call site unpacks two names. Both sites fixed; the loader now also returns the
+already-loaded checkpoint so `assert_checkpoint_matches` stops reading 898 MB twice.
+
+### The one OOM
+
+Splits 0–3 fit in 64 GB; split 4 did not, at 27 min. Every split has identical row counts
+(18,575 per half, 2,488 controls), so 64 GB was simply marginal and split 4 lost the
+coin-flip on peak allocation. Rerun at **128 GB**. The launcher's default is raised to
+match, since a 27-minute OOM costs more than the memory does.
+
+---
+
 ## Reading order for whoever picks this up
 
 1. `data/benchmarks/rhj_fewshot/splithalf/CARD.md` — the frozen panel, and the two things

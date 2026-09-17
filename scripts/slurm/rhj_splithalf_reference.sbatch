@@ -39,7 +39,7 @@
 #SBATCH --job-name=rhj_sh_ref
 #SBATCH --partition=cpu
 #SBATCH --cpus-per-task=16
-#SBATCH --mem=64G
+#SBATCH --mem=128G
 #SBATCH --time=08:00:00
 #SBATCH --output=runs/slurm/rhj_sh_ref_%A_%a.out
 #SBATCH --error=runs/slurm/rhj_sh_ref_%A_%a.err
