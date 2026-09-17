@@ -80,6 +80,56 @@ protocol reports a count-stratified gap rather than a single ceiling number.
 
 ---
 
+## F8 — the 8.9× slowdown is batch size and the GNN, not I/O and not the estimand
+
+**Status: MEASURED.** Job `18033959`, 6 arms × 200 real training batches on one H100.
+Steady-state throughput (second half of each run, after warmup):
+
+| arm | batch | workers | pert model | samples/s | vs baseline |
+|---|---|---|---|---|---|
+| 0 | 256 | 8 | `gnn` | **1,615** | 1.00× (the 27-arm grid) |
+| 1 | 1024 | 8 | `gnn` | 5,818 | **3.60×** |
+| 2 | 2048 | 8 | `gnn` | 10,435 | **6.46×** |
+| 3 | 256 | **16** | `gnn` | 1,626 | 1.01× |
+| 4 | 2048 | 16 | `gnn` | 10,732 | 6.64× |
+| 5 | 256 | 8 | **`adjacency_map`** | **9,517** | **5.89×** |
+
+### Three conclusions, two of which overturn what I previously wrote
+
+1. **Batch size is the lever.** 256 → 1024 → 2048 gives 3.60× → 6.46×, close to linear.
+   That is the signature of a **fixed per-step cost**, and it is the single biggest
+   difference from the tuned research job, which used `--batch_size 2048`.
+2. **Workers do nothing.** 8 → 16 is +0.7% at batch 256 and +2.8% at batch 2048. The run is
+   **not I/O bound**, so the "per-job I/O bound" explanation I gave earlier is **wrong**.
+   The research job's 14 workers were not the difference either.
+3. **The adjacency map alone buys 5.89× at batch 256** — more than moving to batch 1024
+   with the GNN. So the GNN is the fixed per-step cost, and its share is far larger than
+   the 30% I measured for it in isolation: that isolated timing used a synthetic random
+   graph, whereas the real path merges 515,063 edges across two KGs, carries edge weights,
+   and reduces to perturbation nodes.
+
+### `target_pb_k` is NOT the difference, and a plan-era claim was wrong
+
+`scripts/neurips_fast.sh` has `PBK=${PBK:-1}` and this benchmark uses `target_pb_k: 1`.
+**Identical.** The plan asserted that the best-known recipe used `target_pb_k=0` (exact
+group-mean targets, ~√59× less label noise), and F7 leaned on that to argue `lr` 1e-3 was
+mistuned for our estimand. **That argument is withdrawn**: the research default is 1, so
+the research job ran the same estimand at the same learning rate. The LR hypothesis in F7
+survives only on its own merits, not on an estimand mismatch.
+
+### What this changes
+
+At batch 2048 with the adjacency map, 30 epochs should take **well under half an hour**
+rather than 3.2 h — the two effects are largely independent, though the combination was not
+measured (the probe has no `adjacency_map` × 2048 cell). Sweeps that were unaffordable at
+1,615 samples/s are now routine.
+
+⚠️ **Batch size is not a free knob.** It changes the effective learning rate, so any batch
+size adopted here needs its own `lr`, and a batch-size change inside an ablation confounds
+the ablation. That is why the LR sweep has to move with it rather than after it.
+
+---
+
 ## ⛔⛔ F7 — the validation metric oscillates by ±0.20 between consecutive epochs
 
 **This invalidates the arm ranking in F6, and it is the most important finding of the run.**
@@ -108,13 +158,14 @@ alternation appears in every arm checked:
 
 **Both are live. The diagnosis below is a hypothesis, not a finding.**
 
-**(a) Learning rate.** `lr` is 1e-3 with a cosine schedule — the research tree's value, for
-a different estimand. At `target_pb_k=1` the label noise per sample is ~√59× higher than the
-`target_pb_k=0` configuration the recipe was tuned on, so the effective gradient noise is
-much larger and 1e-3 may simply be past the stability edge. **A learning-rate sweep is the
-direct test and is planned.** ⚠️ The one thing that does not obviously fit: a cosine
-schedule decays smoothly, so it does not by itself explain strict epoch-*parity*
-alternation.
+**(a) Learning rate.** `lr` is 1e-3 with a cosine schedule. ⚠️ **The estimand-mismatch
+argument I first gave for this is withdrawn — see F8**: the research job's default is
+`target_pb_k=1`, the same as ours, so 1e-3 was not tuned on a quieter target. What remains
+is that 1e-3 at **batch 256** is a different effective learning rate from 1e-3 at the
+research job's **batch 2048**, which is a real and untested difference. **A learning-rate
+sweep, moving with batch size, is the direct test and is planned.** The one thing that does
+not obviously fit: a cosine schedule decays smoothly, so it does not by itself explain
+strict epoch-*parity* alternation.
 
 **(b) Eval-time BatchNorm statistics.**
 `src/occam/decoder/external.py` — the decoder carries **11 `BatchNorm1d` layers**.

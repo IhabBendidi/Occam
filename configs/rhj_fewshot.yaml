@@ -124,7 +124,11 @@ stages:
       # gene's embedding is MLP(its adjacency row), no learned message passing. `no_gnn`
       # with pert_model_type=adjacency_map swaps in a plain learnable embedding table,
       # which is the falsifier for the graph itself.
-      pert_model_type: gnn          # gnn | adjacency_map
+      # ⛔ adjacency_map is THE choice for this benchmark, by decision 2026-09-17: "we will
+      #    only ever use the simple adjacency map". `gnn` remains selectable so the
+      #    completed 27-arm grid stays reproducible from its own resolved_config.yaml, but
+      #    no new sweep should use it.
+      pert_model_type: adjacency_map   # adjacency_map | gnn
       no_gnn: false
       master_gene_set_path: ${paths.kg_graph_dir}/master_gene_set_sorted.csv
       graph_cache_dir: ${paths.kg_graph_dir}
@@ -135,8 +139,7 @@ stages:
       # ⚠️ Must stay false: film_mean_free averages over the WHOLE node table, so
       #    restricting the table silently changes the reference it subtracts.
       data_perts_only: false
-      # Adjacency-map settings; inert while pert_model_type is `gnn`. Values are the
-      # research tree's defaults.
+      # Adjacency-map settings. Values are the research tree's defaults.
       adj_hidden_dim: 128
       adj_dropout: 0.2
       adj_deg: 1
