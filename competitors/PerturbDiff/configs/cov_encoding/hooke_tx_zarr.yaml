@@ -1,0 +1,55 @@
+# Covariate encoding for the hooke-tx zarr benchmark.
+#
+# Same structure as trixie_onehot.yaml, with the two things the zarr data changes:
+# perturbations are Ensembl ids (not gene symbols) and the control key is
+# "empty" (not "non-targeting").
+#
+# Default is all-one-hot, which needs no external pickle and is what the
+# benchmark run uses. Switch replogle_gene_encoding=genept to use the pretrained
+# GenePT perturbation embeddings; the Ensembl->symbol translation below makes
+# that lookup resolve (99.9% of the benchmark's 2023 perturbations).
+
+# Encoding type selection
+pert_encoding: onehot
+celltype_encoding: onehot     # "llm" needs a pickle keyed by HepG2/Jurkat/K562/RPE1
+drug_encoding: onehot
+replogle_gene_encoding: onehot   # set to "genept" to use pretrained gene embeddings
+batch_encoding: onehot
+
+# Embedding dimensions
+hidden_dim: 128
+output_dim: ${..model.hidden_num.0}
+
+# Runtime-populated cardinalities
+num_pert: null
+num_celltype: null
+num_batch: null
+
+# Runtime-populated dictionaries
+pert_dict: null
+cell_type_dict: null
+batch_dict: null
+
+# --- zarr-specific key handling ---------------------------------------------
+# pert_dict keys are Ensembl ids; the embedding tables are keyed by gene symbol.
+pert_key_type: ensembl
+control_pert_key: "empty"
+gene_id_map_path: null              # null -> configs/metadata/gene_id_map.csv
+max_zero_embedding_frac: 0.5
+
+# Dictionary replacement controls
+replace_pert_dict: false
+
+# Multi-embedding gather strategy
+gather_strategy: concat
+
+# External embedding resources. Only read by the non-onehot branches; the paths
+# just have to resolve for OmegaConf.resolve().
+gene_embedding_path: ["${...path.tmp_dir}/gene_names/pbmc_highly_variavle_gene_emb_dict_emb_dict.pkl",
+                      "${...path.tmp_dir}/gene_names/replogle_gene_emb_dict_perturbation_emb_dict.pkl",
+                      "${...path.tmp_dir}/gene_names/replogle_highly_variavle_gene_emb_dict_emb_dict.pkl",
+                      "${...path.tmp_dir}/gene_names/tahoe100m_highly_variavle_gene_emb_dict_emb_dict.pkl"]
+pert_embedding_path: ${..path.tmp_dir}/meta_data/idx_to_pertemb.pkl
+celltype_embedding_path: ${..path.tmp_dir}/meta_data/new_all_emb.pkl
+drug_embedding_path: ${..path.tmp_dir}/meta_data/drug_embed_chemberta_cls_dict.pkl
+replogle_gene_embedding_path: ${..path.tmp_dir}/gene_names/replogle_gene_emb_dict_perturbation_emb_dict.pkl

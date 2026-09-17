@@ -1,0 +1,127 @@
+global:
+  use_added_data: false
+
+wandb:
+  name: TxPert-GNN-Alts
+  project: xcell-txpert
+  entity: valencelabs
+
+model:
+  model_type: gears_derivate
+  no_basal_model: false
+  no_pert_model: false
+  hidden_dim: 512
+  latent_dim: 64
+  dropout: 0.2
+  use_batch_norm: true
+  use_layer_norm: false
+  omit_cntr: false
+  mse_weight: 1
+  slow_benchmark: false 
+  
+  cntr_model:
+    model_type: mlp
+    rank: 16
+    decode_latent: false
+    use_batch_norm: true
+    use_layer_norm: false
+
+  pert_model:
+    pert_type: gene
+    model_type: simple_adjacency_map
+    hidden_dim: 128
+    dropout: 0.2
+    adj_deg: 1
+    normalize: none
+    undir_or_addcol: none
+    self_loops: false
+    poly_sum: false
+    only_reverse: true
+    kg_list: [go, string, pxmap, txmap]
+
+
+datamodule:
+  data_dir: /rxrx/data/user/wilson.tu/outgoing/data_xcell
+  cache_dir: /rxrx/data/valence/pathfinder/modules/gspp/cache_v2
+  auxiliary_dir: /rxrx/data/valence/pathfinder/modules/gspp/auxiliary
+  match_cntr: true
+  avg_cntr: true
+  batch_size: 64
+  xtraining_strategy: train_together_implicit
+  test_cell_type: K562
+  train_cell_types: ${datamodule.test_cell_type}
+  combine_strategy: intersect # intersect, impute_zero, impute_lowest, preprocessed
+  hvg_number: 5000
+  target_sum: 4000
+  min_cells: 25
+  min_de_genes: 50
+  knockdown_threshold: -0.3
+  use_predefined_splits: true
+  embed_cntr: true
+  test_split: 0
+  use_cache: true
+  n_jobs_preprocessing: 4
+  debug: false
+  obsm_key: raw
+  added_data_args:
+    added_cell_lines: pert_seq
+    p_added_data_usage: 1.0
+    p_sampling_per_epoch: 0.2
+    target_sum: ${datamodule.target_sum}
+    min_cells: ${datamodule.min_cells}
+    min_de_genes: ${datamodule.min_de_genes}
+    knockdown_threshold: ${datamodule.knockdown_threshold}
+
+graph:
+  cache_dir: /rxrx/data/valence/pathfinder/modules/gspp/graphs
+  graph_cfg:
+    # graph1:
+    #   graph_type: string
+    #   reduce2perts: true
+    #   norm_weights: false
+    #   mode: top_20
+    #   p_downsample: 1.0
+    #   # random_seed: 42
+    #   p_rewire_src: 0.0
+    #   p_rewire_tgt: 0.0
+
+    go:
+      graph_type: go
+      reduce2perts: true
+      norm_weights: true
+      mode: top_20
+    string:
+      graph_type: string
+      reduce2perts: true
+      norm_weights: false
+      mode: top_20
+    pxmap:
+      graph_type: pxmap-top1
+      reduce2perts: true
+      norm_weights: false
+      mode: top_20
+    txmap:
+      graph_type: txmap-top1
+      reduce2perts: true
+      norm_weights: false
+      mode: top_20
+
+training:
+  seed: 1
+  epochs: 50
+  lr: 0.001
+  lr_scheduler:
+    type: cosine
+    warmup_epochs: 5
+    total_epochs: ${training.epochs}
+  weight_decay: 0.0
+  check_val_every_n_epoch: 1
+  checkpoint:
+    save_top_k: 0
+    every_n_epochs: 5
+    save_last: false
+  run_val_on_train_data: false
+  match_cntr_for_eval: true
+
+mode: train
+checkpoint_path: null

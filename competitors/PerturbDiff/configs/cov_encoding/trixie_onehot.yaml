@@ -1,0 +1,52 @@
+# Covariate encoding configuration
+
+# Encoding type selection
+pert_encoding: onehot
+celltype_encoding: llm
+drug_encoding: onehot
+replogle_gene_encoding: onehot # genept
+batch_encoding: onehot
+
+# Embedding dimensions
+hidden_dim: 128
+output_dim: ${..model.hidden_num.0}
+
+# Runtime-populated cardinalities
+num_pert: null # automaticallt filled in running
+num_celltype: null # automaticallt filled in running
+num_batch: null # automaticallt filled in running
+
+# Runtime-populated dictionaries
+pert_dict: null # automaticallt filled in running
+cell_type_dict: null # automaticallt filled in running
+batch_dict: null # automaticallt filled in running
+
+# How perturbation keys in pert_dict relate to the symbol-keyed embedding
+# tables. "symbol" = keys are already gene symbols (the h5ad path).
+# "ensembl" = translate through configs/metadata/gene_id_map.csv first.
+pert_key_type: symbol
+control_pert_key: "non-targeting"   # the control key as it appears in pert_dict
+gene_id_map_path: null              # null -> configs/metadata/gene_id_map.csv
+max_zero_embedding_frac: 0.5        # fail if more perturbations than this are zero-filled
+
+# Dictionary replacement controls
+replace_pert_dict: false
+# replace_all_dict: false
+
+# Multi-embedding gather strategy
+gather_strategy: concat
+
+# External embedding resources
+# NOTE: three dots, not two. These are *list elements*, so the enclosing node is
+# the ListConfig itself — one level deeper than the scalar keys below. With `..`
+# these resolve to `cov_encoding.path.tmp_dir` and OmegaConf.resolve() (called at
+# src/apps/run/rawdata_diffusion_training.py:33) raises InterpolationKeyError
+# before any run can start.
+gene_embedding_path: ["${...path.tmp_dir}/gene_names/pbmc_highly_variavle_gene_emb_dict_emb_dict.pkl",
+                      "${...path.tmp_dir}/gene_names/replogle_gene_emb_dict_perturbation_emb_dict.pkl",
+                      "${...path.tmp_dir}/gene_names/replogle_highly_variavle_gene_emb_dict_emb_dict.pkl",
+                      "${...path.tmp_dir}/gene_names/tahoe100m_highly_variavle_gene_emb_dict_emb_dict.pkl"]
+pert_embedding_path: ${..path.tmp_dir}/meta_data/idx_to_pertemb.pkl
+celltype_embedding_path: ${..path.tmp_dir}/meta_data/new_all_emb.pkl
+drug_embedding_path: ${..path.tmp_dir}/meta_data/drug_embed_chemberta_cls_dict.pkl
+replogle_gene_embedding_path: ${..path.tmp_dir}/gene_names/replogle_gene_emb_dict_perturbation_emb_dict.pkl

@@ -1,0 +1,76 @@
+# ihabxcell Replogle-Nadig, read from the hooke-tx canonical zarr format.
+#
+# The benchmark we already run STATE on (../STATE/state/train_state_zarr.sh).
+# Use with: data=ihabxcell_zarr path=hooke_tx_path
+#
+# Hyperparameters follow upstream PerturbDiff's own Replogle recipe
+# (README.md, COMMON_REPLOGLE_TRAIN): use_cell_set=32, micro_batch_size=128,
+# lr=0.002 -- NOT the PBMC/Tahoe values of 256/2048.
+
+data_name: IhabxcellZarrFinetune
+
+# --- source -----------------------------------------------------------------
+source_format: zarr            # "zarr" (X.zarr + obs/var.parquet) or "h5ad"
+feature_loading: ram           # "ram" (5.15 GB for all four cell lines), "npy" (mmap), "zarr" (lazy)
+toml_config_path: ${..path.manifest_file}
+selected_gene_file: ${..path.selected_gene_file}   # 2000 Ensembl ids, one per line
+indices_cache_dir: ${..path.indices_cache_dir}
+split_idx: 0                   # fold, unless the manifest's [split_fold] overrides it
+
+# --- canonical obs columns --------------------------------------------------
+# PerturbDiff reads cell types through cell_line_key and batches through
+# perturbseq_batch_col; perturbations are derived from gene_pert, not read from
+# a column, so pert_col is only a label for the output adata.
+pert_col: gene
+cell_line_key: cell_type
+cell_type_key: cell_type
+perturbseq_batch_col: batch_center
+rnaseq_batch_col: null
+control_pert: empty            # the derived control sentinel
+
+# --- expression space -------------------------------------------------------
+embed_key: X_hvg
+output_space: gene
+embed_shape: ${..model.input_dim}   # must equal pad_length (collate asserts)
+pad_length: 2000
+normalize_counts: false        # X.zarr is already log1p(1e4)-normalized
+
+# --- cell sets --------------------------------------------------------------
+use_cell_set: 32               # upstream's Replogle setting
+# How a cell set is defined:
+#   pert_celltype_batch -- upstream PerturbDiff. On this data the median group
+#       holds 1 cell, so ~94% of rows are replacement-drawn duplicates and the
+#       epoch inflates 16x.
+#   pert_celltype       -- STATE's sentence grouping; median 53 cells, 1.2x.
+# Both are supported so the two can be compared; see ZARR_BENCHMARK.md section 4.
+cell_set_group_by: pert_celltype_batch
+optimizer_batch_size: ${..optimization.micro_batch_size}
+sample_cell_set_strategy: same_lpb
+use_fixed_pairing: true
+
+# --- control pairing --------------------------------------------------------
+basal_mapping_strategy: random
+mapping_strategy: random
+n_basal_samples: 1
+should_yield_control_cells: true
+map_controls: true
+keep_control_cell: false
+split_control: false
+
+# --- dataloader -------------------------------------------------------------
+num_workers: 4
+prefetch_factor: 16
+persistent_workers: false
+pin_memory: true
+max_open_files: 16
+
+# --- misc -------------------------------------------------------------------
+select_strategy: "sum"
+sort_gene_names: false
+skip_cached_indices: false     # grouping cache is content-hashed, so reuse is safe
+
+# Scenario filters. Read directly (not via hasattr) by the sampling helpers, so
+# they must exist even though the zarr path never sets them.
+sample_pbmc_only: false
+sample_replogle_only: false
+sample_tahoe100m_only: false

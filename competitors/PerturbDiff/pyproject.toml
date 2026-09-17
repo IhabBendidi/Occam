@@ -1,0 +1,84 @@
+[project]
+name = "perturbdiff"
+version = "0.1.0"
+description = "PerturbDiff: Functional Diffusion for Single-Cell Perturbation Modeling"
+readme = "README.md"
+# 3.11 floor is required by the hooke-tx zarr benchmark path, not by upstream
+# PerturbDiff (whose README says 3.9):
+#   * X.zarr is zarr format v3 -> zarr-python >=3 -> Python >=3.11
+#   * tomllib (dataset manifests) is stdlib only from 3.11
+#   * cell-eval requires >=3.11
+# Upper bound matches ../STATE/state/pyproject.toml so both competitors run on
+# the same interpreter.
+requires-python = ">=3.11,<3.13"
+license = { text = "MIT" }
+authors = [
+  { name = "Xinyu Yuan" },
+  { name = "Xixian Liu" },
+  { name = "Ya Shi Zhang" },
+]
+
+# Mirrors the install list in README.md ("Installation"), pinned to the
+# floors that the code actually relies on.
+dependencies = [
+  # Core DL + runtime
+  "torch>=2.2",                # README badge: PyTorch 2.2+
+  # src imports `pytorch_lightning`, not `lightning`. 2.5 floor: run_pipeline
+  # passes weights_only=False to fit()/validate(), which older versions reject.
+  "pytorch-lightning>=2.5",
+  "hydra-core>=1.3",
+  "omegaconf>=2.3",
+  # Scientific stack
+  "numpy>=1.23",
+  "pandas>=1.5",
+  "scipy>=1.9",
+  "scikit-learn>=1.1",
+  "matplotlib>=3.6",
+  "seaborn>=0.12",
+  "tqdm>=4.64",
+  # Single-cell stack
+  "anndata>=0.9",
+  "scanpy>=1.9",
+  "h5py>=3.7",
+  "pyyaml>=6.0",
+  "typing-extensions>=4.5",    # `override` used by weight_averaging_callback
+  # Model/runtime extras used by src
+  "transformers>=4.30",        # trainer_pt_utils.get_parameter_names
+  "timm>=0.9",                 # vision_transformer Attention/Mlp, create_norm
+  "geomloss>=0.2.6",           # SamplesLoss (diffusion + sampling losses)
+  # Logging backend for configs/lightning/logger WandbLogger.
+  # Not needed when running with the README's $NO_WANDB override.
+  "wandb>=0.16",
+  # --- hooke-tx zarr benchmark path (not upstream PerturbDiff) -------------
+  # Reading the canonical zarr datasets (X.zarr + obs/var.parquet) and scoring
+  # with the same metrics as ../STATE. See ZARR_BENCHMARK.md.
+  "zarr>=3",                   # X.zarr is zarr format v3
+  "polars>=1.0",               # obs.parquet / var.parquet, as in STATE's loader
+  "pyarrow>=15",               # parquet backend
+  "cell-eval==0.7.2",          # pinned to STATE.s installed version so metrics are comparable
+]
+
+[project.optional-dependencies]
+# For pulling datasets/checkpoints per README "Download" section:
+#   uv sync --extra download && uv run hf download katarinayuan/PerturbDiff_data ...
+# NOTE: the README's `pip install -U "huggingface_hub[cli]"` is outdated — the
+# `cli` extra was dropped in huggingface_hub 1.x; the `hf` command now ships
+# with the base package.
+download = ["huggingface_hub>=0.24"]
+
+# For regenerating configs/metadata/gene_id_map.csv (Ensembl <-> symbol) via the
+# mygene.info API. Not needed at train/eval time -- the CSV is checked in:
+#   uv sync --extra assets && .venv/bin/python tools/build_gene_id_map.py
+assets = ["mygene>=3.2"]
+
+[project.urls]
+Paper = "https://arxiv.org/html/2602.19685v1"
+"Project page" = "https://katarinayuan.github.io/PerturbDiff-ProjectPage/"
+"Code guidance" = "https://deepgraphlearning.github.io/PerturbDiff/"
+
+[tool.uv]
+# Virtual project: entrypoints are run as scripts from the repo root
+# (`python ./src/apps/run/rawdata_diffusion_training.py`) and Hydra targets
+# resolve against the top-level `src.` package, so nothing is built/installed
+# for this project itself — only its dependencies.
+package = false

@@ -202,6 +202,37 @@ downstream arm can assert what it was given.
 
 ---
 
+## C3 — what was copied, and what was not
+
+`scripts/copy_competitor_code.py` copies an explicit per-arm **allowlist** and refuses a
+**denylist** even when the allowlist would pull it in, recording every file's sha256 and
+upstream path in `competitors/MANIFEST.json`.
+
+| arm | files | size |
+|---|---|---|
+| PerturbDiff | 111 | 2.83 MB |
+| CellFlow | 66 | 1.42 MB |
+| STATE | 123 | 1.16 MB |
+| TxPert | 42 | 0.96 MB |
+| **total** | **347** | **6.6 MB** |
+
+Against **141 GB** upstream, of which ~92 GB is untracked *and* unignored there. No dataset,
+cache, checkpoint or venv was copied — the arms read our data through `occam_data.py`.
+Upstream commit `18e159145bdd7c59`.
+
+All nine extension points identified during planning are present and verified:
+`STATE/state/src/state/tx/data/{__init__,zarr_perturbation}.py`, `STATE/hepg2.toml`,
+`TxPert/gspp/data/datamodule.py`, `TxPert/configs/config-txpert-zarr-fewshot.yaml`,
+`CellFlow/hooke_bridge/load.py`, `CellFlow/configs/replogle_nadig_fewshot.yaml`,
+`PerturbDiff/src/apps/training/training_datamodule_builder.py`, and its manifest TOML.
+
+⚠️ **One upstream claim corrected.** The `PR_*` notes record CellFlow's environment as
+unreconstructible because `cellflow/uv.lock` "was gitignored and never committed". The file
+is present on disk, and it is now copied — so the arm is reproducible. Also
+`.python-version` lives at the CellFlow arm root, not under `cellflow/`.
+
+---
+
 ## Status
 
 | step | state |
@@ -210,8 +241,8 @@ downstream arm can assert what it was given.
 | 1 — `competitors/` skeleton + gitignore | ✅ rules verified; only `MANIFEST.json` is trackable |
 | 5b — emission space | ✅ C1 above, 13 tests |
 | 2 — `occam_data.py` reader | ✅ C2 above, bit-identical gate passed, 9 tests |
-| 3 — copy code per arm | next |
-| 4 — wire each dataloader to our data | pending |
+| 3 — copy code per arm | ✅ 347 files, **6.6 MB** from a 141 GB upstream |
+| 4 — wire each dataloader to our data | next |
 | 5 — the prediction bridge | pending |
 | 6 — launchers, collector | pending |
 

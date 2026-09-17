@@ -1,0 +1,46 @@
+# CellFlow train config — Replogle2022 RPE1 (Hooke public dump), fold 0.
+# Single-gene KO → max_combination_length=1. ~248k cells (Norman-scale).
+
+data:
+  data_dir: /rxrx/scratch/hooke_tx/public/replogle2022_rpe1
+  split_path: /rxrx/data/valence/external_benchmarking/cell_eval/splits/replogle_rpe1.json
+  fold: 0
+  selected_genes_path: configs/metadata/trek_selected_ens_ids_v0.txt
+  on_missing_genes: intersect
+  feature: zarr
+  target_sum: 300000
+  log1p: true
+  max_combination_length: 1
+  max_cells: null
+  train_key: finetune
+  valid_key: validation
+  inject_train_controls: true
+  # Cap injected controls so validation stays light (finetune has ~11k controls).
+  max_injected_controls: 4096
+
+pca:
+  n_comps: 50
+
+model:
+  solver: otfm
+  condition_mode: deterministic
+  pooling: mean
+  condition_embedding_dim: 128
+  cond_output_dropout: 0.1
+  time_freqs: 64
+  time_encoder_dims: [512, 512]
+  hidden_dims: [512, 512, 512]
+  decoder_dims: [512, 512, 512]
+  conditioning: concatenation
+  seed: 0
+
+train:
+  num_iterations: 20000
+  batch_size: 1024
+  valid_freq: 2000
+  n_conditions_on_log_iteration: 8
+  n_conditions_on_train_end: 32
+
+output:
+  dir: /rxrx/scratch/sandbox/alessandro.palma/cellflow/replogle_rpe1
+  run_name: replogle_rpe1_fold0

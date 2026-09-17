@@ -1,0 +1,47 @@
+# Sampling / generation settings, shared by BOTH top-level entrypoints.
+#
+# Extracted verbatim from the inline `sampling:` block that used to live only in
+# rawdata_diffusion_sampling.yaml. The training entrypoint needs it too, because the validation
+# cell-eval callback drives the same `generate_samples` path to score the validation split.
+#
+# Keeping ONE definition is the point: validation scoring selects the checkpoint and the final
+# evaluation reports it, so if use_ddim / eta / start_time / guidance_strength differed between the
+# two, the ranking would describe a different sampler than the reported number.
+#
+# `${..optimization.micro_batch_size}` still resolves: relative interpolation is relative to the
+# node's place in the COMPOSED config (root.sampling.batch_size), which is unchanged by moving the
+# text into a group file.
+# Data mode
+sample_unperturbed: false
+
+# Batch generation
+# null = cover the whole test split. Any integer truncates the evaluation to
+# that many batches, which makes every reported metric a subset estimate --
+# generate_samples logs a PARTIAL EVAL warning in that case. Only set it to a
+# number for quick debugging, never for a benchmark run.
+num_sampled_batches: null
+batch_size: ${..optimization.micro_batch_size}
+
+# Sampler algorithm
+use_ddim: true
+clip_denoised: true
+progress: true
+
+# Conditioning switches
+guidance_strength: 1.0
+
+# DDPM / DDIM controls
+start_time: 100
+nw: 0.5
+start_guide_steps: 500
+eta: 0.0
+
+# Output format
+output_format: "npz" # "npz", "h5", "csv"
+output_dir: null # set automatically if null
+
+# cell-eval scoring, matching ../STATE/state/predict_state_zarr.sh. Off by
+# default because it needs the zarr obs schema; the R2/energy-MMD above are
+# PerturbDiff-native and NOT comparable to STATE's numbers.
+run_cell_eval: false
+cell_eval_profile: "full" # full | minimal | de | anndata

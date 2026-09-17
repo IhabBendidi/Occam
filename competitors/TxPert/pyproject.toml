@@ -1,0 +1,73 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gspp"
+version = "0.0.1"
+description = "TxPert (GSPP) adjacency-map arm of the hooke-tx replogle_nadig benchmark"
+readme = "README.md"
+# 3.11 floor / 3.13 ceiling matches ../STATE/state and ../PerturbDiff so all three
+# competitors run on the same interpreter:
+#   * X.zarr is zarr format v3 -> zarr-python >=3 -> Python >=3.11
+#   * tomllib (dataset manifests) is stdlib only from 3.11
+#   * cell-eval requires >=3.11
+requires-python = ">=3.11,<3.13"
+authors = [{ name = "GSPP Team" }]
+
+dependencies = [
+  # Core DL + runtime
+  "torch>=2.5",
+  # Only for `to_undirected` / `add_self_loops` / `GATv2Conv` and friends. The models that
+  # needed torch_scatter / torch_sparse (Exphormer, the multi-graph GNNs) are not part of
+  # this arm, so those two source-built packages are deliberately absent.
+  "torch-geometric>=2.5",
+  "lightning>=2.4",
+  "hydra-core>=1.3",
+  "omegaconf>=2.3",
+  # Scientific stack. numpy is a floor, not a pin: upstream shipped a pyproject pinning
+  # 2.0.2 and a requirements.txt pinning 1.26.3, which could not both be satisfied.
+  "numpy>=1.26",
+  "pandas>=2.0",
+  "scipy>=1.11",
+  "scikit-learn>=1.3",
+  "joblib>=1.3",
+  "tqdm>=4.66",
+  "loguru>=0.7",
+  # Single-cell stack
+  "anndata>=0.10",
+  "scanpy>=1.10",
+  "h5py>=3.10",
+  # Reading the canonical zarr datasets (X.zarr + obs/var.parquet), as in STATE's loader
+  "zarr>=3",
+  "pyarrow>=15",
+  "polars>=1.0",
+  # Scoring. Pinned to hooke-tx's and ../STATE/state's resolved versions so the metrics are
+  # byte-comparable across arms; ../PerturbDiff currently resolves pdex 0.3.0.
+  "cell-eval==0.7.2",
+  "pdex==0.2.2",
+  # Experiment tracking
+  "wandb>=0.16",
+]
+
+[project.optional-dependencies]
+dev = ["ruff", "pytest"]
+
+[tool.setuptools]
+# gspp has no __init__.py upstream and was imported as an implicit namespace package.
+# Declare it explicitly so `uv sync` installs a real, importable package.
+packages = [
+  "gspp",
+  "gspp.data",
+  "gspp.models",
+  "gspp.models.basal_state_models",
+  "gspp.models.pert_models",
+]
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+exclude = [".venv", "cache", "outputs"]
+
+[tool.ruff.lint]
+select = ["E", "F", "B", "I", "W"]
