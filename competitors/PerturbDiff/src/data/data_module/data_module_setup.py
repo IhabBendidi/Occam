@@ -283,6 +283,38 @@ def occam_setup(dm, stage=None):
         f"#cell type: {len(all_celltypes)}, #batch: {len(all_batches)}"
     )
 
+    # ⛔ FAIL AT SECOND ZERO, NOT 43 MINUTES IN.
+    #
+    # The validation cell-eval callback CATCHES its own exceptions, logs "not publishing a
+    # score" and continues -- so anything it needs and does not have becomes a
+    # ModelCheckpoint failure on a missing `validation/celleval/selection_score` metric at the
+    # FIRST validation, which on this recipe is step 16,000. Two separate defects were found
+    # that way on 2026-09-18, each costing a full run: the dataset-family name
+    # (`get_short_dsname`) and the gene panel (`load_selected_genes` on a null path).
+    #
+    # So exercise the validation path's own prerequisites here, where a failure is free.
+    try:
+        from src.apps.sampling.sampling_generation_helpers import load_selected_genes
+
+        class _Probe:
+            pass
+
+        probe = _Probe()
+        probe.data = cfg
+        genes = load_selected_genes(probe)
+    except Exception as exc:
+        raise RuntimeError(
+            f"the validation cell-eval path cannot resolve its gene panel: "
+            f"{type(exc).__name__}: {exc}\n"
+            f"That callback swallows its own errors, so this would surface as a "
+            f"ModelCheckpoint failure on a missing selection_score at step "
+            f"{getattr(cfg, 'val_check_interval', 16000)}, not here.") from exc
+    if len(genes) != int(cfg.pad_length):
+        raise RuntimeError(
+            f"the validation gene panel has {len(genes)} genes but data.pad_length is "
+            f"{cfg.pad_length}; the emitted h5ad and the model width must agree.")
+    dm.py_logger.info("validation cell-eval prerequisites OK: %d gene symbols", len(genes))
+
 
 def occam_setup_dataset(dm, stage=None):
     """Split each cell line live from the benchmark and build the per-split datasets."""

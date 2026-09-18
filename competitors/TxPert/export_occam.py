@@ -121,6 +121,7 @@ def main(argv=None) -> int:
 
     import pandas as pd
     import torch
+    from scipy.sparse import csr_matrix
     from hydra import compose, initialize_config_dir
     from torch.utils.data import DataLoader
 
@@ -138,16 +139,34 @@ def main(argv=None) -> int:
     # The datamodule is instantiated for its VOCABULARY and GRAPH, not for its loaders:
     # pert2id / id2pert and the knowledge-graph embeddings must be exactly the ones the
     # checkpoint was trained with, or `pert_idxs` index a different perturbation.
+    # ⚠️ TWO THINGS `compose()` DOES NOT GIVE YOU THAT `@hydra.main` DOES, both measured on
+    # 2026-09-18 and each costing an export run:
+    #
+    # 1. `HydraConfig` is unset, so every `${hydra:runtime.cwd}` interpolation raises
+    #    `InterpolationResolutionError` -- `datamodule.cache_dir` and the graph paths use it
+    #    (job 18080877). `return_hydra_config=True` plus `HydraConfig.instance().set_config`
+    #    is the documented way to make them resolve.
+    # 2. `runtime.cwd` is the PROCESS cwd, and the training leg runs from the TxPert
+    #    directory while this adapter is launched from the repo root. Those resolve to
+    #    different cache and graph paths, so the export would read a different graph than
+    #    the checkpoint trained on. chdir FIRST, so the interpolations match training.
+    os.chdir(_HERE)
+    from hydra.core.hydra_config import HydraConfig
+
     with initialize_config_dir(config_dir=os.path.join(_HERE, "configs"), version_base=None):
         cfg = compose(config_name=args.config_name, overrides=[
             f"datamodule.occam_bench_dir={args.bench_dir}",
             f"training.seed={args.seed}",
-        ])
+        ], return_hydra_config=True)
+        HydraConfig.instance().set_config(cfg)
 
     from omegaconf import OmegaConf
 
-    from gspp.data.datamodule import HybridDataModuleWrapper
-    from gspp.graph import GSPGraph
+    # ⚠️ The module paths are main.py's, verified against it -- not guessed. The wrapper is
+    # in `datamodule_hybrid`, not `datamodule`, and the graph is in `data.graphmodule`, not
+    # `graph`. Both wrong guesses cost a 5-split export run (job 18080378).
+    from gspp.data.datamodule_hybrid import HybridDataModuleWrapper
+    from gspp.data.graphmodule import GSPGraph
     from gspp.predictor import PertPredictor
     from gspp.utils import modify_config, set_seed
 
@@ -156,6 +175,12 @@ def main(argv=None) -> int:
     # `model_args` were built from, and `datamodule.setup("fit")` is what populates
     # `condition_group` and the predefined splits -- main.py's comment records that skipping
     # it raises AttributeError downstream.
+    # ⚠️ `compose()` RETURNS A STRUCT-MODE CONFIG; `@hydra.main` does not. `modify_config`
+    # WRITES new keys (`cfg.datamodule.added_data_args = {}` when added data is off), which
+    # struct mode rejects with `ConfigAttributeError: Key 'added_data_args' is not in struct`.
+    # main.py never hits this because it gets its config from the decorator. MEASURED
+    # 2026-09-18, job 18080629 -- it cost a 5-split export run.
+    OmegaConf.set_struct(cfg, False)
     set_seed(args.seed)
     cfg = modify_config(cfg)
     data_args = OmegaConf.to_container(cfg.datamodule, resolve=True)
@@ -192,19 +217,26 @@ def main(argv=None) -> int:
 
     def predict(ctrl: np.ndarray, pert_names: Sequence[str]) -> np.ndarray:
         n = len(pert_names)
-        X = np.asarray(ctrl, dtype=np.float32)
+        # ⚠️ SPARSE, NOT DENSE. `XcelltypePerturbDataset._to_tensor` calls `data.toarray()`
+        # unconditionally, so a dense ndarray dies with
+        # `AttributeError: 'numpy.ndarray' object has no attribute 'toarray'`.
+        # MEASURED 2026-09-18, the adapter's first execution.
+        X = csr_matrix(np.asarray(ctrl, dtype=np.float32))
         obs = pd.DataFrame({
             cs.GENE_NAME: [str(p) for p in pert_names],
             cs.IS_CONTROL: np.zeros(n, dtype=bool),
             cs.CELL_TYPE: np.full(n, cell_type),
+            # ⚠️ BOTH batch columns. The dataset reads `obs[BATCH]` ("batch"), while the
+            # datamodule's own loader writes `BATCH_RAW` ("batch_num") -- setting only the
+            # latter is a KeyError inside `_initialize_all_treatment_data`. They are
+            # DIFFERENT constants, which is easy to miss because the names are so close.
+            cs.BATCH: np.full(n, "occam_panel"),
             cs.BATCH_RAW: np.full(n, "occam_panel"),
             # `evaluate` parses this as "{cell_type}_{pert}+ctrl_{dose}" by splitting on "_",
             # taking [1] for the perturbation and [-1] for the dose. Build it the same way.
             "condition_name": [f"{cell_type}_{p}+ctrl_1+1" for p in pert_names],
         }, index=[str(i) for i in range(n)])
-        ad = sc_ad.AnnData(X=X, obs=obs,
-                           var=pd.DataFrame(index=[str(g) for g in split.gene_names])
-                           if hasattr(split, "gene_names") else None)
+        ad = sc_ad.AnnData(X=X, obs=obs)
         conditions = pd.Series([[base_dm.pert2id[str(p)]] for p in pert_names],
                                index=obs.index)
 

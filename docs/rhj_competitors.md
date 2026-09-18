@@ -860,6 +860,37 @@ Both training, finite gradients (total norm 12.40 / 6.15), **0.145 s/step** → 
 **3.2 h** plus five validation cell-eval passes. The two differ in the expected place:
 genept trains `class_embedding.emb.weight`, onehot `class_embedding.null_emb.weight`.
 
+## C17 — the TxPert adapter's first execution: five bugs, all from `compose()` vs `@hydra.main`
+
+**Ran on an INTERIM checkpoint (epoch 20, `selection_score` 0.54327) so the adapter could be
+exercised before training finishes.** `export_occam.py` had never executed; C11 flagged it as
+the least-tested part of the port, and it was.
+
+| # | bug | cause |
+|---|---|---|
+| 1 | `ImportError: cannot import name 'HybridDataModuleWrapper'` | it is in `gspp.data.datamodule_hybrid`, and `GSPGraph` in `gspp.data.graphmodule` — I guessed both module paths instead of reading `main.py` |
+| 2 | `ConfigAttributeError: Key 'added_data_args' is not in struct` | `compose()` returns a **struct-mode** config; `modify_config` *writes* that key |
+| 3 | `InterpolationResolutionError: HydraConfig was not set` | `${hydra:runtime.cwd}` is used by `datamodule.cache_dir` and the graph paths |
+| 4 | (latent) wrong `runtime.cwd` | training runs from the TxPert dir, the adapter from the repo root — different cache and graph paths, so the export would read a graph the checkpoint never trained on |
+| 5 | `AttributeError: 'numpy.ndarray' object has no attribute 'toarray'` | `_to_tensor` calls `.toarray()` unconditionally, so X must be **sparse** |
+| 6 | (latent) `KeyError` on `obs[BATCH]` | `BATCH` is `"batch"`, `BATCH_RAW` is `"batch_num"` — **different constants**, and the datamodule's own loader writes the latter while the dataset reads the former |
+
+⭐ **1–4 are one root cause: `compose()` does not reproduce what `@hydra.main` sets up.** Worth
+knowing for the other three adapters, which all use the same pattern. 5 and 6 are contract
+mismatches with `XcelltypePerturbDataset` that only an execution could surface.
+
+### ⚠️ A process failure of mine, recorded because it cost more than the bugs
+
+I found 1–3 through **SLURM round trips** — submit, wait ~5 min, read one traceback, fix, repeat
+— on code I had already flagged as never having run. Worse, when the third fix worked, the job
+went **silent for 11 minutes** during the GO+STRING graph build (which logs nothing, and shows
+0% GPU because it is CPU-bound), and I read that silence as failure and **cancelled two healthy
+jobs**. The worker was at 110% CPU with 51 GB resident the whole time.
+
+The right loop, which the user asked for and which found bugs 5 and 6 immediately, is to run
+the adapter **interactively** on an idle GPU and read errors directly. ~9 min per attempt, all
+of it the 656k-cell data load, and no queue in between.
+
 ## Status
 
 | step | state |

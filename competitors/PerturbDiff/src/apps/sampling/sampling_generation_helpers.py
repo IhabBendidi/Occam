@@ -54,11 +54,37 @@ def load_selected_genes(cfg):
     if hasattr(cfg.data, "sample_replogle_only") and cfg.data.sample_replogle_only:
         cfg.data.selected_gene_file = cfg.data.replogle.selected_gene_file
 
-    # The zarr benchmark's panel is a plain .txt of Ensembl ids (the same file
-    # STATE passes as selected_ensembl_gene_ids_path); upstream ships pickles.
-    from src.data.dataset.dataset_io_zarr import load_selected_genes as _load_panel
+    # ⚠️ OCCAM HAS NO PANEL FILE, BY DESIGN. Its gene axis IS the benchmark's frozen 6,983
+    # genes, in `gene_axis.csv` order, so `data.selected_gene_file` is null and
+    # `get_selected_gene_vars_occam` REFUSES a non-null value. This helper used to call
+    # `Path(None)` and die with `TypeError: expected str, bytes or os.PathLike object, not
+    # NoneType` -- inside the validation cell-eval callback, which CATCHES the exception,
+    # logs "not publishing a score", and continues. ModelCheckpoint then hard-failed on the
+    # missing `validation/celleval/selection_score` metric, 43 minutes in. MEASURED
+    # 2026-09-18, jobs 18075222 and 18075225.
+    #
+    # ⚠️ SYMBOLS, not Ensembl ids. These names label the emitted h5ad's `var`, and cell-eval
+    # excludes each perturbation's own target gene BY NAME -- `rhj_fewshot` identifies
+    # perturbations by symbol, so Ensembl ids here would silently stop that exclusion.
+    if str(getattr(cfg.data, "source_format", "")) == "occam":
+        import sys
 
-    genes = _load_panel(cfg.data.selected_gene_file)
+        _shared = "/rxrx/scratch/sandbox/ihab.bendidi/tx_pretrained_models/Occam/competitors/shared"
+        if _shared not in sys.path:
+            sys.path.insert(0, _shared)
+        import occam_data as od
+
+        bench = od.load_occam_benchmark(str(cfg.data.occam_bench_dir),
+                                        verify_sources=False)
+        genes = [str(g) for g in bench.axis_symbols]
+        logger.info("occam: gene panel is the frozen axis, %d symbols (no panel file)",
+                    len(genes))
+    else:
+        # The zarr benchmark's panel is a plain .txt of Ensembl ids (the same file
+        # STATE passes as selected_ensembl_gene_ids_path); upstream ships pickles.
+        from src.data.dataset.dataset_io_zarr import load_selected_genes as _load_panel
+
+        genes = _load_panel(cfg.data.selected_gene_file)
 
     expected = getattr(cfg.data, "pad_length", 2000)
     if len(genes) != expected:
