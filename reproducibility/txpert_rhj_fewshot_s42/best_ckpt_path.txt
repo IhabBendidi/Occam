@@ -1,0 +1,1 @@
+/rxrx/scratch/sandbox/ihab.bendidi/tx_pretrained_models/Occam/runs/competitors/txpert/ckpt/occam_s42/best-ep49.ckpt
