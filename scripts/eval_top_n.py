@@ -189,7 +189,7 @@ def main(argv=None) -> int:
     with open(LEDGER, "w") as fh:
         json.dump(hist, fh, indent=2, sort_keys=True)
     print(f"[top-n] submitted {job}; recorded in {os.path.relpath(LEDGER, REPO)}")
-    print(f"[top-n] next: PYENV_VERSION=scmae python scripts/collect_adjmap_eval.py "
+    print(f"[top-n] next: PYENV_VERSION=scmae python scripts/collect_adjmap_eval.py "  # noqa: legacy-name
           f"--out docs/rhj_adjmap_tables.md")
     return 0
 

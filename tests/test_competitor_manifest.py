@@ -345,6 +345,11 @@ def test_the_upstream_benchmarks_name_is_gone_from_the_codebase():
             continue
         if path.startswith("tests/test_competitor_manifest.py"):  # this guard's own prose
             continue
+        # The same `noqa: legacy-name` marker the repo already uses for the pre-rename
+        # interpreter name. A doc that DOCUMENTS the rename has to name the old identifiers,
+        # and without this the guard flags the record of its own enforcement.
+        if "legacy-name" in line:
+            continue
         if "/outputs/" in path or "/wandb/" in path:             # run products
             continue
         hits.append(line[:160])

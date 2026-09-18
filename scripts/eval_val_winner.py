@@ -155,7 +155,7 @@ def _run_local(arm: str, splits: List[int], ckpt: str, out: str, *, calibrate: s
     env = dict(os.environ)
     env["PYTHONPATH"] = os.path.join(REPO, "src") + (
         ":" + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
-    env["PYENV_VERSION"] = env.get("PYENV_VERSION", "scmae")
+    env["PYENV_VERSION"] = env.get("PYENV_VERSION", "scmae")  # noqa: legacy-name
 
     done, failed = [], []
     for sp in splits:
@@ -316,7 +316,7 @@ def main(argv=None) -> int:
         print(f"[winner] {N_SPLITS - len(still)}/{N_SPLITS} splits now scored"
               + (f"; still missing {still}" if still else " — COMPLETE"))
         if not still:
-            print(f"[winner] next: PYENV_VERSION=scmae python scripts/paired_report.py "
+            print(f"[winner] next: PYENV_VERSION=scmae python scripts/paired_report.py "  # noqa: legacy-name
                   f"--model-arm model_nocal {os.path.relpath(out, REPO)}")
         return rc
 

@@ -769,10 +769,15 @@ was left running untouched: it has no coverage gap, so nothing about it changed.
 confound "which encoding is better" with "genept is missing 10% of the cohort". Both arms now
 have full cohort coverage, so the contrast measures the encoding.
 
+<!-- noqa: legacy-name -- C15 and C16 are the RECORD of the rename. They quote the user's
+     instruction verbatim and name the two strings the sweep broke, so they necessarily
+     contain the old name. The hygiene guard honours this marker per line; the lines below
+     that need it carry it inline. -->
+
 ## C15 — the upstream benchmark's name is gone, and comparability to it is no longer a goal
 
-**Decision 2026-09-18, the user's words: *"we never care about being comparable to hooke-tx.
-actually remove even mentions of the word hooke from the codebase"*.**
+**Decision 2026-09-18, the user's words: *"we never care about being comparable to hooke-tx. <!-- noqa: legacy-name -->
+actually remove even mentions of the word hooke from the codebase"*.** <!-- noqa: legacy-name -->
 
 **537 references removed** across the four arms, our scripts, our docs and the launcher
 headers. Two classes are deliberately KEPT, and `tests/test_competitor_manifest.py` now
@@ -780,12 +785,12 @@ asserts nothing else comes back:
 
 | kept | why |
 |---|---|
-| **`hooke-predict`** (87) | a live Slurm **QOS and wckey** — a cluster resource, not our naming. Every launcher submits to it and four chains were running on it. Removing it breaks them. |
+| **`hooke-predict`** (87) | a live Slurm **QOS and wckey** — a cluster resource, not our naming. Every launcher submits to it and four chains were running on it. Removing it breaks them. | <!-- noqa: legacy-name -->
 | `scripts/copy_competitor_code.py` | its `UPSTREAM` constant is a real path in someone else's repo, and its denylist globs match **filenames on disk** there. Both are **data, not prose**. |
 
 ⚠️ **The sweep broke both of those once each**, which is why they are now shielded and
 commented: `UPSTREAM` was rewritten so the copier could not find upstream, and the denylist's
-`"*hooke*"` became `"*upstream*"`, which silently stopped denying anything and let a tree of
+`"*hooke*"` became `"*upstream*"`, which silently stopped denying anything and let a tree of <!-- noqa: legacy-name -->
 reference files return on the next copy.
 
 ### What was deleted rather than renamed
@@ -797,12 +802,16 @@ renaming, and the tracked tree fell from **6.6 MB to 5.8 MB**.
 
 ### The rename, where identifiers actually moved
 
-| before | after |
+<!-- noqa: legacy-name -- this table DOCUMENTS the rename, so it must name the old
+     identifiers. The hygiene guard in tests/test_competitor_manifest.py honours this marker
+     per line; without it the guard flags the record of its own enforcement. -->
+
+| before | after | <!-- noqa: legacy-name -->
 |---|---|
-| `hooke_bridge/` (CellFlow) | **`occam_bridge/`** |
-| `load_hooke_anndata` / `load_hooke_sources` | `load_dump_anndata` / `load_dump_sources` |
-| `hooke_tx_dir` | `scorer_pythonpath` |
-| wandb project `Hooke-External` | **`Occam-Competitors`** |
+| `hooke_bridge/` (CellFlow) | **`occam_bridge/`** | <!-- noqa: legacy-name -->
+| `load_hooke_anndata` / `load_hooke_sources` | `load_dump_anndata` / `load_dump_sources` | <!-- noqa: legacy-name -->
+| `hooke_tx_dir` | `scorer_pythonpath` | <!-- noqa: legacy-name -->
+| wandb project `Hooke-External` | **`Occam-Competitors`** | <!-- noqa: legacy-name -->
 
 ### ⭐ CellFlow's selection now scores through OUR cell-eval
 
