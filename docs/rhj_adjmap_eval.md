@@ -75,6 +75,53 @@ is +0.491, so "2nd best on val" says little about 2nd best on cell-eval.
 ❌ **Not licensed: claiming the selected arm is best on `disc_l1` or `overlap_at_N`.** rho +0.198
 and +0.444. If those matter for a decision, that arm must be scored directly.
 
+## ⭐ F-adj6 — scoring the BAND was right: `s315`, ranked 5th on validation, leads on cell-eval
+
+**5 of 10 complete on all 5 splits. The best arm so far was 5th by validation.**
+
+`model_nocal` on the 611 test perturbations, ordered by validation:
+
+| # | arm | val | splits | `pearson_delta` | `mae` ↓ | `overlap_at_N` | `disc_l1` |
+|---|---|---|---|---|---|---|---|
+| 1 | `s469` | 0.3805 | 5 | 0.3392 | 0.0210 | 0.0669 | 0.6533 |
+| 2 | `s313` | 0.3769 | 5 | 0.3415 | 0.0210 | 0.0642 | 0.6534 |
+| 3 | `s314` | 0.3768 | 3 | 0.3397 | 0.0210 | 0.0658 | 0.6541 |
+| 4 | `s145` | 0.3731 | 5 | 0.3405 | 0.0210 | 0.0666 | 0.6506 |
+| **5** | **`s315`** | 0.3719 | **4** | **0.3439** | 0.0210 | 0.0609 | **0.6566** |
+| 6 | `s309` | 0.3705 | 4 | 0.3400 | 0.0209 | **0.0679** | **0.6569** |
+| 7 | `s147` | 0.3704 | 3 | 0.3390 | 0.0209 | 0.0657 | 0.6490 |
+| 8 | `s468` | 0.3702 | 3 | **0.3312** | 0.0211 | 0.0591 | 0.6475 |
+| 9 | `s306` | 0.3699 | 5 | 0.3396 | 0.0209 | 0.0657 | 0.6543 |
+| 10 | `s321` | 0.3687 | 5 | 0.3373 | 0.0209 | 0.0656 | 0.6489 |
+
+⚠️ **Partial: `s315`, `s309`, `s314`, `s147`, `s468` are on 3–4 splits**, so their means are
+not yet comparable to a 5-split mean. Split-to-split spread is ~0.003, so the ordering can
+still move.
+
+### This is the clearest vindication of abandoning argmax-only
+
+**Validation does not order this band at all.** Val spans 0.3687–0.3805 and cell-eval spans
+0.3312–0.3439, and the two orderings barely relate:
+
+* the val **#1** (`s469`) is **8th of 10** on cell-eval
+* the current cell-eval leader (`s315`) is **5th** on validation
+* the val **#8** (`s468`) is **last** on cell-eval — the only arm below 0.335
+
+Under the old argmax-only policy we would have scored `s469` alone, called 0.3392 the answer,
+and never seen 0.3439. That is F-adj2's +0.491 top-10 rho behaving exactly as measured.
+
+### `mae` is a constant here, and `disc_l1` disagrees with `pearson_delta`
+
+`mae` is **0.0209–0.0211 across all ten arms** — this sweep does not move it. And the arm that
+wins `disc_l1` (`s309`, 0.6569) and the arm that wins `overlap_at_N` (`s309`, 0.0679) are not
+the `pearson_delta` leader. Ranking is per metric; there is no single best arm in this band yet.
+
+⭐ **`decoder_lr = 1e-3` and `cosine_loss_weight = 0.5` in 10 of 10**, across `lr` 3e-4 → 3e-3
+and all three `film_mode` values. Both sit at a swept endpoint, so neither is established as
+optimal — only as better than what was swept.
+
+Job `18071087`, throttle raised 8 → 10 in flight.
+
 ## ⛔ F-adj5 — THE ARGMAX POLICY FAILED ITS THIRD TEST. `s469` has the higher val and the LOWER `pearson_delta`.
 
 **This withdraws the unqualified form of F-adj2.** `s469` set a new validation record (0.3805 vs

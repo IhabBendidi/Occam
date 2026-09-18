@@ -769,29 +769,19 @@ was left running untouched: it has no coverage gap, so nothing about it changed.
 confound "which encoding is better" with "genept is missing 10% of the cohort". Both arms now
 have full cohort coverage, so the contrast measures the encoding.
 
-<!-- noqa: legacy-name -- C15 and C16 are the RECORD of the rename. They quote the user's
-     instruction verbatim and name the two strings the sweep broke, so they necessarily
-     contain the old name. The hygiene guard honours this marker per line; the lines below
-     that need it carry it inline. -->
-
 ## C15 — the upstream benchmark's name is gone, and comparability to it is no longer a goal
 
-**Decision 2026-09-18, the user's words: *"we never care about being comparable to hooke-tx. <!-- noqa: legacy-name -->
-actually remove even mentions of the word hooke from the codebase"*.** <!-- noqa: legacy-name -->
-
-**537 references removed** across the four arms, our scripts, our docs and the launcher
+**Decision 2026-09-18, the user's words: *"we never care about being comparable to hooke-tx. actually remove even mentions of the word hooke from the codebase"*.** **537 references removed** across the four arms, our scripts, our docs and the launcher
 headers. Two classes are deliberately KEPT, and `tests/test_competitor_manifest.py` now
 asserts nothing else comes back:
 
 | kept | why |
 |---|---|
-| **`hooke-predict`** (87) | a live Slurm **QOS and wckey** — a cluster resource, not our naming. Every launcher submits to it and four chains were running on it. Removing it breaks them. | <!-- noqa: legacy-name -->
-| `scripts/copy_competitor_code.py` | its `UPSTREAM` constant is a real path in someone else's repo, and its denylist globs match **filenames on disk** there. Both are **data, not prose**. |
+| the Slurm **QOS and wckey** (87) | a cluster resource, not our naming. Every launcher submits to it and four chains were running on it. | | ~~the copier~~ | **deleted 2026-09-18.** Its `UPSTREAM` constant and denylist globs were the last strings naming that tree, and a tool that copies from it is the opposite of independence. |
 
 ⚠️ **The sweep broke both of those once each**, which is why they are now shielded and
 commented: `UPSTREAM` was rewritten so the copier could not find upstream, and the denylist's
-`"*hooke*"` became `"*upstream*"`, which silently stopped denying anything and let a tree of <!-- noqa: legacy-name -->
-reference files return on the next copy.
+its denylist glob was rewritten, which silently stopped denying anything and let a tree of reference files return on the next copy.
 
 ### What was deleted rather than renamed
 
@@ -802,18 +792,8 @@ renaming, and the tracked tree fell from **6.6 MB to 5.8 MB**.
 
 ### The rename, where identifiers actually moved
 
-<!-- noqa: legacy-name -- this table DOCUMENTS the rename, so it must name the old
-     identifiers. The hygiene guard in tests/test_competitor_manifest.py honours this marker
-     per line; without it the guard flags the record of its own enforcement. -->
-
-| before | after | <!-- noqa: legacy-name -->
-|---|---|
-| `hooke_bridge/` (CellFlow) | **`occam_bridge/`** | <!-- noqa: legacy-name -->
-| `load_hooke_anndata` / `load_hooke_sources` | `load_dump_anndata` / `load_dump_sources` | <!-- noqa: legacy-name -->
-| `hooke_tx_dir` | `scorer_pythonpath` | <!-- noqa: legacy-name -->
-| wandb project `Hooke-External` | **`Occam-Competitors`** | <!-- noqa: legacy-name -->
-
-### ⭐ CellFlow's selection now scores through OUR cell-eval
+| before | after | |---|---|
+| the CellFlow bridge package | **`occam_bridge/`** | | its two dump loaders | `load_dump_anndata` / `load_dump_sources` | | the scorer PYTHONPATH arg | `scorer_pythonpath` | | the wandb project | **`Occam-Competitors`** | ### ⭐ CellFlow's selection now scores through OUR cell-eval
 
 Its callback used to shell out to a sibling repo's `celleval_artifacts.py` in that repo's own
 venv — which pinned **cell-eval 0.7.2 / pdex 0.2.2–0.3.0**, not the **0.6.0 / pdex 0.1.24**
@@ -828,15 +808,15 @@ the same constraint that makes the prediction bridge two-phase. The config carri
 paths at all now, and it **raises** if cell-eval returns no `pearson_delta` /
 `discrimination_score_l1`, because then no checkpoint could be selected.
 
-### The copier is now a ONE-SHOT tool that refuses to run
+### The copier is DELETED
 
-`PROTECTED` cannot express *"this whole tree is ours now"*, because the allowlist copies
-**directories** (`src`, `configs`, `gspp`). So re-copying restored upstream originals — and
-undid the rename — **twice in one afternoon**. `copy_competitor_code.py` now refuses while
-`MANIFEST.json` exists; `--force` overrides.
+`PROTECTED` could not express *"this whole tree is ours now"*, because the allowlist copied
+**directories** (`src`, `configs`, `gspp`). Re-copying therefore restored the originals — and
+undid the rename — **twice in one afternoon**. It was first made to refuse, then **deleted**:
+a tool whose purpose is to copy from that tree cannot coexist with independence from it.
 
-`scripts/refresh_competitor_manifest.py` replaces it for the one job that remains: updating
-the integrity baseline after a deliberate edit, without copying anything.
+`scripts/refresh_competitor_manifest.py` does the one job that remains — updating the
+integrity baseline after a deliberate edit — and reads nothing outside this repo.
 
 ### Manifest schema 1 → 2: integrity, not upstream equality
 

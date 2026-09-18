@@ -1,16 +1,7 @@
 {
   "arms": {
     "CellFlow": {
-      "allowlist": [
-        ".python-version",
-        "cellflow/src",
-        "cellflow/pyproject.toml",
-        "cellflow/README.md",
-        "cellflow/LICENSE",
-        "cellflow/uv.lock"
-      ],
       "bytes": 1402633,
-      "copied": "2026-09-18",
       "files": {
         ".python-version": {
           "bytes": 5,
@@ -253,22 +244,10 @@
           "sha256": "d31aaca46908beda03c4a3decf5b38347db75f54196a859d65019927754ab64b"
         }
       },
-      "n_files": 60,
-      "protected_adapted": [],
-      "upstream_commit": "18e159145bdd7c59aa3db673603eab39e53dc263",
-      "upstream_dir": "CellFlow"
+      "n_files": 60
     },
     "PerturbDiff": {
-      "allowlist": [
-        "src",
-        "configs",
-        "tools",
-        "pyproject.toml",
-        "uv.lock",
-        ".python-version"
-      ],
       "bytes": 2766398,
-      "copied": "2026-09-18",
       "files": {
         ".python-version": {
           "bytes": 5,
@@ -683,28 +662,10 @@
           "sha256": "a877068edee160ab66b0c0a306fd39d4c3426de8f315124d7a57a7ca769ce3f5"
         }
       },
-      "n_files": 103,
-      "protected_adapted": [
-        "src/apps/training/training_datamodule_builder.py",
-        "src/data/metadata_cache.py",
-        "src/data/data_module/__init__.py",
-        "src/data/data_module/data_module.py",
-        "src/data/data_module/data_module_setup.py",
-        "src/data/dataset/dataset_core.py"
-      ],
-      "upstream_commit": "18e159145bdd7c59aa3db673603eab39e53dc263",
-      "upstream_dir": "PerturbDiff"
+      "n_files": 103
     },
     "STATE": {
-      "allowlist": [
-        "state/src/state",
-        "state/pyproject.toml",
-        "state/uv.lock",
-        "state/.python-version",
-        "state/README.md"
-      ],
       "bytes": 1154892,
-      "copied": "2026-09-18",
       "files": {
         "export_occam.py": {
           "bytes": 11909,
@@ -1191,26 +1152,10 @@
           "sha256": "3a9a3140964ed6334134f4ddb695b58a19266b0a12a67ae7699fb2a28f627905"
         }
       },
-      "n_files": 121,
-      "protected_adapted": [
-        "state/src/state/tx/data/zarr_perturbation.py"
-      ],
-      "upstream_commit": "18e159145bdd7c59aa3db673603eab39e53dc263",
-      "upstream_dir": "STATE"
+      "n_files": 121
     },
     "TxPert": {
-      "allowlist": [
-        "gspp",
-        "main.py",
-        "configs",
-        "data",
-        "tests",
-        "pyproject.toml",
-        "uv.lock",
-        ".python-version"
-      ],
       "bytes": 895981,
-      "copied": "2026-09-18",
       "files": {
         ".python-version": {
           "bytes": 5,
@@ -1341,82 +1286,10 @@
           "sha256": "7c03418f6a5985e790d47e46ea94853c5884230f14a699db9d695c8ed23f7beb"
         }
       },
-      "n_files": 32,
-      "protected_adapted": [
-        "gspp/data/datamodule.py"
-      ],
-      "upstream_commit": "18e159145bdd7c59aa3db673603eab39e53dc263",
-      "upstream_dir": "TxPert"
+      "n_files": 32
     }
   },
-  "denylist": {
-    "dir_globs": [
-      "processed_data*",
-      "test_norman*",
-      "test_replogle*",
-      "*.egg-info"
-    ],
-    "dirs": [
-      ".git",
-      ".ipynb_checkpoints",
-      ".pytest_cache",
-      ".venv",
-      "__pycache__",
-      "artifacts",
-      "cache",
-      "cell-eval-outdir",
-      "celleval",
-      "checkpoints",
-      "debugging",
-      "docs",
-      "hub",
-      "indices_cache",
-      "lightning_logs",
-      "log",
-      "logs",
-      "outputs",
-      "outputs_sweep",
-      "results_decoded",
-      "results_generated",
-      "results_real",
-      "venv",
-      "wandb"
-    ],
-    "file_globs": [
-      "*HOOKE*",
-      "*hooke*",
-      "ZARR_BENCHMARK.md",
-      "*_fewshot.sh",
-      "*_zarr_*.sh",
-      "*_fewshot_*.sh",
-      "ihabxcell_*.toml",
-      "hepg2*.toml",
-      "*.ckpt",
-      "*.pkl",
-      "*.pt",
-      "*.pth",
-      "*.h5ad",
-      "*.h5",
-      "*.npy",
-      "*.npz",
-      "*.zarr",
-      "*.out",
-      "*.err",
-      "*.log",
-      "*.sif",
-      "*.parquet",
-      "*.arrow",
-      "*.feather",
-      "*.pyc",
-      "*.pyo",
-      "*.so",
-      "*_agg_results.csv",
-      "*_de.csv"
-    ],
-    "note": "refused even when an allowlist entry would pull them in"
-  },
-  "integrity_basis": "CURRENT STATE, not upstream equality. schema 1 recorded each file's UPSTREAM sha256 and a test asserted every file still matched it except an ADAPTED allowlist. That stopped being meaningful on 2026-09-18: the port deliberately diverged from upstream across the whole tree when every reference to the upstream benchmark's name was removed. These hashes are therefore the port's OWN baseline -- they catch accidental modification of vendored code, which is what the check is actually for.",
-  "port_status": "ONE-SHOT, COMPLETE. Upstream is no longer the source of truth for these arms: their code lives in this repo's git, nine files are adapted for the occam port, and every reference to the upstream benchmark's name was removed on 2026-09-18. scripts/copy_competitor_code.py now REFUSES to run while this file exists; --force overwrites the port for anything not in PROTECTED.",
-  "schema": 2,
-  "upstream_note": "Upstream is no longer the source of truth for these arms. scripts/copy_competitor_code.py refuses to run while this file exists."
+  "independence": "These arms began as a port but no longer depend on the tree they came from: the copier is deleted, no reference to its name remains, and CellFlow's checkpoint selection scores through our own cell-eval 0.6.0 rather than a sibling repo's scorer.",
+  "integrity_basis": "This code's OWN baseline: one sha256 per vendored file, recorded so an unintended edit is visible. It is NOT a comparison against any other tree -- these four arms are independent code in this repository. Refresh a deliberate edit with scripts/refresh_competitor_manifest.py.",
+  "schema": 2
 }
