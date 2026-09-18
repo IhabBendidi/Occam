@@ -254,11 +254,14 @@ class ZarrExperimentConfig:
     ``[split_fold]`` name -> fold index (optional, default 0).
     """
 
-    def __init__(self, datasets, training, splits, split_fold):
+    def __init__(self, datasets, training, splits, split_fold, occam=False):
         self.datasets = datasets
         self.training = training
         self.splits = splits
         self.split_fold = split_fold
+        # occam mode has no TOML and no on-disk dataset paths: a `[datasets]` value is a
+        # cell-line NAME. validate() must not warn that "HEPG2" is a missing file.
+        self.occam = occam
 
     @classmethod
     def from_toml(cls, path: str | Path) -> ZarrExperimentConfig:
@@ -271,6 +274,30 @@ class ZarrExperimentConfig:
             split_fold=dict(doc.get("split_fold", {})),
         )
 
+    @classmethod
+    def from_occam(cls, bench_dir: str | Path) -> ZarrExperimentConfig:
+        """Our frozen benchmark, in their TOML's vocabulary.
+
+        One `[datasets]` entry per cell line, ALL of them `[training] = "train"`, and NO
+        `[splits]` entries -- the split does not live in a JSON of row indices here, it is
+        derived live per line by `_read_split`'s occam branch (HepG2 splits three ways;
+        Jurkat and RPE1 are wholly training data, which is the positive half of the
+        few-shot exclusion).
+
+        ⚠️ `training` must mark every line, including HepG2. `setup()` only falls back to
+        "whole source is training" when `fold is None`, and in occam mode a fold is always
+        returned -- but a line missing from `training` would still be a silent trap for any
+        later change to that branch.
+        """
+        lines = occam_datasets(str(bench_dir))
+        return cls(
+            datasets={ln: ln for ln in lines},
+            training={ln: "train" for ln in lines},
+            splits={},
+            split_fold={},
+            occam=True,
+        )
+
     def get_all_datasets(self) -> list[str]:
         return list(self.datasets.keys())
 
@@ -278,7 +305,7 @@ class ZarrExperimentConfig:
         if not self.datasets:
             raise ValueError("zarr TOML has no [datasets] entries.")
         for name, path in self.datasets.items():
-            if not Path(path).exists():
+            if not self.occam and not Path(path).exists():
                 logger.warning("Dataset path does not exist: %s -> %s", name, path)
         for name, path in self.splits.items():
             if name not in self.datasets:
@@ -288,7 +315,7 @@ class ZarrExperimentConfig:
 
 
 from .occam_source import (
-    OCCAM_FORMAT, occam_fold_for_line, read_occam_source,
+    OCCAM_FORMAT, occam_datasets, occam_fold_for_line, read_occam_source,
 )
 
 
@@ -883,7 +910,17 @@ class ZarrPerturbationDataModule(LightningDataModule):
                     f"second transform would divide by the 6,983-gene sum instead and break "
                     f"both `mae` and the prediction bridge's emission map.")
 
-        self.config = ZarrExperimentConfig.from_toml(toml_config_path)
+        if source_format == OCCAM_FORMAT:
+            # There is no TOML in occam mode -- the benchmark directory is the manifest.
+            # Passing one anyway would mean two disagreeing source lists, so refuse.
+            if toml_config_path:
+                raise ValueError(
+                    f"source_format='occam' takes its sources from occam_bench_dir, not a "
+                    f"TOML; got toml_config_path={toml_config_path!r}. Two source lists "
+                    f"cannot both be authoritative -- drop one.")
+            self.config = ZarrExperimentConfig.from_occam(occam_bench_dir)
+        else:
+            self.config = ZarrExperimentConfig.from_toml(toml_config_path)
         self.config.validate()
 
         self.selected_genes = None

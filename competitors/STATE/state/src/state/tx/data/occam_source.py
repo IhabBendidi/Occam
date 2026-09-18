@@ -50,7 +50,7 @@ if os.path.isdir(_SHARED) and _SHARED not in sys.path:
     sys.path.insert(0, _SHARED)
 
 __all__ = ["OCCAM_FORMAT", "OccamSourceData", "read_occam_source", "occam_fold_for_line",
-           "occam_line_from_path"]
+           "occam_line_from_path", "occam_datasets"]
 
 OCCAM_FORMAT = "occam"
 
@@ -97,6 +97,32 @@ def occam_line_from_path(path: str) -> str:
         f"cannot tell which Occam cell line {path!r} is. Name the [datasets] entry's value "
         f"one of {sorted(set(_ALIASES.values()))}, or point it at our h5ad whose filename "
         f"contains the line.")
+
+
+def occam_datasets(bench_dir: str, *, verify_sources: bool = False) -> List[str]:
+    """The `[datasets]` entries for our benchmark: one per cell line, read from the frozen dir.
+
+    STATE normally gets its sources from a TOML. In occam mode there is no TOML -- the
+    benchmark directory IS the manifest -- so the dataset list is derived from it here and
+    every line is one `[datasets]` entry whose value is the line name itself, which is what
+    `occam_line_from_path` accepts.
+
+    Order is the benchmark's own. `_setup_global_maps` fixes the gene axis from the FIRST
+    source and checks every later one against it, so a stable order keeps that check
+    meaningful across restarts.
+    """
+    import occam_data as od
+
+    bench = od.load_occam_benchmark(bench_dir, verify_sources=verify_sources)
+    lines = [str(f) for f in bench.files]
+    if not lines:
+        raise ValueError(
+            f"{bench_dir} lists no source files. Rebuild the benchmark: without sources "
+            f"there is nothing to train on and setup() would report 0 / 0 / 0 rather than "
+            f"fail.")
+    for ln in lines:
+        occam_line_from_path(ln)   # refuse an unrecognised line now, not 20 minutes in
+    return lines
 
 
 def read_occam_source(path: str, *, bench_dir: str, target_sum: float = 10_000.0,

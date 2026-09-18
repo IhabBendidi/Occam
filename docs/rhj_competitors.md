@@ -860,6 +860,104 @@ Both training, finite gradients (total norm 12.40 / 6.15), **0.145 s/step** → 
 **3.2 h** plus five validation cell-eval passes. The two differ in the expected place:
 genept trains `class_embedding.emb.weight`, onehot `class_embedding.null_emb.weight`.
 
+## ⛔ C23 — STATE's occam mode never built a dataset config. Pre-flight caught it; a relaunch would not have.
+
+**Objective.** The standing goal is the best model on SEEN perturbations in an UNSEEN
+context — here, the `rhj_fewshot` HepG2 few-shot panel — and the competitors exist to say
+whether Occam's number is good in absolute terms or only relative to baselines. A competitor
+that crashes at construction contributes nothing, so every arm gets a pre-flight before it
+gets a GPU.
+
+**Question this answers.** Are STATE, CellFlow and PerturbDiff actually runnable end to end
+on our data after the last round of fixes, or is there another defect between the config and
+the first batch?
+
+**What is varied / held fixed.** Nothing is varied — this is a correctness pass. The three
+arms were each driven with the *exact* override list their launcher uses, on our frozen
+benchmark, with only the RAM caps and step budgets reduced.
+
+**What each outcome means.** Clean → launch. A crash → a bug that would otherwise have
+surfaced as a dead Slurm job, which is the failure mode that has cost this port the most time
+(C10, C17, C20, C21).
+
+### The defect
+
+`ZarrPerturbationDataModule.__init__` called `ZarrExperimentConfig.from_toml(toml_config_path)`
+**unconditionally**, while `configs/data/occam_h5ad.yaml` correctly sets
+`toml_config_path: null` — the benchmark directory is the manifest in occam mode, there is no
+TOML. Result:
+
+```
+TypeError: expected str, bytes or os.PathLike object, not NoneType
+  zarr_perturbation.py:886  self.config = ZarrExperimentConfig.from_toml(toml_config_path)
+  zarr_perturbation.py:265  with open(path, "rb") as f:
+```
+
+**Every other occam hook was already right.** `_Source` has its occam branch, `_read_split`
+has its occam branch, `occam_source.py` has the reader, the fold builder and the per-line
+invariants. The one missing piece was the object that names the sources — so
+`config.get_all_datasets()` had nothing to iterate and `setup()` would have reported
+`0 / 0 / 0` even if construction had survived.
+
+⚠️ **Why the earlier "4/4 STATE pre-flight passed" did not catch this.** That pass checked the
+Hydra composition, the venv, the gene axis and the import graph — four proxies, all upstream
+of construction. The real run then died at 21 s on a *different* defect (the copier's
+`DENY_DIRS` had eaten `configs/wandb/default.yaml`), never reaching line 886. Fixing the first
+error simply uncovered the second. **Same shape as C20:** a check that passes on a proxy is
+not a check.
+
+### The fix
+
+| file | change |
+|---|---|
+| `occam_source.py` | `occam_datasets(bench_dir)` → the `[datasets]` names, read from `bench.files`, each validated through `occam_line_from_path` up front |
+| `zarr_perturbation.py` | `ZarrExperimentConfig.from_occam(bench_dir)`: one dataset per line, all marked `training="train"`, **no** `[splits]` (the split is derived live per line) |
+| `zarr_perturbation.py` | `__init__` branches on `source_format`; refuses a TOML **and** a bench dir together — two source lists cannot both be authoritative |
+| `zarr_perturbation.py` | `validate()` skips the path-existence warning in occam mode (a `[datasets]` value is a cell-line NAME there, not a path) |
+
+### Pre-flight result, STATE
+
+Real construction, real `setup()`, one real batch, 6,000 cells/line cap:
+
+```
+__init__ OK  datasets=['HEPG2', 'jurkat', 'RPE1']
+  [occam-state] HEPG2:  finetune 4,216 (incl. 221 controls) · validation 268 · test 1,516
+  [occam-state] jurkat: finetune 6,000 (incl. 282 controls) · validation 0 · test 0
+  [occam-state] RPE1:   finetune 6,000 (incl. 270 controls) · validation 0 · test 0
+train 2,549 batches · val 43 · test 504
+pert_cell_emb (128, 6983)  ctrl_cell_emb (128, 6983)  pert_emb (128, 2329)
+              cell_type_onehot (128, 3)  batch (128, 167)
+axis identical & in order: True        gene axis 6,983, first3 ['DPM1','GCLC','NIPAL3']
+```
+
+**The asymmetry is the `rhj_fewshot` design showing up correctly**: HepG2 splits three ways,
+Jurkat and RPE1 are wholly training data, because a perturbation held out of HepG2 still
+trains from the other two lines. That is what makes the task few-shot-in-a-new-context rather
+than never-seen-at-all.
+
+⚠️ `rowsum(expm1) ≈ 8,727`, not 10,000, and that is **correct**: normalisation happens on the
+FULL source panel before the 6,983-gene subset, which is exactly what makes the
+10,000 → 2,000 emission map exact. A row summing to 10,000 here would mean the wrong
+denominator and a broken `mae`.
+
+### Pre-flight result, CellFlow
+
+Real 20-iteration run with a validation at 10:
+
+```
+[vocab] 2381 perturbation tokens from rhj_fewshot
+  [occam-data] splits: finetune 612,122 (incl. 28,474 controls) · validation 6,731 · test 37,490
+  source HEPG2 n_obs=101,252 · jurkat 262,956 · RPE1 247,914
+  validation: 6,731 cells from HEPG2 (103 perturbations)
+  injected 4,976 train controls into validation (cell-eval split has none)
+  loaded n_obs=612,122 n_vars=6,983  wall_s=227.6
+  pca n_comps=256 train=612,122 valid=11,707
+```
+
+The control-injection line is the fallback added pre-launch: the cell-eval validation split
+contains **zero** controls by construction, and CellFlow's `ctrl_x` needs some, so TRAINING
+controls are used. Without it the run raises before step 1.
+
 ## ⭐⭐ C22 — FIRST COMPLETE COMPETITOR RESULT: TxPert 0.3077 on 5/5 splits. Occam leads by 0.0338.
 
 **All 5 splits, uncalibrated (`model_nocal`), same 611-perturbation cohort, same drawn half-B
