@@ -127,6 +127,20 @@ def run_cell_eval(
             pert_col=pert_col,
             outdir=str(output_dir),
             prefix=str(cell_type),
+            # ⚠️ allow_discrete=True DISABLES cell-eval's own scale check
+            # (`guess_is_lognorm`), which raises
+            #     Invalid scale: max value 17.29 exceeds log1p threshold of 15.0
+            # on any prediction that leaves log1p range. Unconstrained heads do that: STATE's
+            # output is a plain `relu` (state_transition.py:516), non-negative but unbounded,
+            # and one validation pass hit 17.29 -- so that pass published NO score and the
+            # checkpoint could not be selected, for a reason that is about the model's output
+            # rather than about the scoring being invalid.
+            #
+            # Set at the user's explicit instruction (2026-09-18): score high-max checkpoints
+            # rather than skipping them. This also MATCHES the reported-number path, which
+            # already passes allow_discrete=True (`celleval_v1.run_celleval_v1`) -- so
+            # selection and reporting now disable the same check instead of only one of them.
+            allow_discrete=True,
             pdex_kwargs=PDEX_KWARGS,
             num_threads=n_threads,
         )

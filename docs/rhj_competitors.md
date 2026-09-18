@@ -860,6 +860,94 @@ Both training, finite gradients (total norm 12.40 / 6.15), **0.145 s/step** → 
 **3.2 h** plus five validation cell-eval passes. The two differ in the expected place:
 genept trains `class_embedding.emb.weight`, onehot `class_embedding.null_emb.weight`.
 
+## ⭐⭐ C26 — the max-value refusal would have discarded a GOOD arm over 1 value in 4,357,392
+
+**Objective.** Unchanged: best model on SEEN perturbations in an UNSEEN context (HepG2
+`rhj_fewshot`), headline metric cell-eval `pearson_delta` on the 611-perturbation cohort.
+Anchors: floor −0.0018 · `meanpert` 0.1324 · `transfer` 0.2323 · `experimental` 0.3722 ·
+ours 0.3415 · TxPert 0.3077.
+
+**Question this answers.** STATE's step-32,000 validation was refused with `max value 17.29
+exceeds log1p threshold of 15.0`. Is that a preprocessing/units bug, or a real model output —
+and is refusing such a checkpoint the right behaviour?
+
+**What is varied / held fixed.** Nothing varied. The transform chain was audited line by line
+and the checkpoint's actual output distribution measured on the real validation split.
+
+**What each outcome means.** A units bug → every STATE number so far is invalid and the port
+needs fixing. A genuine unbounded-head excursion → the numbers stand, and the question becomes
+a policy one about what to do with out-of-range predictions.
+
+### The chain is CLEAN — it is not a units bug
+
+| stage | what happens | verdict |
+|---|---|---|
+| input | `log1p(counts / rowsum_FULL_PANEL × 10,000)` in `occam_data` | ✅ measured `rowsum(expm1) ≈ 8,625` on targets — full-panel denominator preserved |
+| STATE config | `target_sum: null`, `log1p: false` | ✅ the datamodule **refuses** anything else, so no double transform is possible |
+| model output | `state_transition.py:516` → `out_pred = self.relu(out_pred)` | ⚠️ non-negative, **unbounded above** |
+| validation scoring | no transform whatsoever; cell-eval told `is_log1p=True` | ✅ no stray `expm1` or renormalisation |
+| export | `log1p(expm1(x) × 0.2)`, declared `from_target_sum=10_000` | ✅ exact — the per-cell denominator cancels |
+
+So 17.29 is a **real model output**, not a scaling mistake. A ReLU gives `≥ 0`, which is right
+for log1p counts, but nothing caps it at the physical maximum `log1p(10,000) = 9.2104` — the
+value a single gene would take if it held the *entire* library.
+
+### What STATE actually predicts (best_celleval.ckpt, epoch 319, 624 validation cells)
+
+| | min | p50 | p99 | p99.9 | p99.99 | **max** | rowsum(expm1) | zero-frac |
+|---|---|---|---|---|---|---|---|---|
+| **REAL (target)** | 0.0000 | 0.0000 | 2.9994 | 4.4488 | 5.3532 | 6.4344 | 8,625 | 0.5160 |
+| **PRED** | 0.0000 | 0.0000 | 2.9988 | 4.4866 | 5.3794 | **9.3583** | 8,640 | 0.5196 |
+
+**The prediction tracks the target to three decimal places all the way to p99.99.** Library
+size is 0.2% off (8,640 vs 8,625) and the zero fraction is within 0.004. This is a
+well-calibrated emission by every measure that describes the bulk of the matrix.
+
+```
+train-space ceiling log1p(10000) = 9.2104
+PRED values above it: 1 of 4,357,392  (0.000023%)  in 1 of 624 cells
+eval-space max would be 7.7492   (old guard refused above 7.6014)
+VERDICT under the old rule: EXPORT WOULD BE REFUSED
+```
+
+**One element out of 4.36 million would have discarded the entire arm.** Not degraded its
+score — produced *no number at all*, indistinguishable at the top level from a port that does
+not work.
+
+### Decision (the user's, 2026-09-18): score high-max checkpoints, do not skip them
+
+> *"actually for state, I want to evaluate even checkpoints with high values. Remove this rule
+> of not using checkpoints with high max"*
+
+Two enforcement points existed, and both are removed:
+
+| where | was | now |
+|---|---|---|
+| `competitors/shared/emission_space.py::assert_representable` | `raise` when `max(X) > log1p(target_sum)` | prints a loud one-line warning and scores; `space_diagnostics` still records `looks_log1p=False` + a note in the manifest |
+| `MetricsEvaluator(...)` in STATE's `tx/eval/celleval.py` **and** PerturbDiff's `sampling_eval_celleval.py` | cell-eval's own `guess_is_lognorm` raised at a hard threshold of 15.0 | `allow_discrete=True` disables that check (kwarg confirmed present in cell-eval 0.7.2 in both venvs) |
+
+⚠️ **This also removes an inconsistency rather than merely loosening a check.** The
+reported-number path already passed `allow_discrete=True` (`celleval_v1.run_celleval_v1`), so
+selection was *stricter* than reporting: a checkpoint could be unselectable at validation yet
+perfectly scoreable at test. Selection and reporting now disable the same check.
+
+**What is still caught.** The failure mode the ceiling originally guarded — raw counts passed
+off as log1p — is caught by the library-size factor band (`ROWSUM_FACTOR_BAND = (0.25, 4.0)`),
+which raw counts miss by orders of magnitude. Negatives, non-finites, wrong width and
+out-of-order gene axes all still raise.
+
+**What is given up, once:** a prediction above `log1p(target_sum)` is impossible for real data,
+so an arm carrying many such values will have inflated `nmae`/`mse`. That is now visible in the
+manifest instead of fatal — the number is reported with the caveat attached rather than
+withheld.
+
+### Consequence for the running arm
+
+STATE `18097897` is still running under the **old** code, so its step-32,000 validation stays
+lost (3 of 4 landed: `selection_score` 0.4071 / 0.4041 / **0.4313**). It is **not** restarted —
+the export leg picks up the new guard, so the arm can be exported and scored regardless, and a
+restart would discard 6 h of training to recover one validation point out of five.
+
 ## ⭐⭐ C25 — THE REAL ROOT CAUSES, found by reading the eval path instead of patching it
 
 **Objective.** Unchanged: best model on SEEN perturbations in an UNSEEN context (HepG2

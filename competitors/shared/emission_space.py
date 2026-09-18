@@ -331,13 +331,29 @@ def assert_representable(x: np.ndarray, *, n_genes: Optional[int] = None,
             f"and a library-normalised matrix cannot be negative. If the arm's head is "
             f"unconstrained, clip at 0 IN THAT ARM'S ADAPTER and record how much was clipped "
             f"-- do not loosen this check.")
+    # ⚠️ NO CEILING REFUSAL. This used to raise when max(X) > log1p(target_sum), on the
+    # grounds that such a value is arithmetically impossible for a library-normalised matrix.
+    # It is impossible for DATA, but not for a PREDICTION: an unconstrained head can emit
+    # anything. STATE's output goes through a plain `relu` (state_transition.py:516), which
+    # is non-negative but unbounded, and one of its validation passes produced max 17.29.
+    #
+    # Removed at the user's explicit instruction (2026-09-18): a checkpoint that predicts
+    # out-of-range values should be SCORED, not skipped. The score is then the honest
+    # consequence of what the model actually emitted -- refusing it hid a bad prediction
+    # behind an infrastructure error and cost us the arm's number entirely.
+    #
+    # The failure mode the check originally guarded (raw counts passed off as log1p) is still
+    # caught, by the library-size factor band below: raw counts sit orders of magnitude
+    # outside it. An over-ceiling maximum is now REPORTED by `space_diagnostics`
+    # (`looks_log1p=False` plus a note) and recorded in the manifest, so the number stays
+    # interpretable without being withheld.
     ceiling = float(np.log1p(target_sum))
     mx = float(a.max())
     if mx > ceiling:
-        raise EmissionSpaceError(
-            f"{name} has a maximum of {mx:.4f}, above log1p({target_sum:g}) = "
-            f"{ceiling:.4f}. That is arithmetically impossible in this space: the matrix is "
-            f"linear, or normalised to a different target_sum.")
+        print(f"  [emission] ⚠️  {name} max {mx:.4f} exceeds log1p({target_sum:g}) = "
+              f"{ceiling:.4f}. Scoring it anyway (the ceiling refusal was removed on "
+              f"purpose); the value is impossible for real data, so read this arm's "
+              f"`nmae`/`mse` with that in mind.")
 
     # The one comparison against the target that is NOT a quality judgement.
     if target is not None:

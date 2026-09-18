@@ -247,7 +247,7 @@
       "n_files": 60
     },
     "PerturbDiff": {
-      "bytes": 2783786,
+      "bytes": 2784839,
       "files": {
         ".python-version": {
           "bytes": 5,
@@ -410,8 +410,8 @@
           "sha256": "c6156d6de7241dd6689524a3ae08db4314378cb0188965b3df6b9cf38ca1e928"
         },
         "src/apps/sampling/sampling_eval_celleval.py": {
-          "bytes": 5377,
-          "sha256": "2b9cf5f2c50c34b720ad8fcc42129f46031b31f0ca161d56b6fccb62cfd04a98"
+          "bytes": 6430,
+          "sha256": "6b50fecbf7e9cd66164e57e4e7fa7be6314b5ed6ed6f6ad1a548b5468414d3a5"
         },
         "src/apps/sampling/sampling_generation.py": {
           "bytes": 16443,
@@ -665,7 +665,7 @@
       "n_files": 103
     },
     "STATE": {
-      "bytes": 1157983,
+      "bytes": 1159036,
       "files": {
         "export_occam.py": {
           "bytes": 12205,
@@ -996,8 +996,8 @@
           "sha256": "1103f653f89d158adfac4c4497496678742c18d1b52cae647f4cc41d5d50938e"
         },
         "state/src/state/tx/eval/celleval.py": {
-          "bytes": 8292,
-          "sha256": "649d77bbe71ebeb1551f81950b1d91d69712328fb0797db76fb477a8646b3159"
+          "bytes": 9345,
+          "sha256": "9b3506cef9832cec72d949f4997adce525b2d7c7ed63969780e7c9142c7eba54"
         },
         "state/src/state/tx/models/__init__.py": {
           "bytes": 713,
