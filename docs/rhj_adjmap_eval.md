@@ -280,10 +280,53 @@ there and this file holds the findings. **Do not point the collector at a hand-w
 
 Generated tables and the full per-arm listing: `docs/rhj_adjmap_tables.md`.
 
-### Adopted 2026-09-17: `scripts/eval_val_winner.py`
+### Adopted 2026-09-18: `scripts/eval_top_n.py` — score the BAND, not the argmax
 
-The blanket 164-arm eval array (`18038018`) was **cancelled**; the sweep itself was not
-touched. Evaluation is now argmax-only:
+F-adj5 killed argmax-only. The replacement scores the **top 10 by validation**, which is the
+band F-adj2's **+0.491** rho was actually measured over: the cell-eval winner is very likely
+inside it and is provably not identifiable from validation within it. A smaller N would be a bet
+that the winner sits higher than the measurement supports.
+
+```bash
+python scripts/eval_top_n.py --dry-run
+python scripts/eval_top_n.py --n 10 --qos hooke-predict --throttle 8
+```
+
+Idempotent and resumable: it submits only (arm, split) pairs with no `agg_results.csv`, so a
+crash or a partial batch costs nothing on re-run. Batches recorded in
+`runs/rhj_splithalf/top_n_scored.json`.
+
+**First batch: job `18071087`**, 8 arms × 5 splits = **40 tasks**, throttle 8, on
+`hooke-predict`. `s469` and `s313` were already scored, so they are skipped.
+
+#### The top 10, and the one striking regularity
+
+| # | arm | val | lr | decoder_lr | cos | film_mode | status |
+|---|---|---|---|---|---|---|---|
+| 1 | `s469` | 0.3805 | 3e-3 | **1e-3** | **0.5** | full | ✅ 0.3392 |
+| 2 | `s313` | 0.3769 | 1e-3 | **1e-3** | **0.5** | multiplicative_only | ✅ **0.3415** |
+| 3 | `s314` | 0.3768 | 1e-3 | **1e-3** | **0.5** | additive_only | scoring |
+| 4 | `s145` | 0.3731 | 3e-4 | **1e-3** | **0.5** | full | scoring |
+| 5 | `s315` | 0.3719 | 1e-3 | **1e-3** | **0.5** | additive_only | scoring |
+| 6 | `s309` | 0.3705 | 1e-3 | **1e-3** | **0.5** | full | scoring |
+| 7 | `s147` | 0.3704 | 3e-4 | **1e-3** | **0.5** | full | scoring |
+| 8 | `s468` | 0.3702 | 3e-3 | **1e-3** | **0.5** | full | scoring |
+| 9 | `s306` | 0.3699 | 1e-3 | **1e-3** | **0.5** | full | scoring |
+| 10 | `s321` | 0.3687 | 1e-3 | **1e-3** | **0.5** | multiplicative_only | scoring |
+
+⭐ **`decoder_lr = 1e-3` and `cosine_loss_weight = 0.5` in 10 of 10**, while `lr` spans
+3e-4 → 3e-3 and all three `film_mode` values appear. Those two settings are doing the work; `lr`
+and `film_mode` are close to free across this range. ⚠️ Both are also at or adjacent to a swept
+endpoint (`decoder_lr` max is 1e-3), so neither is established as optimal — only as better than
+what was swept.
+
+⚠️ **`s313`'s val rank is 2nd and its cell-eval rank is 1st**, and `s314` at val 0.3768 is
+**0.0001** behind `s313`. Ten arms inside a 0.0118 val window is exactly the near-tie regime
+rho +0.491 describes; expect the cell-eval ordering to differ from this table's.
+
+### Superseded 2026-09-17: `scripts/eval_val_winner.py`
+
+⛔ **SUPERSEDED by `eval_top_n.py` above** after F-adj5. Kept because it is the resumable single-arm path and its `--local` mode is what finished `s313` after the hop01 crash. The blanket 164-arm eval array (`18038018`) was **cancelled**; the sweep itself was not touched. It scored the argmax only:
 
 ```bash
 python scripts/eval_val_winner.py --dry-run     # what it would do
