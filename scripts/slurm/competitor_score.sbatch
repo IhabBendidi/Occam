@@ -42,7 +42,10 @@
 #SBATCH --job-name=cmp_score
 #SBATCH --partition=cpu
 #SBATCH --cpus-per-task=16
-#SBATCH --mem=64G
+# ⚠️ 128G, NOT 64G. Split 4 needs more than 64: both TxPert chains hit OUT_OF_MEMORY there
+# while splits 0-3 fit, and the retry measured MaxRSS 65.6 GB / 69.6 GB. 64 GB is the worst
+# possible request -- it fails late, on one split out of five, and only sometimes.
+#SBATCH --mem=128G
 #SBATCH --time=02:00:00
 #SBATCH --output=runs/slurm/cmp_score_%A_%a.out
 #SBATCH --error=runs/slurm/cmp_score_%A_%a.err

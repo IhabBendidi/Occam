@@ -860,6 +860,58 @@ Both training, finite gradients (total norm 12.40 / 6.15), **0.145 s/step** → 
 **3.2 h** plus five validation cell-eval passes. The two differ in the expected place:
 genept trains `class_embedding.emb.weight`, onehot `class_embedding.null_emb.weight`.
 
+## ⭐⭐ C22 — FIRST COMPLETE COMPETITOR RESULT: TxPert 0.3077 on 5/5 splits. Occam leads by 0.0338.
+
+**All 5 splits, uncalibrated (`model_nocal`), same 611-perturbation cohort, same drawn half-B
+controls, same cell-eval 0.6.0.** ± is the across-split sd.
+
+| metric | **TxPert (selected ep49)** | TxPert ep20 interim | **ours `s313`** |
+|---|---|---|---|
+| `pearson_delta` | 0.3077 ± 0.0032 | 0.3038 ± 0.0037 | **0.3415 ± 0.0031** |
+| `mae` ↓ | 0.0228 ± 0.0000 | 0.0231 ± 0.0000 | **0.0210 ± 0.0000** |
+| `overlap_at_N` | 0.0522 ± 0.0004 | 0.0486 ± 0.0006 | **0.0642 ± 0.0010** |
+| `discrimination_score_l1` | 0.6458 ± 0.0008 | 0.6450 ± 0.0009 | **0.6534 ± 0.0007** |
+
+**Occam wins all four metrics.** Paired over all 5 splits:
+
+| comparison | mean | sd | wins |
+|---|---|---|---|
+| ep49 − ours | **−0.0338** | 0.0032 | **0/5** |
+| ep20 − ours | −0.0377 | 0.0032 | 0/5 |
+| **ep49 − ep20** | **+0.0039** | 0.0010 | **5/5** |
+
+⭐ **The gap is 10x its own spread** (−0.0338 against sd 0.0032) and 0/5 splits, so it is a
+real margin, not noise. And TxPert is a genuine competitor, not a broken port: **0.3077 clears
+the `transfer` bar 0.2323 by +0.075** and sits below `experimental` 0.3722, which is where a
+real model should land.
+
+⭐ **Validation selection earned its keep, just barely.** ep49 beats ep20 by **+0.0039** with
+sd 0.0010 and **5/5 splits** -- a 4x signal-to-spread margin on a difference the validation
+curve itself could not resolve (`selection_score` 0.54327 at ep20 vs 0.54428 at ep50, a 0.001
+gap). Selecting on validation picked up something the metric's own noise hid. It also wins on
+all four metrics, not just the selection ones.
+
+⚠️ `mae` has sd **0.0000** for every arm, to four decimals. It does not vary across splits
+here, so it carries no information about split noise -- only about the arm.
+
+### Caveats that travel with the number
+
+1. **GO + STRING only**, to match Occam's own `graph_types`. Their published 0.50787 used four
+   KGs, so this is NOT their configuration and not comparable to it.
+2. **One seed (42).** Upstream measured ±0.006 seed noise for TxPert on their panel; our 0.0338
+   gap is 5x that, but a single seed is a single seed.
+3. **Uncalibrated, by design** -- their model emits gene space directly, our comparison column
+   is `model_nocal`, and calibration is a control-fit map we apply to our own decoder.
+
+### ⚠️ Split 4 needs more than 64 GB
+
+Both chains hit `OUT_OF_MEMORY` on split 4 at the score leg's 64 GB default; MaxRSS on the
+retry was **65.6 GB** and **69.6 GB**. Splits 0-3 fit. Resubmitted at 128 GB and both completed
+in ~14.5 min.
+
+`scripts/slurm/competitor_score.sbatch` asks for 64 GB, which is enough for 4 of 5 splits --
+the worst possible amount, because it fails late and only sometimes. **Raised to 128 GB.**
+
 ## ⭐ C21 — ALL FOUR ARMS LAUNCHED. Pre-flighting found 9 bugs and burned 0 jobs.
 
 **Decision 2026-09-18, after PerturbDiff cost four 45-minute runs: pre-flight every arm's
