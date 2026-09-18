@@ -28,6 +28,12 @@ REPO_ROOT = ROOT.parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from occam_bridge.occam import (  # noqa: E402
+    load_occam_sources,
+    load_occam_validation,
+    occam_enabled,
+    occam_pert_tokens,
+)
 from occam_bridge import (  # noqa: E402
     apply_cellflow_gene_schema,
     control_row_indices,
@@ -246,11 +252,22 @@ def run_train(cfg: dict[str, Any], *, config_path: Path | None = None) -> Path:
             "so split indices stay aligned. Use a smaller num_iterations instead."
         )
 
-    fold = load_fold(data_cfg["split_path"], fold=int(data_cfg.get("fold", 0)))
+    # Occam's `rhj_fewshot` carries its own split inside the frozen benchmark, so there is no
+    # `split_path` and no row-index JSON to keep aligned -- occam_bridge/occam.py reads it live
+    # and asserts its invariants. The fold dict is unused on that path.
+    occam = occam_enabled(data_cfg)
     train_key = data_cfg.get("train_key", "finetune")
     valid_key = data_cfg.get("valid_key", "validation")
-    if train_key not in fold:
-        raise KeyError(f"train_key={train_key!r} not in fold keys {sorted(fold)}")
+    if occam:
+        fold = {}
+        if data_cfg.get("split_path"):
+            raise ValueError(
+                "both data.occam_bench_dir and data.split_path are set. The benchmark owns "
+                "the split; a second split file could only disagree with it silently.")
+    else:
+        fold = load_fold(data_cfg["split_path"], fold=int(data_cfg.get("fold", 0)))
+        if train_key not in fold:
+            raise KeyError(f"train_key={train_key!r} not in fold keys {sorted(fold)}")
 
     seed = int(model_cfg.get("seed", 0))
     selected = data_cfg.get("selected_genes_path")
@@ -272,7 +289,14 @@ def run_train(cfg: dict[str, Any], *, config_path: Path | None = None) -> Path:
     #
     # `null` disables it and restores the old train-cells-only behaviour for the other configs.
     vocab_dirs = data_cfg.get("vocabulary_data_dirs", "__unset__")
-    if vocab_dirs == "__unset__":
+    if occam:
+        # Every perturbation symbol in the benchmark, read from its own split lists rather
+        # than the loaded cells, so the vocabulary is full width even on a smoke run. ⚠️ It
+        # fixes the model's condition-input width and cannot grow after training: a test
+        # perturbation with no column makes cf.predict raise "Representation ... not found".
+        extra_tokens = occam_pert_tokens(data_cfg)
+        print(f"[vocab] {len(extra_tokens)} perturbation tokens from rhj_fewshot")
+    elif vocab_dirs == "__unset__":
         extra_tokens: list[str] = []
     elif vocab_dirs is None:
         extra_tokens = []
@@ -280,7 +304,33 @@ def run_train(cfg: dict[str, Any], *, config_path: Path | None = None) -> Path:
         extra_tokens = dataset_pert_tokens([str(d) for d in vocab_dirs])
         print(f"[vocab] {len(extra_tokens)} perturbation tokens from {len(vocab_dirs)} dump(s)")
 
-    if multi_source:
+    if occam:
+        adata_train = load_occam_sources(data_cfg, seed=seed)
+        apply_cellflow_gene_schema(
+            adata_train, max_combination_length=int(data_cfg.get("max_combination_length", 1)),
+            sample_covariates=sample_covariates, split_covariates=split_covariates,
+            extra_tokens=extra_tokens)
+        schema = adata_train.uns["cellflow_schema"]
+        adata = adata_train
+        loaded_rows = np.arange(adata_train.n_obs, dtype=np.int64)
+        for name, n_obs in zip(adata_train.uns["occam_bridge"]["sources"],
+                               adata_train.uns["occam_bridge"]["n_obs_per_source"],
+                               strict=True):
+            print(f"[train_cellflow]   source {name}: n_obs={n_obs}")
+
+        adata_valid = load_occam_validation(data_cfg)
+        apply_cellflow_gene_schema(
+            adata_valid, max_combination_length=int(data_cfg.get("max_combination_length", 1)),
+            sample_covariates=sample_covariates, split_covariates=split_covariates,
+            extra_tokens=extra_tokens)
+        if list(adata_valid.var_names) != list(adata_train.var_names):
+            raise ValueError(
+                "validation gene axis differs from training; refusing to project it through "
+                "the train-fit PCA basis")
+        other["valid"] = adata_valid
+        print(f"[train_cellflow] validation: {adata_valid.n_obs} cells from HEPG2 "
+              f"({adata_valid.obs['occam_target_gene'].nunique()} perturbations)")
+    elif multi_source:
         specs = _build_multi_source_specs(data_cfg, fold, train_key=train_key, seed=seed)
         adata_train = load_dump_sources(
             specs,

@@ -226,7 +226,51 @@ def collect_batch_covariates(batch_data, dataloader, datamodule, mask):
 def load_ctrl_adata(cfg):
     """Execute `load_ctrl_adata` and return values used by downstream logic."""
     var_index = None
-    if "replogle" in cfg.data.data_name.lower() and (not cfg.data.sample_pbmc_only):
+    if str(getattr(cfg.data, "source_format", "")) == "occam":
+        # ⚠️ OUR HepG2 CONTROLS, read from the frozen benchmark. Their replogle branch reads a
+        # standalone control h5ad and asserts exactly 4976 HepG2 non-targeting cells; ours is
+        # the same pool, so the same assertion holds and is kept.
+        #
+        # THREE PARTS OF THE CONTRACT, each of which has already cost a run somewhere:
+        #   1. `var.index` must be the axis SYMBOLS -- `build_x_ctrl` does
+        #      `assert np.isin(var.index, genes).sum() == len(genes)` against
+        #      `load_selected_genes`, which returns symbols. Ensembl here is an empty mask.
+        #   2. `X` must be SPARSE -- `build_x_ctrl` calls `.toarray()` on it.
+        #   3. `obs.cell_line` must match what `collect_batch_covariates` produces, i.e.
+        #      "HEPG2" and not their lowercase "hepg2". Two casings would split one cell type
+        #      into two in the emitted obs.
+        import sys
+
+        from scipy.sparse import csr_matrix
+
+        _shared = ("/rxrx/scratch/sandbox/ihab.bendidi/tx_pretrained_models/Occam/"
+                   "competitors/shared")
+        if _shared not in sys.path:
+            sys.path.insert(0, _shared)
+        import occam_data as od
+
+        bench = od.load_occam_benchmark(str(cfg.data.occam_bench_dir), verify_sources=False)
+        a = od.load_occam_adata(
+            bench, cell_lines=["HEPG2"],
+            target_sum=float(getattr(cfg.data, "occam_target_sum", 10_000.0)),
+            log1p=bool(getattr(cfg.data, "occam_log1p", True)),
+            control_label=str(getattr(cfg.data, "control_pert", "empty")),
+            pert_col_out="gene")
+        keep = np.asarray(a.obs["is_control"], dtype=bool)
+        X = np.asarray(a.X, dtype=np.float32)[keep]
+        obs = pd.DataFrame({
+            "gene": np.asarray(a.obs["gene"], dtype=str)[keep],
+            "cell_line": np.asarray(a.obs["cell_line"], dtype=str)[keep],
+        }, index=[str(i) for i in range(int(keep.sum()))])
+        var = pd.DataFrame(index=pd.Index([str(g) for g in bench.axis_symbols]))
+        ctrl_adata = anndata.AnnData(X=csr_matrix(X), obs=obs, var=var)
+        if ctrl_adata.n_obs != 4976:
+            raise ValueError(
+                f"expected 4,976 HepG2 controls (the benchmark's own count, and what their "
+                f"replogle branch asserts), got {ctrl_adata.n_obs}")
+        logger.info("occam: %d HepG2 control cells x %d genes for the injected baseline",
+                    ctrl_adata.n_obs, ctrl_adata.n_vars)
+    elif "replogle" in cfg.data.data_name.lower() and (not cfg.data.sample_pbmc_only):
         ctrl_adata = anndata.read_h5ad(cfg.path.replogle_ctrl_h5ad)
         ctrl_adata = ctrl_adata[ctrl_adata.obs.cell_line == "hepg2"]
         ctrl_adata = ctrl_adata[ctrl_adata.obs.gene == "non-targeting"]
