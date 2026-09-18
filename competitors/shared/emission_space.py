@@ -239,6 +239,12 @@ def assert_is_log1p(x: np.ndarray, *, name: str = "matrix",
     return r
 
 
+# How far BELOW the target's library size a prediction may sit. Measured: our own arm -6.0%,
+# TxPert -13.0%. A conditional mean shrinks toward the centre, so under-shooting is expected;
+# 25% leaves room for a weaker arm without admitting an actual normalisation error.
+UNDERSHOOT_TOL = 0.25
+
+
 def assert_same_space(pred: np.ndarray, target: np.ndarray, *,
                       pred_name: str = "prediction", target_name: str = "target",
                       target_sum: float = EVAL_TARGET_SUM,
@@ -277,13 +283,20 @@ def assert_same_space(pred: np.ndarray, target: np.ndarray, *,
 
     problems: List[str] = []
 
+    # ⚠️ THE LIBRARY-SIZE TOLERANCE IS ASYMMETRIC AND DELIBERATELY LOOSE BELOW 1.0.
+    # Predictions systematically under-shoot total expression -- our own arm by -6.0%, TxPert
+    # by -13.0% -- because a conditional mean shrinks toward the centre. That is a model
+    # property `mae` should MEASURE, not a space error to refuse. An over-shoot, by contrast,
+    # has no benign explanation at this magnitude and stays tight.
     ratio = (rp.median_rowsum_expm1 / rt.median_rowsum_expm1
              if rt.median_rowsum_expm1 else float("inf"))
-    if not (1.0 - rowsum_tol <= ratio <= 1.0 + rowsum_tol):
+    lo = 1.0 - max(rowsum_tol, UNDERSHOOT_TOL)
+    hi = 1.0 + rowsum_tol
+    if not (lo <= ratio <= hi):
         problems.append(
             f"median library size differs by {(ratio - 1) * 100:+.1f}% "
             f"({rp.median_rowsum_expm1:,.1f} vs {rt.median_rowsum_expm1:,.1f}); "
-            f"tolerance is +/-{rowsum_tol * 100:.0f}%. mae and the DE calls are NOT "
+            f"allowed band is {(lo - 1) * 100:+.0f}%..{(hi - 1) * 100:+.0f}%. mae and the DE calls are NOT "
             f"scale-invariant, so this would corrupt them while leaving pearson_delta "
             f"looking fine.")
 
@@ -300,12 +313,40 @@ def assert_same_space(pred: np.ndarray, target: np.ndarray, *,
         problems.append(f"a per-gene mean vector is constant "
                         f"(pred std {gp.std():.3g}, target std {gt.std():.3g})")
 
+    # ⚠️ ZERO FRACTION IS REPORTED, NOT ENFORCED, WHEN COMPARING A PREDICTION TO A TARGET.
+    #
+    # MEASURED 2026-09-18 and it overturned the original design. A conditional-mean regressor
+    # essentially never emits an exact zero, while the target is sparse single-cell counts:
+    #
+    #     the real target            zero 0.5170   median library 1,729.9
+    #     OUR OWN s313 prediction    zero 0.0000   median library 1,626.0  (-6.0%)
+    #     TxPert epoch-20            zero 0.0001   median library 1,505.1  (-13.0%)
+    #
+    # So the enforced version would have REFUSED our own best arm -- the one scoring 0.3415 --
+    # by a 0.517 margin against a 0.05 tolerance. Our arms never meet this function (they go
+    # straight through `protocol.run_split`), so enforcing it on competitors alone is an
+    # asymmetry that rejects them for a property our own model has more extremely.
+    #
+    # The check it was built for -- integer re-emission driving the zero fraction to 0.907
+    # against a target 0.606 -- is still visible in the report, and it is the WRONG DIRECTION
+    # from this: too many zeros, not too few. That asymmetry is what `zero_fraction_note`
+    # records.
     dz = abs(rp.zero_fraction - rt.zero_fraction)
+    zero_note = "within tolerance"
     if dz > zero_fraction_tol:
-        problems.append(
-            f"zero fraction differs by {dz:.4f} ({rp.zero_fraction:.4f} vs "
-            f"{rt.zero_fraction:.4f}); tolerance is {zero_fraction_tol}. A large gap here is "
-            f"the signature of a different emission head or of integer re-emission.")
+        if rp.zero_fraction > rt.zero_fraction:
+            # MORE zeros than the target: the integer-re-emission signature. Still fatal.
+            problems.append(
+                f"zero fraction is {rp.zero_fraction:.4f} against a target "
+                f"{rt.zero_fraction:.4f} -- the prediction is SPARSER than the real data, "
+                f"which is the signature of integer re-emission or a thresholded head. "
+                f"(A dense prediction is expected and is not an error; an artificially "
+                f"sparse one is.)")
+        else:
+            zero_note = (
+                f"prediction is DENSER than the target ({rp.zero_fraction:.4f} vs "
+                f"{rt.zero_fraction:.4f}, delta {dz:.4f}); expected for a conditional-mean "
+                f"regressor and NOT enforced -- our own arm is at 0.0000")
 
     if problems:
         raise EmissionSpaceError(
@@ -316,6 +357,7 @@ def assert_same_space(pred: np.ndarray, target: np.ndarray, *,
     return {
         "pred": rp.__dict__, "target": rt.__dict__,
         "rowsum_ratio": ratio, "gene_mean_corr": corr,
-        "zero_fraction_delta": dz, "target_sum": target_sum,
+        "zero_fraction_delta": dz, "zero_fraction_note": zero_note,
+        "target_sum": target_sum,
         "verdict": "same space",
     }

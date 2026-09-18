@@ -202,8 +202,21 @@ def main(argv=None) -> int:
         device=args.device,
     ).to(args.device).eval()
     base_dm = getattr(dm, "base_dm", dm)
-    print(f"[{ARM}] graphs {list(cfg.datamodule.get('kg_list', []))} · "
-          f"{len(dm.pert2id):,} perturbations · {dm.adata_output_dim:,} output genes")
+    # ⚠️ ASK THE BUILT GRAPH, NOT THE CONFIG. Two wrong sources cost a run each:
+    #   * `cfg.datamodule.kg_list` -- wrong section, printed `graphs []` while the model was
+    #     correctly built on ['go', 'string']. Cosmetic, but it reads like a disaster.
+    #   * `cfg.graph.kg_list` AFTER `modify_config` -- that function CONSUMES the key while
+    #     pruning `gnns_config` to the used graphs, so it reads empty even on a correct run.
+    #     A guard built on it aborted a healthy export.
+    # `GSPGraph.graph_dict` is populated at construction and is the only authoritative answer.
+    _kgs = sorted((getattr(graph, "graph_dict", None) or {}).keys())
+    print(f"[{ARM}] graphs {_kgs} · {len(dm.pert2id):,} perturbations · "
+          f"{dm.adata_output_dim:,} output genes")
+    if not _kgs:
+        raise SystemExit(
+            "GSPGraph built no graphs. TxPert on this benchmark runs GO + STRING; an empty "
+            "graph_dict means the checkpoint's knowledge graphs are not being rebuilt, and "
+            "the arm would be scored without the prior it trained on.")
 
     missing = sorted({p for p in split.labels} - set(base_dm.pert2id))
     if missing:
@@ -265,7 +278,29 @@ def main(argv=None) -> int:
             raise RuntimeError(f"prediction is {out.shape}, expected {(n, X.shape[1])}")
         return out
 
-    export_split(predict, split, args.out_dir, arm=ARM,
+    # ⚠️ TXPERT EMITS NEGATIVE VALUES. Measured on the epoch-20 checkpoint, split 0:
+    # raw log1p-space range [-0.3274, 5.9249]. It has no non-negativity constraint on its
+    # output head, so `to_eval_space` REFUSED the matrix outright -- "a library-normalised
+    # expression matrix cannot be negative".
+    #
+    # Clipping at 0 is declared HERE, in the arm's own adapter, rather than loosened in the
+    # shared guard: negative expression is not a prediction, it is an artifact of an
+    # unconstrained head, and each arm should own its emission handling. CellFlow's decode
+    # already does the same (`clip_min=0.0`), and TxPert's own scorer clips to [0, 14].
+    #
+    # ⚠️ The clip is MEASURED and printed every run, because "how much was clipped" is the
+    # difference between a rounding detail and a changed arm.
+    def predict_clipped(ctrl, pert_names):
+        out = np.asarray(predict(ctrl, pert_names), dtype=np.float32)
+        neg = out < 0.0
+        n_neg = int(neg.sum())
+        if n_neg:
+            print(f"[{ARM}]   clipped {n_neg:,}/{out.size:,} values "
+                  f"({100.0 * n_neg / out.size:.3f}%) at 0; min was {float(out.min()):.4f}",
+                  flush=True)
+        return np.clip(out, 0.0, None)
+
+    export_split(predict_clipped, split, args.out_dir, arm=ARM,
                  from_target_sum=TRAIN_TARGET_SUM, from_log1p=True,
                  batch_size=max(args.batch_size, 512),
                  extra_manifest={
@@ -273,6 +308,9 @@ def main(argv=None) -> int:
                      "seed": args.seed,
                      "config_name": args.config_name,
                      "kg_list": list(cfg.datamodule.get("kg_list", [])),
+                     "emission_clip": "negatives clipped at 0 in the adapter; TxPert's head "
+                                      "is unconstrained and emitted down to -0.3274 in log1p "
+                                      "space on the epoch-20 checkpoint",
                      "control_pairing": "one drawn half-B control cell per predicted row "
                                         "(match_cntr=False, avg_cntr=False); OUR protocol, "
                                         "not their population convention",

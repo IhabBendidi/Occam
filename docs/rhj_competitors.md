@@ -891,6 +891,55 @@ The right loop, which the user asked for and which found bugs 5 and 6 immediatel
 the adapter **interactively** on an idle GPU and read errors directly. ~9 min per attempt, all
 of it the 656k-cell data load, and no queue in between.
 
+## ⛔ C18 — the emission guard would have REJECTED OUR OWN BEST ARM. Split into hard and soft.
+
+**Finding: `assert_same_space`'s zero-fraction test is invalid for comparing a PREDICTION to a
+TARGET, and enforcing it on competitors alone was an asymmetry that rejected them for a
+property our own model has more extremely.**
+
+It refused TxPert's epoch-20 export. Before accepting that, I measured our own arm on the same
+split -- the check that should have been in C1 from the start:
+
+| | zero fraction | median library | max |
+|---|---|---|---|
+| the real target | **0.5170** | 1,729.9 | 5.925 |
+| **OUR `s313` prediction** (scores **0.3415**) | **0.0000** | 1,626.0 (**-6.0%**) | 4.015 |
+| TxPert epoch-20 | 0.0001 | 1,505.1 (**-13.0%**) | 4.326 |
+
+⭐ **Our own best arm fails the enforced check by a 0.517 margin against a 0.05 tolerance** --
+worse than the competitor it rejected. A conditional-mean regressor essentially never emits an
+exact zero; the target is sparse single-cell counts. TxPert's emission is in *the same space as
+our own model's*, which is exactly what the guard was supposed to establish.
+
+Our arms never meet this function -- they go straight through `protocol.run_split` -- so the
+asymmetry was invisible until a competitor hit it.
+
+### What is now HARD, and what is REPORTED
+
+| check | now | why |
+|---|---|---|
+| negatives / NaN / Inf | **refuse** | a library-normalised matrix cannot be negative |
+| gene axis identity + order | **refuse** | `discrimination_score_l1` excludes each gene BY SYMBOL |
+| per-gene mean correlation >= 0.95 | **refuse** | catches wrong units or a scrambled axis (ours: **0.9998**) |
+| zero fraction **higher** than target | **refuse** | the integer-re-emission signature (measured 0.907 vs 0.606) -- still fatal |
+| zero fraction **lower** than target | **report** | expected of any conditional mean; ours is 0.0000 |
+| library size **above** target +10% | **refuse** | no benign explanation at that magnitude |
+| library size **below** target, to -25% | **report** | a conditional mean shrinks toward the centre; `mae` should MEASURE this, not refuse it |
+
+⚠️ The direction matters and is the whole fix: **too many zeros is an artifact, too few is a
+model.** The original test took an absolute difference and so could not tell them apart.
+
+Verified after the change: our own `s313` prediction returns `same space`, rowsum ratio
+**0.9399**, gene-mean corr **0.9998**.
+
+### TxPert's own emission, now measured
+
+* **Negatives**, log1p range down to **-0.3274**. Its head is unconstrained. Clipped at 0 in
+  its adapter, and the clip is tiny and now printed every run: **289-422 of 3,575,296 values
+  per batch, 0.005-0.012%**, min -0.29.
+* Library size **-13.0%** against the target, versus our own **-6.0%**. Both under-shoot; the
+  gap between them is a real difference in model behaviour that `mae` will report.
+
 ## Status
 
 | step | state |
