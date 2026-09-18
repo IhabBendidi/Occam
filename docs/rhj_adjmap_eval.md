@@ -289,15 +289,17 @@ that the winner sits higher than the measurement supports.
 
 ```bash
 python scripts/eval_top_n.py --dry-run
-python scripts/eval_top_n.py --n 10 --qos hooke-predict --throttle 8
+python scripts/eval_top_n.py --n 10 --qos hooke-predict --throttle 10
 ```
 
 Idempotent and resumable: it submits only (arm, split) pairs with no `agg_results.csv`, so a
 crash or a partial batch costs nothing on re-run. Batches recorded in
 `runs/rhj_splithalf/top_n_scored.json`.
 
-**First batch: job `18071087`**, 8 arms × 5 splits = **40 tasks**, throttle 8, on
-`hooke-predict`. `s469` and `s313` were already scored, so they are skipped.
+**First batch: job `18071087`**, 8 arms × 5 splits = **40 tasks**, throttle **10**, on
+`hooke-predict`. (Submitted at 8 and raised in place with
+`scontrol update JobId=18071087 ArrayTaskThrottle=10` — raising a live array beats
+resubmitting, which would restart every task in flight.) `s469` and `s313` were already scored, so they are skipped.
 
 #### The top 10, and the one striking regularity
 

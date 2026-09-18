@@ -118,8 +118,11 @@ def main(argv=None) -> int:
     ap.add_argument("--sbatch", default="scripts/slurm/rhj_splithalf_models.sbatch")
     ap.add_argument("--qos", default="hooke-predict")
     ap.add_argument("--job-name", default="rhj_top_eval")
-    ap.add_argument("--throttle", type=int, default=8,
-                    help="max concurrent array tasks (Slurm %% suffix)")
+    ap.add_argument("--throttle", type=int, default=10,
+                    help="max concurrent array tasks (Slurm %% suffix). 10 was comfortable on "
+                         "hooke-predict alongside a TxPert training job; raise a LIVE array "
+                         "with `scontrol update JobId=<id> ArrayTaskThrottle=N` rather than "
+                         "resubmitting, which would restart everything in flight.")
     ap.add_argument("--calibrate", default="both",
                     help="keep 'both': the comparison column is model_nocal, and 'quantile' "
                          "emits only model_cal")
