@@ -353,7 +353,7 @@ second transform through.
 | `tx/data/occam_source.py` | NEW. One `_Source` per cell line, read via `occam_data`. |
 | `tx/data/zarr_perturbation.py` | `source_format="occam"` branch in `_Source`, `_ensure_open`, `_load_source`, `_read_split`; 5 new kwargs; the refusal above; `__getstate__` drops the matrix. |
 | `configs/data/occam_h5ad.yaml` | NEW. Every training value transcribed unchanged from the official recipe. |
-| `occam_rhj_fewshot.toml` | NEW. `[datasets]` names our three h5ads. **No `[splits]` table** — the fold is computed live from the benchmark, so it cannot drift from `splits.json`. |
+| ~~`occam_rhj_fewshot.toml`~~ | **WITHDRAWN (C23).** It named our three h5ads in `[datasets]`, but the benchmark directory already is the source manifest, and having both meant two owners for one list. Replaced by `ZarrExperimentConfig.from_occam()`, which derives the dataset names from `bench.files`. The datamodule now refuses a TOML and a bench dir together. |
 
 Two things deliberately NOT reused:
 

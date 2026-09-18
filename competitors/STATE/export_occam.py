@@ -120,8 +120,11 @@ def main(argv=None) -> int:
 
     # The datamodule is instantiated for its ONE-HOT MAPS and its var dims, not for its
     # loaders: a perturbation's vector must be the one the checkpoint was trained with.
+    # No `toml_config_path`: in occam mode the benchmark directory IS the source manifest
+    # (`ZarrExperimentConfig.from_occam`), and the datamodule refuses both at once so the
+    # source list has exactly one owner. See C23.
     dm = get_datamodule("ZarrPerturbationDataModule", dict(
-        toml_config_path=os.path.join(_HERE, "state", "occam_rhj_fewshot.toml"),
+        toml_config_path=None,
         source_format="occam", occam_bench_dir=args.bench_dir,
         occam_verify_sources=False,
         feature_loading="ram", target_sum=None, log1p=False,

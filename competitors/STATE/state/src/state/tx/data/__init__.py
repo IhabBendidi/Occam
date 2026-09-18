@@ -35,7 +35,20 @@ def get_datamodule(name, kwargs, batch_size=None, cell_sentence_len=1):
         if batch_size is not None:
             plain["batch_size"] = batch_size
             plain["cell_sentence_len"] = cell_sentence_len
-        if "toml_config_path" not in plain or plain["toml_config_path"] is None:
+        # Two ways to name the sources, and exactly one must be given.
+        #   zarr/anndata : a TOML with [datasets] / [training] / [splits]
+        #   occam        : our frozen benchmark directory, which IS the manifest
+        # `source_format` is what selects between them, so the check follows it rather
+        # than demanding a TOML unconditionally.
+        from .occam_source import OCCAM_FORMAT
+
+        if plain.get("source_format") == OCCAM_FORMAT:
+            if not plain.get("occam_bench_dir"):
+                raise ValueError(
+                    "source_format='occam' needs data.kwargs.occam_bench_dir, the path to "
+                    "our frozen benchmark (data/benchmarks/rhj_fewshot). It carries the "
+                    "gene axis, the splits, the exclusions and the source sha256s.")
+        elif not plain.get("toml_config_path"):
             raise ValueError("toml_config_path must be provided in data.kwargs")
         return ZarrPerturbationDataModule(**plain)
 

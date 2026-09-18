@@ -1,7 +1,7 @@
 {
   "arms": {
     "CellFlow": {
-      "bytes": 1409503,
+      "bytes": 1412272,
       "files": {
         ".python-version": {
           "bytes": 5,
@@ -240,14 +240,14 @@
           "sha256": "547607c148539e6c4ccb9ce2dcfd3c866285a8bba6f6a0c24ff6d05bd1727b64"
         },
         "train_cellflow.py": {
-          "bytes": 28522,
-          "sha256": "108bd4581e92fb5c4fa3427cdc81edd4ee23bdfbbf49a02e6005d361b644a711"
+          "bytes": 31291,
+          "sha256": "9d60147c9527cbe28ec4c4df354d53a4544b08003367c733d443d7be6b32d8fd"
         }
       },
       "n_files": 60
     },
     "PerturbDiff": {
-      "bytes": 2774770,
+      "bytes": 2777324,
       "files": {
         ".python-version": {
           "bytes": 5,
@@ -418,8 +418,8 @@
           "sha256": "41a2d62114911925334756b3dc77184bd9d8adbf23748c4607c0701bf3830148"
         },
         "src/apps/sampling/sampling_generation_helpers.py": {
-          "bytes": 14263,
-          "sha256": "d8d99d2b4095cf572be54ba3cf18234e022ab760092154d67e3b02ea7cc508e2"
+          "bytes": 16817,
+          "sha256": "250fd16f8de8bba26d11216a027e67ec1f5a1dc6cc689c59e1e95db8c0004382"
         },
         "src/apps/sampling/sampling_io.py": {
           "bytes": 1299,
@@ -665,11 +665,11 @@
       "n_files": 103
     },
     "STATE": {
-      "bytes": 1155008,
+      "bytes": 1157303,
       "files": {
         "export_occam.py": {
-          "bytes": 12025,
-          "sha256": "b2e3eecdf7db1ed0e6f83719edc6c6a464f05c9c8f86753528d3e572b47f2239"
+          "bytes": 12205,
+          "sha256": "4d2794d38d587c779e2792fa78276968fb7867b2e463b6020434aaf8cd0446a2"
         },
         "state/.python-version": {
           "bytes": 5,
@@ -678,10 +678,6 @@
         "state/README.md": {
           "bytes": 9208,
           "sha256": "568c0b4f9d93374f7ebc7467c226fdde0050abfd60147bce0b316163bf4199d6"
-        },
-        "state/occam_rhj_fewshot.toml": {
-          "bytes": 1892,
-          "sha256": "49992b4e76c6c3e3b1f310b08f0e21b90f14541b405ee010a994f18c5c9bc91b"
         },
         "state/pyproject.toml": {
           "bytes": 1397,
@@ -976,8 +972,8 @@
           "sha256": "b55d16ff22ed86d322c2f1d7ef385908bed98b5021a3c2a2e5a3ace1d951b6cd"
         },
         "state/src/state/tx/data/__init__.py": {
-          "bytes": 2525,
-          "sha256": "f2f4bbd2af08114841f8ff9e354e30e3a142162f1cd22f0fe22fd316f0d427f4"
+          "bytes": 3307,
+          "sha256": "a18b2398a2768daabaf614b2aa4e5cffab8ae6321200124262b12a4e6935394c"
         },
         "state/src/state/tx/data/dataset/__init__.py": {
           "bytes": 105,
@@ -988,12 +984,12 @@
           "sha256": "64dbffa3220d60c12becc58e8769e685a68820d11138180a74733b3f40fe3f6d"
         },
         "state/src/state/tx/data/occam_source.py": {
-          "bytes": 10321,
-          "sha256": "6b3c727cf31568c4a957fbb3414ae0acb979d92c32143cba59a515c0dd137ae9"
+          "bytes": 11565,
+          "sha256": "57eb11de4c3f3f36944f080c24ed228616ffcc657ed011d84244b67b193226a8"
         },
         "state/src/state/tx/data/zarr_perturbation.py": {
-          "bytes": 50679,
-          "sha256": "f734f0daf895c6d089842639aff341eacf2b04c7e963ce100d01debae75c93b2"
+          "bytes": 52660,
+          "sha256": "768d69bf34ba9dfda9b88c9511daafcf95c7020455dbb78cec281384f02b1304"
         },
         "state/src/state/tx/eval/__init__.py": {
           "bytes": 251,
@@ -1152,7 +1148,7 @@
           "sha256": "3a9a3140964ed6334134f4ddb695b58a19266b0a12a67ae7699fb2a28f627905"
         }
       },
-      "n_files": 121
+      "n_files": 120
     },
     "TxPert": {
       "bytes": 900881,
