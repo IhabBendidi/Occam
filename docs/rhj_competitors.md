@@ -926,10 +926,27 @@ Two enforcement points existed, and both are removed:
 | `competitors/shared/emission_space.py::assert_representable` | `raise` when `max(X) > log1p(target_sum)` | prints a loud one-line warning and scores; `space_diagnostics` still records `looks_log1p=False` + a note in the manifest |
 | `MetricsEvaluator(...)` in STATE's `tx/eval/celleval.py` **and** PerturbDiff's `sampling_eval_celleval.py` | cell-eval's own `guess_is_lognorm` raised at a hard threshold of 15.0 | `allow_discrete=True` disables that check (kwarg confirmed present in cell-eval 0.7.2 in both venvs) |
 
-⚠️ **This also removes an inconsistency rather than merely loosening a check.** The
-reported-number path already passed `allow_discrete=True` (`celleval_v1.run_celleval_v1`), so
-selection was *stricter* than reporting: a checkpoint could be unselectable at validation yet
-perfectly scoreable at test. Selection and reporting now disable the same check.
+⚠️ **THE TWO CHECKS NEVER AGREED, AND OURS WAS THE STRICTER ONE.** This is the substance of
+the finding, not a side note:
+
+| check | threshold | where it comes from |
+|---|---|---|
+| cell-eval `guess_is_lognorm` | **fixed 15.0**, independent of `target_sum` | `cell_eval/utils.py`, `max_threshold: float = 15.0` |
+| our `assert_representable` | **`log1p(target_sum)` = 7.6014** in eval space (9.2104 in train space) | written as "arithmetically impossible for a library-normalised matrix" |
+
+So a checkpoint that **passed** validation could still be refused at export — and that is
+exactly what happened to the BEST one. `best_celleval.ckpt` scored `selection_score` 0.4313 at
+validation with no complaint (its eval-space max 7.7492 is less than half of cell-eval's 15.0),
+yet our guard refused it for exceeding 7.6014.
+
+**A successfully validated checkpoint does not have a scoring problem.** Our guard was the
+thing out of step: it applied a rule about what is possible for *data* to a *prediction*, at a
+threshold roughly half of what the scorer itself uses. Removing it aligns the export with the
+scorer that produces every reported number.
+
+A second, smaller inconsistency went the other way and is also gone: the reported-number path
+already passed `allow_discrete=True` (`celleval_v1.run_celleval_v1`) while the two arms'
+validation scorers did not, so validation applied a check that reporting skipped.
 
 **What is still caught.** The failure mode the ceiling originally guarded — raw counts passed
 off as log1p — is caught by the library-size factor band (`ROWSUM_FACTOR_BAND = (0.25, 4.0)`),
