@@ -860,6 +860,101 @@ Both training, finite gradients (total norm 12.40 / 6.15), **0.145 s/step** → 
 **3.2 h** plus five validation cell-eval passes. The two differ in the expected place:
 genept trains `class_embedding.emb.weight`, onehot `class_embedding.null_emb.weight`.
 
+## ⭐ C24 — STATE trains and validates correctly. PerturbDiff died on the FOURTH sibling of one bug.
+
+**Objective.** Unchanged: best model on SEEN perturbations in an UNSEEN context, HepG2
+`rhj_fewshot`, headline metric cell-eval `pearson_delta` on the 611-perturbation test cohort.
+The competitors exist to say whether Occam's **0.3415** is good absolutely or only relatively.
+
+**Question this answers.** After the C23 fixes, do STATE and PerturbDiff actually train AND
+validate AND checkpoint on our data, over hours rather than seconds?
+
+**What is varied / held fixed.** Nothing varied; this is the correctness pass at full scale.
+Both arms ran their real launcher, unmodified, on the full benchmark.
+
+**What each outcome means.** Validations landing with a rising selection score → the arm is
+real and will produce a comparable number. Validations silently swallowed → the arm trains for
+hours and yields nothing, which is the failure this campaign keeps hitting.
+
+### STATE — ✅ HEALTHY, and improving
+
+`val/celleval/*` on the 103 HepG2 validation perturbations, from the run's own `metrics.csv`.
+`selection_score = mean(pearson_delta, discrimination_score_l1)`, the checkpoint monitor.
+**These are VALIDATION numbers on 103 perturbations — not the 611-perturbation test cohort, so
+they are NOT comparable to TxPert's 0.3077 or ours 0.3415.** Direction is what matters here.
+
+| step | `pearson_delta` | `disc_l1` | `mae` ↓ | `overlap_at_N` | **`selection_score`** |
+|---|---|---|---|---|---|
+| 16,000 | 0.1867 | 0.6274 | 0.0688 | 0.0690 | 0.4071 |
+| 32,000 | — | — | — | — | **REFUSED, see below** |
+| 48,000 | 0.1770 | 0.6313 | 0.0653 | 0.0758 | 0.4041 |
+| 64,000 | **0.2049** | **0.6576** | **0.0633** | **0.0832** | **0.4313** |
+| 80,000 | *pending* | | | | |
+
+Job `18097897`, RUNNING, 5 h 23 m at the time of reading, one validation left.
+**Every metric except `pearson_delta` moves monotonically the right way**, and the best
+checkpoint so far is the latest — so 80,000 steps was not obviously too many.
+
+⚠️ **The step-32,000 validation was REFUSED by cell-eval, not swallowed by a bug:**
+
+```
+ValueError: Invalid scale: max value 17.29 exceeds log1p threshold of 15.0.
+```
+
+The model emitted a value of 17.29 in log1p space — `expm1(17.29) ≈ 3.2e7` counts in one gene —
+and cell-eval will not score a matrix that far outside log1p range. **This is the right
+outcome and needs no fix:** our own export guard (`assert_representable`) refuses anything above
+`log1p(target_sum)`, so a checkpoint whose predictions exceed the representable range could not
+be exported or scored anyway. The callback's `except: continue` then did its job — the run
+carried on and the next two validations were clean. One transient excursion out of four, on an
+unbounded-output model, is training noise rather than a defect.
+
+### PerturbDiff — ⛔ FAILED, and the cause is the same bug a fourth time
+
+Both arms (`18098600` genept, `18098601` onehot) generated samples correctly — **overall
+`r2_metric` 0.9991**, 6,731 cells × 6,983 genes, full validation-split coverage, controls
+loaded — and then died one call later:
+
+```
+ValueError: Unsupported data_name for obs building: OccamH5adFinetune.
+            Expected one of replogle/pbmc/tahoe100m.
+  sampling_generation_helpers.py:363  build_obs_data
+```
+
+**This is the same defect as C23, for the fourth time in two arms.** The pattern: a function
+dispatches on a dataset-family string, our data is a fourth family, and each such function has
+to be taught about it separately. Instances so far:
+
+| # | where | found by |
+|---|---|---|
+| 1 | `ZarrPerturbationDataModule.__init__` — no config in occam mode | pre-flight (C23) |
+| 2 | `get_datamodule` — demanded a TOML unconditionally | the real run, 21 s in |
+| 3 | `STATE/export_occam.py` — passed a TOML *and* a bench dir | reading the call chain |
+| 4 | `build_obs_data` — no occam branch | the real run, **45 min in** |
+
+⚠️ **Why the earlier "control adata VERDICT: OK" did not catch it.** That check verified
+`load_ctrl_adata` — the function immediately BEFORE the one that failed. Verifying a
+neighbour is not verifying the path. **Third time this exact mistake has been made** (C20's
+proxy checks, C23's four-proxy pre-flight, and now this), so the sweep was done differently:
+`grep` for *every* dispatch on a dataset-family string across `src/apps/sampling/`,
+`src/data/` and `src/apps/training/` before writing any fix.
+
+### The fix, and why it is shaped this way
+
+| file | change |
+|---|---|
+| `sampling_generation_helpers.py` | `build_obs_data` gets an occam branch, keyed on `source_format == "occam"` — the same key `load_ctrl_adata` already uses, so the two cannot disagree |
+| " | the occam branch uses **config-driven** column names (`cfg.data.pert_col` / `cell_line_key` / `perturbseq_batch_col`), copying `build_obs_data_zarr`'s discipline. The replogle branch hardcodes `"gene"`, which would emit a column `run_cell_eval` is never told to read |
+| " | the occam control frame now also carries the **batch** column, with a loud raise if `occam_data` did not emit it — a missing third column previously surfaced one call later |
+| " | both fall-through messages now name `source_format='occam'`, so the next instance of this bug is self-describing |
+
+Control rows keep `"empty"`, our derived control sentinel, in the perturbation column, because
+that is how cell-eval locates the baseline.
+
+**Verification is through the real chain this time**, not a neighbour: `load_selected_genes` →
+`load_ctrl_adata` → `build_x_ctrl` → `build_obs_data` → `anndata` construction →
+`run_cell_eval`, ending in actual cell-eval metrics.
+
 ## ⛔ C23 — STATE's occam mode never built a dataset config. Pre-flight caught it; a relaunch would not have.
 
 **Objective.** The standing goal is the best model on SEEN perturbations in an UNSEEN

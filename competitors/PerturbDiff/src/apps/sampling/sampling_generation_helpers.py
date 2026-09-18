@@ -258,9 +258,16 @@ def load_ctrl_adata(cfg):
             pert_col_out="gene")
         keep = np.asarray(a.obs["is_control"], dtype=bool)
         X = np.asarray(a.X, dtype=np.float32)[keep]
+        _batch_col = str(getattr(cfg.data, "perturbseq_batch_col", "batch_center"))
+        if _batch_col not in a.obs.columns:
+            raise ValueError(
+                f"occam_data did not emit {_batch_col!r}; have {list(a.obs.columns)}. "
+                f"build_obs_data needs the batch column as well as gene/cell_line, and a "
+                f"missing one only surfaces one call later.")
         obs = pd.DataFrame({
             "gene": np.asarray(a.obs["gene"], dtype=str)[keep],
             "cell_line": np.asarray(a.obs["cell_line"], dtype=str)[keep],
+            "batch": np.asarray(a.obs[_batch_col], dtype=str)[keep],
         }, index=[str(i) for i in range(int(keep.sum()))])
         var = pd.DataFrame(index=pd.Index([str(g) for g in bench.axis_symbols]))
         ctrl_adata = anndata.AnnData(X=csr_matrix(X), obs=obs, var=var)
@@ -281,8 +288,9 @@ def load_ctrl_adata(cfg):
         ctrl_adata = anndata.read_h5ad(cfg.path.tahoe100m_ctrl_h5ad)
     else:
         raise ValueError(
-            f"Unsupported data_name for control adata loading: {cfg.data.data_name}. "
-            "Expected one of replogle/pbmc/tahoe."
+            f"Unsupported data_name for control adata loading: {cfg.data.data_name} "
+            f"(source_format={getattr(cfg.data, 'source_format', None)!r}). Expected one of "
+            f"replogle/pbmc/tahoe, or source_format='occam'."
         )
     return ctrl_adata, var_index
 
@@ -332,7 +340,24 @@ def build_obs_data(cfg, all_pert, all_celltype, all_batch, ctrl_adata):
     :param ctrl_adata: Input `ctrl_adata` value.
     :return: Requested object(s) for downstream use.
     """
-    if "replogle" in cfg.data.data_name.lower() and (not cfg.data.sample_pbmc_only) and (not cfg.data.sample_tahoe100m_only):
+    if str(getattr(cfg.data, "source_format", "")) == "occam":
+        # Same dispatch key as `load_ctrl_adata`'s occam branch, and the same column-naming
+        # discipline as `build_obs_data_zarr`: the names come from the data config, so the
+        # frame is exactly what `run_cell_eval` then reads back through
+        # `pert_col` / `cell_type_key` / `control_pert`. Hardcoding "gene" here (as the
+        # replogle branch does) would emit a column cell-eval is not told to look at.
+        #
+        # ⚠️ The control rows keep their own label in the perturbation column -- "empty",
+        # our derived control sentinel -- because that is how cell-eval finds the baseline.
+        obs_data = {
+            str(cfg.data.pert_col): np.concatenate(
+                [all_pert, np.asarray(ctrl_adata.obs["gene"].values, dtype=str)]),
+            str(cfg.data.cell_line_key): np.concatenate(
+                [all_celltype, np.asarray(ctrl_adata.obs["cell_line"].values, dtype=str)]),
+            str(cfg.data.perturbseq_batch_col): np.concatenate(
+                [all_batch, np.asarray(ctrl_adata.obs["batch"].values, dtype=str)]),
+        }
+    elif "replogle" in cfg.data.data_name.lower() and (not cfg.data.sample_pbmc_only) and (not cfg.data.sample_tahoe100m_only):
         obs_data = {
             "gene": np.concatenate([all_pert, np.array(ctrl_adata.obs.gene.values)]),
             "cell_line": np.concatenate([all_celltype, np.array(ctrl_adata.obs.cell_line.values)]),
@@ -361,7 +386,8 @@ def build_obs_data(cfg, all_pert, all_celltype, all_batch, ctrl_adata):
         }
     else:
         raise ValueError(
-            f"Unsupported data_name for obs building: {cfg.data.data_name}. "
-            "Expected one of replogle/pbmc/tahoe100m."
+            f"Unsupported data_name for obs building: {cfg.data.data_name} "
+            f"(source_format={getattr(cfg.data, 'source_format', None)!r}). Expected one of "
+            f"replogle/pbmc/tahoe100m, or source_format='occam'."
         )
     return pd.DataFrame(obs_data)
