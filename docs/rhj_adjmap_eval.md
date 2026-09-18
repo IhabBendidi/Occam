@@ -75,6 +75,36 @@ is +0.491, so "2nd best on val" says little about 2nd best on cell-eval.
 ❌ **Not licensed: claiming the selected arm is best on `disc_l1` or `overlap_at_N`.** rho +0.198
 and +0.444. If those matter for a decision, that arm must be scored directly.
 
+## F-adj4 — the sweep is COMPLETE (486/486), and the record moved to `s469`
+
+**All 486 arms finished, 0 failed** (job `18036460`, completed 2026-09-18).
+
+| | arm | val | config |
+|---|---|---|---|
+| **new record** | **`s469`** | **0.3805** | lr **3e-3** · decoder_lr 1e-3 · cos 0.5 · film full |
+| previous, cell-eval'd 5/5 | `s313` | 0.3769 | lr 1e-3 · decoder_lr 1e-3 · cos 0.5 · multiplicative_only |
+| before that | `s129` | 0.3676 | lr 3e-4 · decoder_lr 1e-3 · cos 0.5 · full |
+
+⭐ **`decoder_lr = 1e-3` and `cosine_loss_weight = 0.5` in all three**, across three different
+`lr` values (3e-4 → 1e-3 → 3e-3) and three different `film_mode` settings. The decoder learning
+rate is the axis that matters here; `lr` and `film_mode` are close to free within this range.
+
+⚠️ `s469` sits at the **top edge of the swept `lr` range** (3e-3). An endpoint optimum means the
+sweep may not contain the best setting — the grid should be extended upward before `lr 3e-3` is
+called optimal.
+
+`s469`'s 5-split evaluation: job **`18066843`** (tasks 2345–2349) on `hooke-predict`, running.
+Predicted **≈0.3455** from the top-of-range gap, and by F-adj2 not above 0.3805. The bar is
+`s313`'s **0.3415**.
+
+### ⚠️ The gap constant in `scripts/eval_val_winner.py` was stale and has been corrected
+
+It printed expectations from the all-arm mean gap **−0.0140**, which F-adj3 showed
+over-predicts at the top of the val range — it was wrong about `s313` by **+0.021**. The script
+now uses the top-of-range figure **−0.0350** and prints the mean alongside, labelled as the
+one that over-predicts. It only ever looks at the argmax, so it is always at the top of the
+range.
+
 ## ⭐ F-adj3 — CONFIRMED: `s313` beats `s129` on 5/5 splits. New best arm.
 
 **The argmax-only policy passed its second test.** `s313` held the validation record (0.3769 vs

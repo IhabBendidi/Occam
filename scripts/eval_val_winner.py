@@ -61,8 +61,18 @@ sys.path.insert(0, os.path.join(REPO, "src"))
 
 LEDGER = os.path.join(REPO, "runs", "rhj_splithalf", "val_winners.json")
 N_SPLITS = 5
-# Measured over 95 arms, F-adj2. Used only to print an expectation beside the launch.
-VAL_TO_CE_GAP = -0.0140
+# The val -> cell-eval gap, used ONLY to print an expectation beside a launch.
+#
+# ⚠️ IT IS NOT A CONSTANT, and the top-of-range value is the one this script needs. The mean
+# over 95 arms is -0.0140, but the sweep's two highest-val arms both came out near -0.035
+# (F-adj3: s129 val 0.3676 -> 0.3348, gap -0.0328; s313 val 0.3769 -> 0.3415, gap -0.0354),
+# outside that whole fitted range. That is mild validation overfitting: the better an arm
+# scores on the 103 validation perturbations, the more of the score is fit to those 103.
+#
+# This script only ever looks at the ARGMAX, i.e. always the top of the range, so it uses the
+# top-of-range figure. Using the -0.0140 mean over-predicted s313 by +0.021.
+VAL_TO_CE_GAP = -0.0350
+VAL_TO_CE_GAP_MEAN = -0.0140      # the all-arm mean, kept for reference only
 
 
 def _completed_arms(grid: str):
@@ -269,8 +279,10 @@ def main(argv=None) -> int:
            f"--job-name={args.job_name}", f"--array={tasks}", args.sbatch]
     print(f"[winner] {arm} is grid row {arm_row} -> array tasks {tasks} "
           f"(split(s) {missing} of ONE arm)")
-    print(f"[winner] expectation, from the measured gap ({VAL_TO_CE_GAP:+.4f}): "
+    print(f"[winner] expectation, from the TOP-OF-RANGE gap ({VAL_TO_CE_GAP:+.4f}, F-adj3): "
           f"cell-eval pearson_delta ~ {val + VAL_TO_CE_GAP:.4f}, and NOT above {val:.4f}")
+    print(f"[winner]   (the all-arm mean gap {VAL_TO_CE_GAP_MEAN:+.4f} would say "
+          f"{val + VAL_TO_CE_GAP_MEAN:.4f} — it over-predicts at the top of the range)")
     print(f"[winner] anchors: meanpert 0.1324 · transfer 0.2323 · experimental 0.3722")
     print(f"[winner] $ {' '.join(cmd)}")
     ckpt, out = _arm_paths(arm, args.grid, args.eval_root, args.prefix)
