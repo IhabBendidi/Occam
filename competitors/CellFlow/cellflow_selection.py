@@ -56,6 +56,19 @@ PERT_COL = "target_gene"
 CELL_TYPE_COL = "cell_type"
 CONTROL_PERT = "empty"
 
+# ⚠️ SELECTION SCORES THROUGH *OUR* CELL-EVAL.
+#
+# It used to shell out to a sibling repo's `celleval_artifacts.py` in that repo's own venv,
+# which pinned a DIFFERENT cell-eval (0.7.2 / pdex 0.2.2-0.3.0) than the 0.6.0 / pdex 0.1.24
+# every reported number comes from. Two consequences, both gone: the arm depended on another
+# repo existing at a hard-coded path, and its in-training selection metric was computed by a
+# different scorer than its reported one.
+#
+# Still a subprocess: jax and cell-eval do not co-exist in one environment, which is the same
+# constraint that makes the prediction bridge two-phase.
+OCCAM_REPO = Path("/rxrx/scratch/sandbox/ihab.bendidi/tx_pretrained_models/Occam")
+OCCAM_PY = Path("/mnt/ps/home/CORP/ihab.bendidi/.pyenv/versions/scmae/bin/python")  # noqa: legacy-name
+
 
 def read_agg_metrics(results_dir: Path) -> dict[str, float]:
     """Mean cell-eval metrics from the ``*_agg_results.csv`` files in ``results_dir``.
@@ -112,9 +125,8 @@ class SelectionCallback:
     :param cell_type: the value written into the cell-type column; the shared scorer requires the
         column in both objects and slices per cell type.
     :param output_root: per-validation artifacts and results land under here.
-    :param scorer_py: interpreter that owns the shared scorer's dependencies.
-    :param scorer: path to ``celleval_artifacts.py``.
-    :param scorer_pythonpath: put on ``PYTHONPATH`` for the scorer.
+    :param occam_py: interpreter that owns OUR cell-eval 0.6.0.
+    :param occam_repo: repo root, put on ``PYTHONPATH`` so `occam.vcell.panel` imports.
     """
 
     def __init__(
@@ -126,9 +138,8 @@ class SelectionCallback:
         control_x: np.ndarray,
         cell_type: str,
         output_root: Path | str,
-        scorer_py: Path | str,
-        scorer: Path | str,
-        scorer_pythonpath: Path | str,
+        occam_py: Path | str = OCCAM_PY,
+        occam_repo: Path | str = OCCAM_REPO,
         profile: str = "full",
         num_threads: int | None = None,
         keep_artifacts: bool = False,
@@ -139,9 +150,11 @@ class SelectionCallback:
         self.control_x = np.asarray(control_x, dtype=np.float32)
         self.cell_type = str(cell_type)
         self.output_root = Path(output_root)
-        self.scorer_py = Path(scorer_py)
-        self.scorer = Path(scorer)
-        self.scorer_pythonpath = Path(scorer_pythonpath)
+        self.occam_py = Path(occam_py)
+        self.occam_repo = Path(occam_repo)
+        if not self.occam_py.exists():
+            raise ValueError(
+                f"no interpreter at {self.occam_py}; selection scores through OUR cell-eval")
         self.profile = profile
         self.num_threads = num_threads or len(os_sched_affinity())
         self.keep_artifacts = keep_artifacts
@@ -275,34 +288,8 @@ class SelectionCallback:
         build(pred_blocks, pred_labels).write_h5ad(work / "adata_pred.h5ad")
         build(real_blocks, real_labels).write_h5ad(work / "adata_real.h5ad")
 
-        env_pythonpath = str(self.scorer_pythonpath)
-        base = [str(self.scorer_py), str(self.scorer)]
         results = work / "results"
-        self._run(
-            base
-            + [
-                "initialize",
-                "--artifact-dir", str(work),
-                "--pert-col", PERT_COL,
-                "--control-pert", CONTROL_PERT,
-                "--cell-type-col", CELL_TYPE_COL,
-                "--profile", self.profile,
-                "--skip-metrics", "pearson_edistance", "clustering_agreement",
-            ],
-            env_pythonpath,
-        )
-        self._run(
-            base
-            + [
-                "score",
-                "--artifact-dir", str(work),
-                "--cell-type", self.cell_type,
-                "--num-threads", str(self.num_threads),
-                "--results-dir", str(results),
-            ],
-            env_pythonpath,
-        )
-        metrics = read_agg_metrics(results)
+        metrics = self._score_with_occam_celleval(work, results)
         (work / "metrics.json").write_text(json.dumps(metrics, indent=2, default=str))
         if not self.keep_artifacts:
             # The h5ads are the bulk and are reproducible from the checkpoint; the metrics JSON
@@ -310,6 +297,50 @@ class SelectionCallback:
             for name in ("adata_pred.h5ad", "adata_real.h5ad"):
                 (work / name).unlink(missing_ok=True)
         return metrics
+
+    def _score_with_occam_celleval(self, work: Path, results: Path) -> dict[str, float]:
+        """Score `adata_pred.h5ad` against `adata_real.h5ad` through OUR cell-eval 0.6.0.
+
+        A subprocess because jax and cell-eval do not co-exist in one environment -- the same
+        constraint that makes the prediction bridge two-phase. The child does nothing but
+        call `run_celleval_v1`, the single scorer every reported number comes from.
+        """
+        import os
+
+        results.mkdir(parents=True, exist_ok=True)
+        driver = work / "_score.py"
+        driver.write_text(
+            "import json, sys\n"
+            "from occam.vcell.panel.celleval_v1 import run_celleval_v1\n"
+            "m = run_celleval_v1(sys.argv[1], sys.argv[2], sys.argv[3],\n"
+            f"                    num_threads={int(self.num_threads)},\n"
+            f"                    profile={self.profile!r})\n"
+            "json.dump(m, open(sys.argv[4], 'w'), indent=2, default=str)\n"
+        )
+        out_json = work / "occam_celleval.json"
+        env = dict(os.environ)
+        env["PYTHONPATH"] = str(self.occam_repo / "src")
+        env.setdefault("OMP_NUM_THREADS", "1")
+        proc = subprocess.run(
+            [str(self.occam_py), str(driver),
+             str(work / "adata_pred.h5ad"), str(work / "adata_real.h5ad"),
+             str(results), str(out_json)],
+            env=env, capture_output=True, text=True)
+        if proc.returncode != 0:
+            raise RuntimeError(
+                f"our cell-eval failed on the validation split: exit {proc.returncode}\n"
+                f"{proc.stdout[-2000:]}\n{proc.stderr[-2000:]}")
+        if not out_json.exists():
+            raise RuntimeError(f"cell-eval returned no metrics JSON at {out_json}")
+        metrics = json.loads(out_json.read_text())
+        missing = [k for k in SELECTION_SCORE_COMPONENTS if k not in metrics]
+        if missing:
+            raise RuntimeError(
+                f"cell-eval returned no {missing} on the validation split, so "
+                f"{SELECTION_SCORE_NAME} cannot be formed and no checkpoint could be "
+                f"selected. Got {sorted(metrics)[:10]}")
+        return {str(k): float(v) for k, v in metrics.items()
+                if isinstance(v, (int, float)) and np.isfinite(float(v))}
 
     def _run(self, cmd: list[str], pythonpath: str) -> None:
         import os

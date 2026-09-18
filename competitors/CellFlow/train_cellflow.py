@@ -485,6 +485,40 @@ def run_train(cfg: dict[str, Any], *, config_path: Path | None = None) -> Path:
         ctrl_mask = adata_valid.obs[schema["control_key"]].astype(bool).to_numpy()
         ctrl_x = adata_valid.X[ctrl_mask]
         ctrl_x = np.asarray(ctrl_x.todense() if hasattr(ctrl_x, "todense") else ctrl_x)
+
+        # ⚠️ ON `rhj_fewshot` THE VALIDATION SPLIT HAS NO CONTROLS AT ALL. Every one of the
+        # 4,976 HepG2 controls is in finetune by construction -- they are the paired basal
+        # pool -- so `adata_valid` holds 6,731 perturbed cells over 103 perturbations and
+        # ZERO controls. `SelectionCallback.__init__` raises on an empty `control_x`, so this
+        # arm would have died at startup, before a single training step.
+        #
+        # Fall back to the TRAINING controls of the same cell line. That is the right pool and
+        # the same `injctrl` convention our own arms use: real, model-visible control cells as
+        # the shared baseline, disjoint from the validation perturbations being scored.
+        if ctrl_x.shape[0] == 0:
+            # ⚠️ `.to_numpy()` on a pandas bool column can return a READ-ONLY view, so the
+            # in-place `&=` below raises `ValueError: output array is read-only`. Copy.
+            # Caught by the pre-flight, in this very fix, before it cost a job.
+            tr_ctrl = np.array(
+                adata_train.obs[schema["control_key"]].astype(bool).to_numpy(),
+                dtype=bool, copy=True)
+            _ct_col_early = (list(schema.get("split_covariates") or ())
+                             or list(schema.get("sample_covariates") or ())
+                             or ["cell_type"])[0]
+            if _ct_col_early in adata_train.obs.columns and \
+                    _ct_col_early in adata_valid.obs.columns:
+                want = set(adata_valid.obs[_ct_col_early].astype(str).unique().tolist())
+                tr_ctrl = tr_ctrl & adata_train.obs[_ct_col_early].astype(str).isin(
+                    want).to_numpy()
+            cx = adata_train.X[tr_ctrl]
+            ctrl_x = np.asarray(cx.todense() if hasattr(cx, "todense") else cx)
+            print(f"[train_cellflow] validation has no controls (all are in finetune by "
+                  f"construction); using {ctrl_x.shape[0]:,} TRAINING controls of the same "
+                  f"cell line as the shared baseline", flush=True)
+            if ctrl_x.shape[0] == 0:
+                raise ValueError(
+                    "no control cells in either the validation or the training split; "
+                    "cell-eval cannot measure a perturbation effect without a baseline")
         # The cell-type column is whatever the config conditions on; fall back to the dump's
         # own column name rather than hardcoding it in two places.
         ct_col = (list(schema.get("split_covariates") or ())
@@ -500,13 +534,22 @@ def run_train(cfg: dict[str, Any], *, config_path: Path | None = None) -> Path:
         selector = SelectionCallback(
             pcs=artifacts["pcs"],
             means=artifacts["means"],
-            genes=[str(g) for g in adata_train.var_names],
+            # ⚠️ SYMBOLS, NOT `var_names`. On the occam path `var_names` are ENSEMBL ids
+            # (occam_bridge/occam.py keeps that for the positional PCA basis), but these
+            # names become the var index of the h5ads cell-eval scores -- and cell-eval
+            # excludes each perturbation's own target gene BY SYMBOL. Ensembl here would
+            # silently stop that exclusion and inflate every selection score, with no error.
+            # Same class of bug as STATE's `gene_names`, which the pre-flight caught.
+            genes=[str(g) for g in (adata_train.var["gene_symbol"]
+                                    if "gene_symbol" in adata_train.var.columns
+                                    else adata_train.var_names)],
             control_x=ctrl_x,
             cell_type=cell_types[0],
             output_root=run_dir / "valscore",
-            scorer_py=select_cfg["scorer_py"],
-            scorer=select_cfg["scorer"],
-            scorer_pythonpath=select_cfg["scorer_pythonpath"],
+            # OUR cell-eval 0.6.0 (see cellflow_selection.py). Both default to ours, so a
+            # config naming no scorer at all is the correct one.
+            **({"occam_py": select_cfg["occam_py"]} if "occam_py" in select_cfg else {}),
+            **({"occam_repo": select_cfg["occam_repo"]} if "occam_repo" in select_cfg else {}),
             profile=select_cfg.get("profile", "full"),
         )
         print(

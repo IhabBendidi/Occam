@@ -860,6 +860,97 @@ Both training, finite gradients (total norm 12.40 / 6.15), **0.145 s/step** → 
 **3.2 h** plus five validation cell-eval passes. The two differ in the expected place:
 genept trains `class_embedding.emb.weight`, onehot `class_embedding.null_emb.weight`.
 
+## ⭐ C21 — ALL FOUR ARMS LAUNCHED. Pre-flighting found 9 bugs and burned 0 jobs.
+
+**Decision 2026-09-18, after PerturbDiff cost four 45-minute runs: pre-flight every arm's
+validation path on REAL objects before submitting.** The user asked for it explicitly. It is
+now the rule for this benchmark.
+
+| arm | bugs found BEFORE launch | jobs burned finding them |
+|---|---|---|
+| PerturbDiff | 0 -- found by launching | **4 x 45 min** |
+| TxPert | 0 -- found by launching | **5 short export runs** |
+| **STATE** | pre-flight passed 4/4 first try | **0** |
+| **CellFlow** | **5 found** | **0** |
+
+### Why every arm needs this: they all swallow their own validation errors
+
+`ValidationCellEvalCallback` in STATE, the callback in PerturbDiff, and CellFlow's
+`SelectionCallback` all wrap themselves in `except Exception: log; continue`. So a defect in
+that path does NOT fail where it happens -- it surfaces much later as a checkpoint failure on a
+missing metric, in a different component. On PerturbDiff that turned four distinct root causes
+into four identical-looking `MisconfigurationException`s, 45 minutes apart.
+
+### STATE, 4/4 first try
+
+```
+1. get_var_dims()['gene_names']  6983 names, axis-identical=True  ['DPM1','GCLC','NIPAL3']
+2. val_dataloader_for_scoring()  OK, pert_cell_emb (64, 6983)
+3. get_control_pert()            'empty'
+4. control rows in a val batch   64/64   (inject_real_controls RAISES at 0)
+```
+
+⚠️ #1 is checked by IDENTITY with the frozen axis, not by length -- the mistake that cost
+PerturbDiff its third run. If `gene_names` were absent, `var` is `None` and cell-eval cannot
+exclude each perturbation's own target gene by symbol: a **plausible but wrong** score, which
+is worse than a crash.
+
+ⓘ #4 came back 64/64 controls -- the first sentence happens to be all-control. Harmless
+because `max_batches` is unset so the callback walks the whole loader, and validation holds
+6,731 cells over 103 perturbations. It would bite if anyone set `max_batches` small.
+
+### CellFlow, 5 bugs, 3 from reading the path and 2 from the pre-flight
+
+| # | bug | consequence if launched |
+|---|---|---|
+| 1 | selection still called the sibling repo's scorer; the config no longer supplied its paths | **KeyError at startup** |
+| 2 | `genes=adata_train.var_names` -> **Ensembl**, and those become the var index cell-eval scores | **silently inflated** selection scores, no error |
+| 3 | `ctrl_x` read from the VALIDATION split, which has **0 controls** by construction | `SelectionCallback` **raises** before step 1 |
+| 4 | `.to_numpy()` on a bool column is read-only, so my own `&=` fallback raised | crash at startup -- **a bug in my own fix** |
+| 5 | `requests` is in CellFlow's OPTIONAL `embedding` extra, but `preprocessing/__init__` imports `_gene_emb` EAGERLY | `centered_pca` unreachable -- the core PCA path |
+
+⚠️ **#1 means an earlier claim in C15 was FALSE.** I recorded that CellFlow's selection scores
+through our cell-eval; the rewrite had been reverted by a copier run while the config kept my
+comments saying otherwise. Redone, and the copier is now deleted so it cannot recur.
+
+⭐ **#2 is the one worth remembering.** The pre-flight printed both, side by side, which is what
+made it obvious:
+
+```
+genes[:3]      ['DPM1', 'GCLC', 'NIPAL3']
+var_names[:3]  ['ENSG00000000419', 'ENSG00000001084', 'ENSG00000001461']
+```
+
+Same class as STATE's #1 and PerturbDiff's mask: **two 6,983-long lists in different ID
+spaces.** Three arms, three instances, one shape of bug.
+
+**#3 is structural to `rhj_fewshot`,** not a CellFlow defect: all 4,976 HepG2 controls are in
+finetune by construction -- they are the paired basal pool -- so validation is 6,731 perturbed
+cells and nothing else. It now falls back to the TRAINING controls of the same cell line, which
+the pre-flight confirms finds exactly **4,976**, the benchmark's own count. That is the same
+`injctrl` convention our own arms use.
+
+**#5 was fixed by making the import LAZY**, not by installing the extra: that would have pulled
+~2.5 GB of torch into a jax environment for two Ensembl REST calls this arm never makes, and
+the internal registry needs credentials this shell does not have.
+
+ⓘ Also noted: `uv pip install` in `competitors/CellFlow/cellflow` silently targets a leaked
+`VIRTUAL_ENV` (a `biomodal` pyenv), not `.venv`. Use
+`env -u VIRTUAL_ENV uv pip install --python .venv/bin/python`.
+
+### The four chains
+
+| arm | train | export | score | resources |
+|---|---|---|---|---|
+| TxPert | ✅ done, `best-ep49` | `18089777` | `18089778` | h100 / 200 G |
+| STATE | `18091685` | `18091686` | `18091687` | 320 G / 24 h |
+| PerturbDiff genept | `18091494` | `18091495` | `18091496` | h100 / 128 G |
+| PerturbDiff onehot | `18091497` | `18091498` | `18091499` | h100 / 128 G |
+| CellFlow | `18094421` | `18094422` | `18094423` | 256 G / 12 h |
+
+Plus TxPert's epoch-20 interim (`18088687` / `18088689`), whose split 0 already scored
+**0.3014** (C19).
+
 ## ⛔ C20 — PerturbDiff failed its first validation FOUR times. The lesson is about verification.
 
 Four runs, ~45 min each, all dying at the same place: the first validation cell-eval at global

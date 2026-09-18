@@ -13,7 +13,18 @@ if TYPE_CHECKING:
 
 import anndata as ad
 import pandas as pd
-import requests  # type: ignore[import-untyped]
+# ⚠️ LAZY IMPORT. `requests` lives in the OPTIONAL `embedding` extra (pyproject.toml:78)
+# alongside torch and transformers, but this module is imported EAGERLY by
+# `cellflow/preprocessing/__init__.py` -- so a default install cannot even reach
+# `centered_pca`, which is on the core PCA path this benchmark needs.
+#
+# It is only used by two functions that hit an Ensembl REST endpoint, which this arm never
+# calls. Importing it where it is used costs nothing and avoids pulling ~2.5 GB of torch into
+# an environment that already has jax. Caught by the CellFlow pre-flight, 2026-09-18.
+try:  # pragma: no cover - exercised only by the gene-embedding download path
+    import requests  # type: ignore[import-untyped]
+except ModuleNotFoundError:  # pragma: no cover
+    requests = None  # type: ignore[assignment]
 
 from cellflow._compat import check_embedding_deps
 from cellflow._logging import logger
@@ -32,6 +43,10 @@ def fetch_canonical_transcript_info(ensembl_gene_id: str) -> dict[str, str] | No
     headers = {"Content-Type": "application/json"}
 
     # Fetch gene information
+    if requests is None:
+        raise ModuleNotFoundError(
+            "this function needs `requests`, which is in cellflow's optional `embedding` "
+            "extra. Install it, or avoid the gene-embedding download path.")
     response = requests.get(server + ext, headers=headers)
     if not response.ok:
         response.raise_for_status()
@@ -58,6 +73,10 @@ def fetch_protein_sequence(ensembl_transcript_id: str | None) -> str:
     ext = f"/sequence/id/{ensembl_transcript_id}?type=protein"
     headers = {"Content-Type": "application/json"}
 
+    if requests is None:
+        raise ModuleNotFoundError(
+            "this function needs `requests`, which is in cellflow's optional `embedding` "
+            "extra. Install it, or avoid the gene-embedding download path.")
     response = requests.get(server + ext, headers=headers)
     if not response.ok:
         response.raise_for_status()
