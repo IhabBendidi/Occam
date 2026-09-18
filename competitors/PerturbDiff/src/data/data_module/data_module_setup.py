@@ -313,7 +313,32 @@ def occam_setup(dm, stage=None):
         raise RuntimeError(
             f"the validation gene panel has {len(genes)} genes but data.pad_length is "
             f"{cfg.pad_length}; the emitted h5ad and the model width must agree.")
-    dm.py_logger.info("validation cell-eval prerequisites OK: %d gene symbols", len(genes))
+
+    # ⛔ AND THE PANEL MUST MATCH `col_genes`, NOT JUST BE THE RIGHT LENGTH.
+    #
+    # `generate_samples` computes `np.isin(batch["col_genes"][0], _genes)`. Both were 6,983
+    # long and the earlier probe passed -- but one held Ensembl ids and the other symbols, so
+    # the mask was ALL FALSE, `truth_np` was (n, 0), and `r2_score` died on empty input at the
+    # first validation, ~45 min in (jobs 18080122 / 18080125). Length is not agreement.
+    import numpy as _np
+
+    from src.data.occam_bridge import read_occam_line as _read_line
+
+    _, _, _ens, _sym = _read_line(
+        dm.file_list[0], bench_dir=bench_dir,
+        target_sum=float(getattr(cfg, "occam_target_sum", 10_000.0)),
+        log1p=bool(getattr(cfg, "occam_log1p", True)), verify_sources=False,
+        max_cells=getattr(cfg, "occam_max_cells_per_line", None))
+    n_hit = int(_np.isin(_np.asarray(_sym), _np.asarray(genes)).sum())
+    if n_hit != len(genes):
+        raise RuntimeError(
+            f"the validation gene panel matches only {n_hit}/{len(genes)} of the dataset's "
+            f"own `col_genes`. `generate_samples` masks with `np.isin(col_genes, panel)`, so "
+            f"a mismatch yields an EMPTY selection and the validation dies on empty input. "
+            f"Both must be the same ID space -- ours is gene SYMBOLS.")
+    dm.py_logger.info(
+        "validation cell-eval prerequisites OK: %d gene symbols, and all %d match col_genes",
+        len(genes), n_hit)
 
 
 def occam_setup_dataset(dm, stage=None):

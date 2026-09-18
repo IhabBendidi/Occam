@@ -860,6 +860,44 @@ Both training, finite gradients (total norm 12.40 / 6.15), **0.145 s/step** → 
 **3.2 h** plus five validation cell-eval passes. The two differ in the expected place:
 genept trains `class_embedding.emb.weight`, onehot `class_embedding.null_emb.weight`.
 
+## ⭐ C19 — FIRST COMPETITOR NUMBER: TxPert 0.3014 on split 0, from an epoch-20 interim
+
+**The port produces a score.** Job `18088688`, 8 min 46 s, split 0 only.
+
+| metric | TxPert ep20 | `s313` (ours, 5 splits) | `transfer` | `experimental` |
+|---|---|---|---|---|
+| `pearson_delta` | **0.3014** | **0.3415** | 0.2323 | 0.3722 |
+| `mae` ↓ | 0.0231 | **0.0210** | 0.0299 | 0.0257 |
+| `overlap_at_N` | 0.0491 | **0.0642** | 0.0351 | 0.1942 |
+| `discrimination_score_l1` | 0.6460 | **0.6534** | 0.6404 | 0.7821 |
+
+**TxPert clears the `transfer` bar (0.2323) by +0.069 and sits 0.040 below our best arm** on
+`pearson_delta`, on the same 611-perturbation cohort, the same drawn half-B controls, the same
+cell-eval 0.6.0, uncalibrated both sides. It is ahead of `transfer` on all four metrics.
+
+⚠️ **THIS IS A FLOOR ON TXPERT, NOT ITS RESULT**, for three reasons that all point the same way:
+
+1. **Epoch 20 of 50.** An interim checkpoint, taken so the adapter could be exercised before
+   training finished. Its own validation `selection_score` was still climbing when it was
+   taken: **0.51023 (ep10) -> 0.54327 (ep20)**.
+2. **One split of five.** Split-to-split spread on this panel is ~0.003, so the ordering is
+   unlikely to move much, but a single split is not the claim.
+3. **GO + STRING only**, to match Occam's own prior. Their published 0.50787 used four KGs.
+
+### The emission diagnostics, which is what the guard is for now
+
+```
+representable ✓   rowsum ratio 0.8701 · gene-mean corr 0.9994 · zero 0.0001
+```
+
+Against our own arm's **0.9399 / 0.9998 / 0.0000**. TxPert sits in the same space, slightly
+lower-calibrated on total expression — and `mae` reports exactly that: **0.0231 vs our 0.0210**.
+That is the diagnostic doing its job as a *number to read* rather than a reason to refuse, which
+is the whole point of C18.
+
+ⓘ Note the ranking is consistent across all four metrics here, unlike the `s313`/`s469`
+comparison. When an arm is 0.04 behind rather than 0.002, the metrics agree.
+
 ## C17 — the TxPert adapter's first execution: five bugs, all from `compose()` vs `@hydra.main`
 
 **Ran on an INTERIM checkpoint (epoch 20, `selection_score` 0.54327) so the adapter could be

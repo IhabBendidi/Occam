@@ -289,7 +289,19 @@ def get_selected_gene_vars_occam(dataset) -> None:
         n = len(ens)
         dataset.gene_index_map[ds_name] = np.arange(n, dtype=np.int64)
         dataset.gene_symbols[ds_name] = list(sym)
-        dataset.gene_vars[ds_name] = np.asarray(ens)
+        # ⚠️ SYMBOLS, NOT ENSEMBL IDS, and this is load-bearing in two places.
+        # `gene_vars` becomes `batch["col_genes"]` (dataset_core.py:115), which is used for:
+        #
+        #   1. `np_mask = np.isin(batch_data["col_genes"][0], _genes)` in generate_samples,
+        #      where `_genes` is the panel from `load_selected_genes` -- our axis SYMBOLS. With
+        #      Ensembl here the mask was ALL FALSE, so `truth_np` came out (n, 0) and
+        #      `r2_score` died on empty input. MEASURED 2026-09-18, jobs 18080122 / 18080125,
+        #      at the first validation, ~45 min in.
+        #   2. `self.gene_embedding.get(id, torch.zeros(5120))` in lightning_module.py:218 --
+        #      and our rebuilt GenePT pickle is SYMBOL-keyed, so Ensembl ids would silently
+        #      return all-zero embeddings. Inert today (`use_gene_embedding: False`) but a
+        #      trap the moment anyone turns it on.
+        dataset.gene_vars[ds_name] = np.asarray(sym)
         dataset.selected_gene_mask[ds_name] = np.ones(n, dtype=bool)
 
     dataset.selected_genes = selected

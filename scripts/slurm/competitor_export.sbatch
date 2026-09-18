@@ -98,8 +98,13 @@ export PYTHONUNBUFFERED=1
 export PYTHONPATH="$HERE/competitors/shared${PYTHONPATH:+:$PYTHONPATH}"
 unset VIRTUAL_ENV
 
+# SPLITS lets you export a subset, e.g. SPLITS="1 2 3 4" after split 0 was done by hand.
+# Default is every split.
+SPLITS="${SPLITS:-$(seq 0 $(( N_SPLITS - 1 )))}"
+echo "  splits requested: $SPLITS"
+
 FAILED=0
-for K in $(seq 0 $(( N_SPLITS - 1 ))); do
+for K in $SPLITS; do
     OUT="$HERE/runs/competitors/$ARM_OUT/s${SEED}/split_${K}"
     echo "--- split $K -> $OUT"
     if "$PY" -u "$ADAPTER" --seed "$SEED" --split "$K" --out-dir "$OUT" \
