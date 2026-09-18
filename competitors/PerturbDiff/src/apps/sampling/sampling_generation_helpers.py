@@ -144,6 +144,122 @@ def build_zarr_controls(cfg, datamodule, genes, logger):
     return X_ctrl, {"pert": pert, "celltype": celltype, "batch": batch}
 
 
+def build_occam_controls(cfg, genes, logger):
+    """Real HepG2 control cells for our benchmark, on the frozen axis, in order.
+
+    The occam sibling of `build_zarr_controls`, with the SAME return contract:
+    ``(X_ctrl, {"pert": [...], "celltype": [...], "batch": [...]})``.
+
+    ⚠️ WHY A SIBLING RATHER THAN A BRANCH INSIDE `load_ctrl_adata`. That function,
+    `build_x_ctrl` and `build_obs_data` all dispatch on substrings of ``cfg.data.data_name``
+    (replogle / pbmc / tahoe). Ours is a fourth family, so routing it through them means
+    teaching each one separately -- and every omission surfaces as a crash ~45 min into a
+    run, one function further along the chain than the last. The zarr path already
+    established the right shape: one purpose-built pair, no family dispatch, chosen once at
+    the top of `generate_samples`. This is that pair for occam.
+
+    These controls are concatenated into BOTH the predicted and the true adata, which is what
+    makes the comparison honest: cell-eval computes each perturbation's differential
+    expression against the controls it finds inside each adata, so both sides must share one
+    real baseline. Normalisation matches the model's own inputs exactly --
+    ``log1p(counts / rowsum_FULL_PANEL * occam_target_sum)``.
+    """
+    import sys
+
+    import numpy as np
+
+    _shared = ("/rxrx/scratch/sandbox/ihab.bendidi/tx_pretrained_models/Occam/"
+               "competitors/shared")
+    if _shared not in sys.path:
+        sys.path.insert(0, _shared)
+    import occam_data as od
+
+    bench = od.load_occam_benchmark(str(cfg.data.occam_bench_dir), verify_sources=False)
+    axis = [str(g) for g in bench.axis_symbols]
+    if list(genes) != axis:
+        raise ValueError(
+            f"the sampling panel is not the frozen axis ({len(genes)} genes vs {len(axis)}, "
+            f"or a different order). Controls are concatenated POSITIONALLY into both "
+            f"adatas, so a reordered axis relabels every gene while every metric keeps its "
+            f"shape -- nothing downstream would look wrong.")
+
+    batch_col = str(getattr(cfg.data, "perturbseq_batch_col", "batch_center"))
+    ct_col = str(getattr(cfg.data, "cell_type_key", "cell_type"))
+    a = od.load_occam_adata(
+        bench, cell_lines=["HEPG2"],
+        target_sum=float(getattr(cfg.data, "occam_target_sum", 10_000.0)),
+        log1p=bool(getattr(cfg.data, "occam_log1p", True)),
+        control_label=str(getattr(cfg.data, "control_pert", "empty")),
+        pert_col_out="gene")
+    for col in ("gene", "is_control", ct_col, batch_col):
+        if col not in a.obs.columns:
+            raise ValueError(
+                f"occam_data did not emit {col!r}; have {list(a.obs.columns)}. All four are "
+                f"needed here, and a missing one would otherwise surface one call later.")
+
+    keep = np.asarray(a.obs["is_control"], dtype=bool)
+    n = int(keep.sum())
+    if n != 4976:
+        raise ValueError(
+            f"expected 4,976 HepG2 controls -- the benchmark's own count, and what upstream's "
+            f"replogle branch asserts -- but got {n}")
+
+    X_ctrl = np.asarray(a.X, dtype=np.float32)[keep]
+    if X_ctrl.shape[1] != len(genes):
+        raise ValueError(
+            f"control matrix has {X_ctrl.shape[1]} genes, panel has {len(genes)}")
+
+    # ⚠️ cell types must match what `collect_batch_covariates` emits for the perturbed rows
+    # ("HEPG2", not upstream's lowercase "hepg2"). Two casings split one cell type in two,
+    # and cell-eval then scores each half against the wrong baseline.
+    cts = sorted(set(str(v) for v in np.asarray(a.obs[ct_col], dtype=str)[keep]))
+    logger.info("occam: %d HepG2 control cells x %d genes for the shared baseline "
+                "(cell_type=%s)", X_ctrl.shape[0], X_ctrl.shape[1], ",".join(cts))
+    return X_ctrl, {
+        "pert": [str(v) for v in np.asarray(a.obs["gene"], dtype=str)[keep]],
+        "celltype": [str(v) for v in np.asarray(a.obs[ct_col], dtype=str)[keep]],
+        "batch": [str(v) for v in np.asarray(a.obs[batch_col], dtype=str)[keep]],
+    }
+
+
+def build_obs_data_occam(cfg, all_pert, all_celltype, all_batch, ctrl_obs):
+    """obs for our benchmark, with CONFIG-DRIVEN column names.
+
+    The occam sibling of `build_obs_data_zarr`, and deliberately the same shape: the names
+    come from the data config, so the frame is exactly what `run_cell_eval` reads back
+    through ``pert_col`` / ``cell_type_key`` / ``control_pert``. Upstream's `build_obs_data`
+    hardcodes ``"gene"``, which would emit a column cell-eval is never told to look at --
+    and cell-eval would then treat every row as one group without raising.
+
+    ⚠️ Control rows keep their own label (``"empty"``, our derived control sentinel) in the
+    perturbation column. That is how cell-eval finds the shared baseline.
+    """
+    import numpy as np
+
+    n_pert, n_ctrl = len(all_pert), len(ctrl_obs["pert"])
+    for key, arr in (("celltype", all_celltype), ("batch", all_batch)):
+        if len(arr) != n_pert:
+            raise ValueError(
+                f"{key} covariate has {len(arr)} rows but there are {n_pert} predicted "
+                f"cells; obs columns would be misaligned against X.")
+        if len(ctrl_obs[key]) != n_ctrl:
+            raise ValueError(f"control {key} has {len(ctrl_obs[key])} rows, expected {n_ctrl}")
+
+    return pd.DataFrame(
+        {
+            str(cfg.data.pert_col): np.concatenate(
+                [np.asarray(all_pert, dtype=str),
+                 np.asarray(ctrl_obs["pert"], dtype=str)]),
+            str(cfg.data.cell_line_key): np.concatenate(
+                [np.asarray(all_celltype, dtype=str),
+                 np.asarray(ctrl_obs["celltype"], dtype=str)]),
+            str(cfg.data.perturbseq_batch_col): np.concatenate(
+                [np.asarray(all_batch, dtype=str),
+                 np.asarray(ctrl_obs["batch"], dtype=str)]),
+        }
+    )
+
+
 def build_obs_data_zarr(cfg, all_pert, all_celltype, all_batch, ctrl_obs):
     """obs for the zarr benchmark, using STATE's column names.
 
@@ -226,58 +342,11 @@ def collect_batch_covariates(batch_data, dataloader, datamodule, mask):
 def load_ctrl_adata(cfg):
     """Execute `load_ctrl_adata` and return values used by downstream logic."""
     var_index = None
-    if str(getattr(cfg.data, "source_format", "")) == "occam":
-        # ⚠️ OUR HepG2 CONTROLS, read from the frozen benchmark. Their replogle branch reads a
-        # standalone control h5ad and asserts exactly 4976 HepG2 non-targeting cells; ours is
-        # the same pool, so the same assertion holds and is kept.
-        #
-        # THREE PARTS OF THE CONTRACT, each of which has already cost a run somewhere:
-        #   1. `var.index` must be the axis SYMBOLS -- `build_x_ctrl` does
-        #      `assert np.isin(var.index, genes).sum() == len(genes)` against
-        #      `load_selected_genes`, which returns symbols. Ensembl here is an empty mask.
-        #   2. `X` must be SPARSE -- `build_x_ctrl` calls `.toarray()` on it.
-        #   3. `obs.cell_line` must match what `collect_batch_covariates` produces, i.e.
-        #      "HEPG2" and not their lowercase "hepg2". Two casings would split one cell type
-        #      into two in the emitted obs.
-        import sys
-
-        from scipy.sparse import csr_matrix
-
-        _shared = ("/rxrx/scratch/sandbox/ihab.bendidi/tx_pretrained_models/Occam/"
-                   "competitors/shared")
-        if _shared not in sys.path:
-            sys.path.insert(0, _shared)
-        import occam_data as od
-
-        bench = od.load_occam_benchmark(str(cfg.data.occam_bench_dir), verify_sources=False)
-        a = od.load_occam_adata(
-            bench, cell_lines=["HEPG2"],
-            target_sum=float(getattr(cfg.data, "occam_target_sum", 10_000.0)),
-            log1p=bool(getattr(cfg.data, "occam_log1p", True)),
-            control_label=str(getattr(cfg.data, "control_pert", "empty")),
-            pert_col_out="gene")
-        keep = np.asarray(a.obs["is_control"], dtype=bool)
-        X = np.asarray(a.X, dtype=np.float32)[keep]
-        _batch_col = str(getattr(cfg.data, "perturbseq_batch_col", "batch_center"))
-        if _batch_col not in a.obs.columns:
-            raise ValueError(
-                f"occam_data did not emit {_batch_col!r}; have {list(a.obs.columns)}. "
-                f"build_obs_data needs the batch column as well as gene/cell_line, and a "
-                f"missing one only surfaces one call later.")
-        obs = pd.DataFrame({
-            "gene": np.asarray(a.obs["gene"], dtype=str)[keep],
-            "cell_line": np.asarray(a.obs["cell_line"], dtype=str)[keep],
-            "batch": np.asarray(a.obs[_batch_col], dtype=str)[keep],
-        }, index=[str(i) for i in range(int(keep.sum()))])
-        var = pd.DataFrame(index=pd.Index([str(g) for g in bench.axis_symbols]))
-        ctrl_adata = anndata.AnnData(X=csr_matrix(X), obs=obs, var=var)
-        if ctrl_adata.n_obs != 4976:
-            raise ValueError(
-                f"expected 4,976 HepG2 controls (the benchmark's own count, and what their "
-                f"replogle branch asserts), got {ctrl_adata.n_obs}")
-        logger.info("occam: %d HepG2 control cells x %d genes for the injected baseline",
-                    ctrl_adata.n_obs, ctrl_adata.n_vars)
-    elif "replogle" in cfg.data.data_name.lower() and (not cfg.data.sample_pbmc_only):
+    # ⚠️ NO occam BRANCH HERE, DELIBERATELY. `source_format == "occam"` never reaches this
+    # function -- `generate_samples` calls `build_occam_controls` instead. An occam branch
+    # here as well would be a SECOND, unreachable definition of where our control baseline
+    # comes from, free to drift from the live one. This function owns upstream's families.
+    if "replogle" in cfg.data.data_name.lower() and (not cfg.data.sample_pbmc_only):
         ctrl_adata = anndata.read_h5ad(cfg.path.replogle_ctrl_h5ad)
         ctrl_adata = ctrl_adata[ctrl_adata.obs.cell_line == "hepg2"]
         ctrl_adata = ctrl_adata[ctrl_adata.obs.gene == "non-targeting"]
@@ -340,24 +409,11 @@ def build_obs_data(cfg, all_pert, all_celltype, all_batch, ctrl_adata):
     :param ctrl_adata: Input `ctrl_adata` value.
     :return: Requested object(s) for downstream use.
     """
-    if str(getattr(cfg.data, "source_format", "")) == "occam":
-        # Same dispatch key as `load_ctrl_adata`'s occam branch, and the same column-naming
-        # discipline as `build_obs_data_zarr`: the names come from the data config, so the
-        # frame is exactly what `run_cell_eval` then reads back through
-        # `pert_col` / `cell_type_key` / `control_pert`. Hardcoding "gene" here (as the
-        # replogle branch does) would emit a column cell-eval is not told to look at.
-        #
-        # ⚠️ The control rows keep their own label in the perturbation column -- "empty",
-        # our derived control sentinel -- because that is how cell-eval finds the baseline.
-        obs_data = {
-            str(cfg.data.pert_col): np.concatenate(
-                [all_pert, np.asarray(ctrl_adata.obs["gene"].values, dtype=str)]),
-            str(cfg.data.cell_line_key): np.concatenate(
-                [all_celltype, np.asarray(ctrl_adata.obs["cell_line"].values, dtype=str)]),
-            str(cfg.data.perturbseq_batch_col): np.concatenate(
-                [all_batch, np.asarray(ctrl_adata.obs["batch"].values, dtype=str)]),
-        }
-    elif "replogle" in cfg.data.data_name.lower() and (not cfg.data.sample_pbmc_only) and (not cfg.data.sample_tahoe100m_only):
+    # ⚠️ NO occam BRANCH HERE, DELIBERATELY -- see `build_obs_data_occam`, which
+    # `generate_samples` selects instead. Two definitions of our obs frame could disagree on
+    # the column NAMES, and the names are what `run_cell_eval` reads the perturbation and
+    # cell-type columns by; a mismatch scores the wrong column without raising.
+    if "replogle" in cfg.data.data_name.lower() and (not cfg.data.sample_pbmc_only) and (not cfg.data.sample_tahoe100m_only):
         obs_data = {
             "gene": np.concatenate([all_pert, np.array(ctrl_adata.obs.gene.values)]),
             "cell_line": np.concatenate([all_celltype, np.array(ctrl_adata.obs.cell_line.values)]),

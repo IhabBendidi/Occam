@@ -15,7 +15,9 @@ from pathlib import Path
 
 from src.apps.sampling.sampling_generation_helpers import (
     build_obs_data,
+    build_obs_data_occam,
     build_obs_data_zarr,
+    build_occam_controls,
     build_zarr_controls,
     build_self_condition,
     build_x_ctrl,
@@ -267,13 +269,30 @@ def generate_samples(
     var_index = _genes
     source_format = getattr(cfg.data, "source_format", "h5ad")
 
+    # ---------------------------------------------------------------- controls + obs #
+    # THREE source families, and each one owns BOTH halves of this step -- where the
+    # control baseline comes from, and how the obs frame is named. Keeping the pair
+    # together per family is the whole point:
+    #
+    #   "zarr"  controls live inside the test split; obs uses config-driven names.
+    #   "occam" OUR benchmark: controls read from the frozen dir; obs config-driven.
+    #   else    upstream's own datasets, whose three helpers dispatch on substrings of
+    #           `cfg.data.data_name` (replogle / pbmc / tahoe).
+    #
+    # ⚠️ DO NOT route a new source family through the `else`. Our data went there first
+    # and it cost four separate crashes, each 45 min into a run and each one function
+    # further along the chain than the last (`load_ctrl_adata`, then `build_obs_data`,
+    # and the HVG restriction below would have been the third). A family that is not one
+    # of upstream's three needs its own pair here, not a branch inside each helper.
+    ctrl_adata = None
     if source_format == "zarr":
-        # Controls live in the test split itself; no separate control h5ad.
         X_ctrl, ctrl_obs = build_zarr_controls(cfg, datamodule, _genes, logger)
-        ctrl_adata = None
+    elif source_format == "occam":
+        X_ctrl, ctrl_obs = build_occam_controls(cfg, _genes, logger)
     else:
         ctrl_adata, _ = load_ctrl_adata(cfg)
         X_ctrl = build_x_ctrl(ctrl_adata, _genes, cfg)
+        ctrl_obs = None
 
     if normalize_counts is not None and normalize_counts is not False:
         all_samples *= normalize_counts
@@ -281,10 +300,25 @@ def generate_samples(
 
     if source_format == "zarr":
         obs = build_obs_data_zarr(cfg, all_pert, all_celltype, all_batch, ctrl_obs)
+    elif source_format == "occam":
+        obs = build_obs_data_occam(cfg, all_pert, all_celltype, all_batch, ctrl_obs)
     else:
         obs = build_obs_data(cfg, all_pert, all_celltype, all_batch, ctrl_adata)
-    
-    if source_format != "zarr" and len(np_mask) > 2000:  # e.g. data_name = "Tahoe100mPBMCPretrain"
+
+    # The HVG restriction below exists ONLY for upstream's case where the model's gene space
+    # is wider than the 2,000-gene downstream panel (e.g. data_name="Tahoe100mPBMCPretrain"),
+    # and it reads `ctrl_adata.var.highly_variable` -- a column only upstream's control h5ads
+    # carry. On our axis `_genes` IS the panel, so `np_mask` is all-True and there is nothing
+    # to restrict; entering it would have been the THIRD crash in this chain. Assert the
+    # assumption rather than trusting it.
+    if source_format == "occam":
+        if not bool(np_mask.all()):
+            raise ValueError(
+                f"occam: {int((~np_mask).sum())} of {len(np_mask)} model genes are not on the "
+                f"frozen axis. The axis and the model's gene space are the same object here; "
+                f"a mismatch means the run was built against a different benchmark.")
+
+    if source_format not in ("zarr", "occam") and len(np_mask) > 2000:  # e.g. Tahoe100mPBMCPretrain
         logger.info("Restricting to downstream data selected genes only...")
         assert (ctrl_adata.var.index[ctrl_adata.var.highly_variable] == _genes).all()
 

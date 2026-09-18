@@ -627,9 +627,17 @@ def run_train(cfg: dict[str, Any], *, config_path: Path | None = None) -> Path:
         "num_iterations": n_iter,
         "batch_size": batch_size,
         "schema": schema,
-        "data_dir": str(data_cfg["data_dir"]),
-        "train_sources": [str(s["data_dir"]) for s in (data_cfg.get("train_sources") or [])],
-        "split_path": str(data_cfg["split_path"]),
+        # ⚠️ The occam path has NEITHER `data_dir` NOR `split_path`: the benchmark directory
+        # is both the source manifest and the split, read live (see `occam_bridge/occam.py`),
+        # and `run_train` refuses a `split_path` alongside it so the split has one owner.
+        # Indexing them unconditionally raised KeyError AFTER the model, the PCA basis and
+        # the selection score had all been written -- a run that had done all its work and
+        # then failed to describe itself.
+        "source": "occam" if occam else "files",
+        "occam_bench_dir": str(data_cfg.get("occam_bench_dir") or "") or None,
+        "data_dir": str(data_cfg["data_dir"]) if "data_dir" in data_cfg else None,
+        "train_sources": [str(s.get("data_dir")) for s in (data_cfg.get("train_sources") or [])],
+        "split_path": str(data_cfg["split_path"]) if "split_path" in data_cfg else None,
         "fold": int(data_cfg.get("fold", 0)),
         # run_meta.json carried no seed and no metrics, so a finished run could not say which
         # state it had kept or why.

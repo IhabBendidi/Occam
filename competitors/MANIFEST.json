@@ -1,7 +1,7 @@
 {
   "arms": {
     "CellFlow": {
-      "bytes": 1412272,
+      "bytes": 1416905,
       "files": {
         ".python-version": {
           "bytes": 5,
@@ -196,8 +196,8 @@
           "sha256": "9577cdd18492cf7376427a0edb361315ed8196bf3d36866bcf068470191f278f"
         },
         "cellflow_selection.py": {
-          "bytes": 19484,
-          "sha256": "79f09522b5b1da2a05641efd69d2a67b8bf39c758f14989436eb7b3cc8ea524c"
+          "bytes": 23406,
+          "sha256": "4eb49b1bc03f4832f11f30bcee6ba612f12ad9b10595eaebb3afb42977293527"
         },
         "configs/occam_rhj_fewshot.yaml": {
           "bytes": 6186,
@@ -240,14 +240,14 @@
           "sha256": "547607c148539e6c4ccb9ce2dcfd3c866285a8bba6f6a0c24ff6d05bd1727b64"
         },
         "train_cellflow.py": {
-          "bytes": 31291,
-          "sha256": "9d60147c9527cbe28ec4c4df354d53a4544b08003367c733d443d7be6b32d8fd"
+          "bytes": 32002,
+          "sha256": "e1d887706e1007a0895c197c5f485a4eacd20f88bbf2298a67d71befb0333512"
         }
       },
       "n_files": 60
     },
     "PerturbDiff": {
-      "bytes": 2779154,
+      "bytes": 2783786,
       "files": {
         ".python-version": {
           "bytes": 5,
@@ -414,12 +414,12 @@
           "sha256": "2b9cf5f2c50c34b720ad8fcc42129f46031b31f0ca161d56b6fccb62cfd04a98"
         },
         "src/apps/sampling/sampling_generation.py": {
-          "bytes": 14271,
-          "sha256": "41a2d62114911925334756b3dc77184bd9d8adbf23748c4607c0701bf3830148"
+          "bytes": 16443,
+          "sha256": "d7b565ccba41e12b96656ec4b3190744668808007b994059573c2e8dff6f58a4"
         },
         "src/apps/sampling/sampling_generation_helpers.py": {
-          "bytes": 18647,
-          "sha256": "a7d31bab0903ac142f09aa921f5405f4850360e5bd3d7343fd11d987283f687d"
+          "bytes": 21107,
+          "sha256": "1d324608c521021cd93732cd57fecbe14083bd555c1adb702570fb3818bb5dfb"
         },
         "src/apps/sampling/sampling_io.py": {
           "bytes": 1299,

@@ -54,7 +54,17 @@ CLIP_MIN, CLIP_MAX = 0.0, 14.0
 
 PERT_COL = "target_gene"
 CELL_TYPE_COL = "cell_type"
-CONTROL_PERT = "empty"
+
+# ⚠️ "non-targeting", NOT our data config's "empty". This is the SCORER's vocabulary:
+# `occam.vcell.panel.celleval_v1` hardcodes `CONTROL = "non-targeting"` and takes no
+# override, and every other emitter in the pipeline (`competitors/shared/export_predictions
+# .py`, `panel_io`, `splithalf`, `predict`) relabels at this same boundary. Writing "empty"
+# here made cell-eval fail with
+#     ValueError: Control perturbation (non-targeting) not found in real AnnData
+# which `run_cell_eval` turns into an empty metrics dict on a ZERO exit code -- so the
+# selection saw "no metrics" with no reason attached, for every validation pass.
+# These are the same cells either way; only the label the scorer looks for changes.
+CONTROL_PERT = "non-targeting"
 
 # ⚠️ SELECTION SCORES THROUGH *OUR* CELL-EVAL.
 #
@@ -101,11 +111,34 @@ def read_agg_metrics(results_dir: Path) -> dict[str, float]:
     }
 
 
-def _condition_label(key: Any) -> str:
-    """One condition key from the validation sampler as a cell-eval perturbation label."""
-    if isinstance(key, (tuple, list)):
-        return "+".join(str(k) for k in key)
-    return str(key)
+def _condition_label(key: Any, *, cell_type: str | None = None) -> str:
+    """One condition key from the validation sampler as a cell-eval perturbation label.
+
+    ⚠️ RETURNS THE BARE PERTURBATION SYMBOL. CellFlow's condition key is a tuple over the
+    `split_covariates` -- here `(perturbation, cell_type)` -- and joining it with "+" emitted
+    labels like `ALG11+HEPG2`. Nothing else in the pipeline uses that format: the frozen
+    cohort, the panel, and every other arm's export all carry bare symbols. The object is
+    single-cell-type by construction (the callback asserts one `cell_type`), so the suffix
+    added no information and only made the validation metric's DE grouping keyed on a label
+    format that appears nowhere else.
+
+    Any non-perturbation components are checked against `cell_type` rather than dropped
+    silently -- a key whose second element is NOT the cell type would mean the condition
+    space is not what this function assumes.
+    """
+    if not isinstance(key, (tuple, list)):
+        return str(key)
+    parts = [str(k) for k in key]
+    if not parts:
+        raise ValueError("empty condition key")
+    if cell_type is not None:
+        extra = [x for x in parts[1:] if x != str(cell_type)]
+        if extra:
+            raise ValueError(
+                f"condition key {parts!r} carries component(s) {extra!r} that are neither the "
+                f"perturbation nor the cell type {cell_type!r}. The label would silently "
+                f"become a format nothing downstream recognises.")
+    return parts[0]
 
 
 class SelectionCallback:
@@ -252,13 +285,29 @@ class SelectionCallback:
 
         work.mkdir(parents=True, exist_ok=True)
         pred_blocks, pred_labels, real_blocks, real_labels = [], [], [], []
+        # ⚠️ ONE PREDICTED CELL PER REAL CELL, per condition. CellFlow predicts one cell per
+        # OT SOURCE cell, and the source population is the whole injected control pool
+        # (4,976), while a condition's real population is ~50 cells. Left as-is that emitted
+        # 303,536 predicted rows against 9,056 real ones -- an 8.5 GB h5ad per validation
+        # pass, and a per-condition n that differs from the one the TEST protocol uses (there
+        # each perturbation gets one predicted cell per DRAWN control cell, matched to the
+        # target's own count). Selection has to optimise the same quantity that gets
+        # reported, so the counts are matched here.
+        #
+        # The draw is deterministic per (condition, n) and takes a sorted subset, so the
+        # predicted cells are an unbiased sample of the same predictive distribution -- this
+        # reduces estimator variance asymmetry, it does not manufacture signal.
         for val_key, preds in valid_pred_data.items():
             truths = valid_true_data[val_key]
             for cond, pred in preds.items():
-                label = _condition_label(cond)
+                label = _condition_label(cond, cell_type=self.cell_type)
                 n_comps = self.pcs.shape[1]
                 p = self._decode(np.asarray(pred).reshape(-1, n_comps))
                 t = self._decode(np.asarray(truths[cond]).reshape(-1, n_comps))
+                if len(p) > len(t):
+                    rng = np.random.default_rng(abs(hash((label, len(t)))) % (2**32))
+                    take = np.sort(rng.choice(len(p), size=len(t), replace=False))
+                    p = p[take]
                 pred_blocks.append(p)
                 pred_labels += [label] * len(p)
                 real_blocks.append(t)
@@ -335,10 +384,18 @@ class SelectionCallback:
         metrics = json.loads(out_json.read_text())
         missing = [k for k in SELECTION_SCORE_COMPONENTS if k not in metrics]
         if missing:
+            # ⚠️ INCLUDE THE CHILD'S OUTPUT. `run_cell_eval` prints the cell-eval stderr tail
+            # to its own stdout and RETURNS {} rather than raising, so the child exits 0 with
+            # an empty metrics file and the real reason -- e.g.
+            #   ValueError: Control perturbation (non-targeting) not found in real AnnData
+            # -- lives only in that captured stdout. Discarding it on a zero exit cost three
+            # wrong diagnoses of this exact failure.
             raise RuntimeError(
                 f"cell-eval returned no {missing} on the validation split, so "
                 f"{SELECTION_SCORE_NAME} cannot be formed and no checkpoint could be "
-                f"selected. Got {sorted(metrics)[:10]}")
+                f"selected. Got {sorted(metrics)[:10]}.\n"
+                f"--- child stdout (tail) ---\n{proc.stdout[-3000:]}\n"
+                f"--- child stderr (tail) ---\n{proc.stderr[-2000:]}")
         return {str(k): float(v) for k, v in metrics.items()
                 if isinstance(v, (int, float)) and np.isfinite(float(v))}
 
