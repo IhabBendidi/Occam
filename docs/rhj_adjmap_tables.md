@@ -6,7 +6,7 @@ Comparison metrics (decision 2026-09-17): `pearson_delta`, `mae` ↓, `overlap_a
 
 `val` is group-mean `pearson_delta` on the 103 HepG2 **validation** perturbations — the checkpoint-selection metric, read at the epoch that scored best. The cell-eval columns are the 611 held-out **test** perturbations under the split-half protocol.
 
-97 of 367 completed arms scored so far.
+98 of 486 completed arms scored so far.
 
 ## Baselines, all 5 splits
 
@@ -24,20 +24,21 @@ Spearman rho over the arms scored so far. **Positive and high** = validation is 
 
 | cell-eval metric | arm | Spearman rho vs val | n |
 |---|---|---|---|
-| `pearson_delta` | `model_nocal` | **+0.943** | 97 |
-| `mae` | `model_nocal` | **-0.715** *(lower is better, so a NEGATIVE rho is the good sign)* | 97 |
-| `overlap_at_N` | `model_nocal` | **+0.448** | 97 |
-| `discrimination_score_l1` | `model_nocal` | **+0.210** | 97 |
-| `pearson_delta` | `model_cal` | **+0.272** | 74 |
-| `mae` | `model_cal` | **+0.172** *(lower is better, so a NEGATIVE rho is the good sign)* | 74 |
-| `overlap_at_N` | `model_cal` | **+0.178** | 74 |
-| `discrimination_score_l1` | `model_cal` | **-0.296** | 74 |
+| `pearson_delta` | `model_nocal` | **+0.945** | 98 |
+| `mae` | `model_nocal` | **-0.724** *(lower is better, so a NEGATIVE rho is the good sign)* | 98 |
+| `overlap_at_N` | `model_nocal` | **+0.464** | 98 |
+| `discrimination_score_l1` | `model_nocal` | **+0.234** | 98 |
+| `pearson_delta` | `model_cal` | **+0.263** | 75 |
+| `mae` | `model_cal` | **+0.204** *(lower is better, so a NEGATIVE rho is the good sign)* | 75 |
+| `overlap_at_N` | `model_cal` | **+0.132** | 75 |
+| `discrimination_score_l1` | `model_cal` | **-0.324** | 75 |
 
 ## Arms by cell-eval `pearson_delta` — `model_nocal`
 
 | arm | val | `pearson_delta` | `mae` ↓ | `overlap_at_N` | `disc_l1` | splits | lr | dlr | cos | dpo | film_mode | fh | fmf |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | `s313` | 0.3769 | 0.3415 | 0.0210 | 0.0642 | 0.6534 | 5 | 1e-3 | 1e-3 | 0.5 | 0 | multiplicative_only | 256 | 1 |
+| `s469` | 0.3805 | 0.3392 | 0.0210 | 0.0669 | 0.6533 | 5 | 3e-3 | 1e-3 | 0.5 | 0 | full | 0 | 1 |
 | `s129` | 0.3676 | 0.3348 | 0.0210 | 0.0618 | 0.6479 | 5 | 3e-4 | 1e-3 | 0.25 | 0 | full | 256 | 1 |
 | `s018` | 0.3367 | 0.3084 | 0.0215 | 0.0571 | 0.6384 | 1 | 3e-4 | 1e-4 | 0.25 | 0 | full | 0 | 0 |
 | `s084` | 0.3214 | 0.3062 | 0.0218 | 0.0546 | 0.6302 | 1 | 3e-4 | 3e-4 | 0.25 | 1 | full | 0 | 0 |
@@ -180,6 +181,7 @@ Spearman rho over the arms scored so far. **Positive and high** = validation is 
 | `s040` | 0.3142 | 0.2695 | 0.0603 | 0.0326 | 0.7524 | 1 | 3e-4 | 1e-4 | 0.5 | 0 | multiplicative_only | 0 | 0 |
 | `s006` | 0.3184 | 0.2685 | 0.0573 | 0.0402 | 0.7504 | 1 | 3e-4 | 1e-4 | 0.0 | 0 | multiplicative_only | 256 | 0 |
 | `s047` | 0.3149 | 0.2680 | 0.0558 | 0.0341 | 0.7451 | 1 | 3e-4 | 1e-4 | 0.5 | 0 | additive_only | 256 | 1 |
+| `s469` | 0.3805 | 0.2676 | 0.0797 | 0.0188 | 0.7249 | 5 | 3e-3 | 1e-3 | 0.5 | 0 | full | 0 | 1 |
 | `s023` | 0.3209 | 0.2671 | 0.0655 | 0.0406 | 0.7281 | 1 | 3e-4 | 1e-4 | 0.25 | 0 | multiplicative_only | 0 | 1 |
 | `s008` | 0.3107 | 0.2671 | 0.0578 | 0.0359 | 0.7528 | 1 | 3e-4 | 1e-4 | 0.0 | 0 | additive_only | 0 | 0 |
 | `s041` | 0.3152 | 0.2634 | 0.0673 | 0.0358 | 0.7281 | 1 | 3e-4 | 1e-4 | 0.5 | 0 | multiplicative_only | 0 | 1 |

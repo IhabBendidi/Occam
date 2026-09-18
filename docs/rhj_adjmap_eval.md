@@ -75,6 +75,95 @@ is +0.491, so "2nd best on val" says little about 2nd best on cell-eval.
 ❌ **Not licensed: claiming the selected arm is best on `disc_l1` or `overlap_at_N`.** rho +0.198
 and +0.444. If those matter for a decision, that arm must be scored directly.
 
+## ⛔ F-adj5 — THE ARGMAX POLICY FAILED ITS THIRD TEST. `s469` has the higher val and the LOWER `pearson_delta`.
+
+**This withdraws the unqualified form of F-adj2.** `s469` set a new validation record (0.3805 vs
+`s313`'s 0.3769) and came out **worse** on the headline metric, on 5 of 5 splits.
+
+Paired, `s469` minus `s313`, uncalibrated, all 5 splits:
+
+| metric | `s313` (val 0.3769) | `s469` (val **0.3805**) | paired diff | diff sd | `s469` wins |
+|---|---|---|---|---|---|
+| `pearson_delta` | **0.3415** | 0.3392 | **−0.0023** | 0.0016 | **0/5** |
+| `mae` ↓ | 0.0210 | 0.0210 | −0.0000 | 0.0000 | 0/5 |
+| `overlap_at_N` | 0.0642 | **0.0669** | **+0.0027** | 0.0005 | **5/5** |
+| `discrimination_score_l1` | 0.6534 | 0.6533 | −0.0000 | 0.0010 | 2/5 |
+
+| split | `s313` | `s469` | diff |
+|---|---|---|---|
+| 0 | 0.3411 | 0.3376 | −0.0035 |
+| 1 | 0.3464 | 0.3452 | −0.0012 |
+| 2 | 0.3407 | 0.3378 | −0.0030 |
+| 3 | 0.3378 | 0.3378 | −0.0000 |
+| 4 | 0.3414 | 0.3375 | −0.0038 |
+
+**The three record holders are mis-ordered by validation:**
+
+| | order |
+|---|---|
+| by validation | `s469` > `s313` > `s129` |
+| by cell-eval `pearson_delta` | **`s313` > `s469` > `s129`** |
+
+### This is not a surprise — it is F-adj2's own caveat arriving
+
+F-adj2 measured it and said so: **top-10-by-val rho was +0.491**, against +0.941 over the full
+range. The val gap between `s469` and `s313` is **0.0036** — a near-tie, exactly the regime the
+restricted-range number said validation cannot resolve. The policy was adopted on the argmax
+test passing 1-for-1, then 2-for-2; at 2-for-3 the honest reading is that **the argmax test was
+underpowered, not that validation is useless.**
+
+⚠️ **What I got wrong.** I reported F-adj3 as "the argmax-only policy passed its second test"
+without stating that two passes cannot distinguish a working policy from a coin flip in a
+near-tie regime whose measured rho is +0.49. The caveat was in the doc; it should have been in
+the conclusion.
+
+### `s469` is genuinely better on `overlap_at_N`, 5/5
+
+Not a wash. `s469` wins `overlap_at_N` **+0.0027 with a diff sd of 0.0005**, 5/5 splits — a
+cleaner signal than its `pearson_delta` loss. So the two arms are **not** ranked consistently by
+the four comparison metrics, and "the best arm" is now metric-dependent:
+
+| metric | best arm |
+|---|---|
+| `pearson_delta` | `s313` **0.3415** |
+| `overlap_at_N` | `s469` **0.0669** |
+| `discrimination_score_l1` | tie (0.6534 / 0.6533) |
+| `mae` ↓ | tie (0.0210 both) |
+
+That is consistent with F-adj2's per-metric rho: `pearson_delta` +0.941 but `overlap_at_N` only
++0.444, so validation was never a proxy for `overlap_at_N` and is not ranking it here either.
+
+### The gap widens monotonically with val — third data point
+
+| arm | val | cell-eval | gap |
+|---|---|---|---|
+| `s129` | 0.3676 | 0.3348 | −0.0328 |
+| `s313` | 0.3769 | 0.3415 | −0.0354 |
+| **`s469`** | **0.3805** | 0.3392 | **−0.0413** |
+
+**Monotone across all three, and `s469`'s is the widest.** The validation overfitting reading
+from F-adj3 now has three points supporting it: higher val buys progressively less cell-eval,
+and past `s313` it buys *nothing* on `pearson_delta`. The `−0.0350` constant in
+`scripts/eval_val_winner.py` is already the top-of-range figure and now looks optimistic at the
+very top; it stays as a sanity check, never a reported number.
+
+### ⚠️ What this changes, and what is the user's call
+
+The evidence no longer supports "evaluate only the val argmax" as a way to *find the best arm*.
+It still supports it as a cheap **screen** — all three record holders land in 0.3348–0.3415,
+well clear of the `transfer` bar 0.2323, so validation reliably finds a *good* arm.
+
+Options, not decisions:
+1. **Score the top N by val** (say 5) rather than the argmax, accepting 5x the eval cost, since
+   the top-10 rho of +0.491 means the winner is somewhere in that band and not identifiable
+   from val alone.
+2. **Keep argmax-only** and accept that the reported arm is "a near-best arm", stated as such.
+3. **Re-fit selection on a metric with a tighter rho** — but no metric has a better one:
+   `pearson_delta` +0.941 is the best available, and it is the one that just failed in a
+   near-tie.
+
+⚠️ `s313` remains the best measured arm on `pearson_delta` and the one to quote, at **0.3415**.
+
 ## F-adj4 — the sweep is COMPLETE (486/486), and the record moved to `s469`
 
 **All 486 arms finished, 0 failed** (job `18036460`, completed 2026-09-18).
