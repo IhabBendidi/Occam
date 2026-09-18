@@ -590,6 +590,62 @@ The plan's own rule applies and is not optional: **one arm, one seed, one split 
 before any 4×5 sweep.** The last two 135-task launches in this campaign died on code that had
 never executed once on the real path.
 
+## ⭐ C12 — TxPert TRAINS ON OUR DATA. The port works end to end.
+
+**Finding: TxPert's first real execution against `rhj_fewshot` reached training with no code
+change beyond the port.** Job `18067027`, `hop39`, 2026-09-18.
+
+What it loaded, straight from its own log — every line is our benchmark, not theirs:
+
+```
+occam: rhj_fewshot: 6,983 genes · val 103 · test 621 · 724 (file, pert) exclusions
+                    · lines ['HEPG2', 'RPE1', 'jurkat']
+  nadig_2024_hepg2.h5ad:      145,473 x 6,983 ( 4,976 controls)
+  nadig_2024_jurkat.h5ad:     262,956 x 6,983 (12,013 controls)
+  replogle_2022_rpe1_e.h5ad:  247,914 x 6,983 (11,485 controls)
+occam: combined 656,343 cells x 6,983 genes | 2,394 perturbations | X max 8.36
+occam: split names -> train 2,394, validation 103, test 621
+adata_output_dim : 6983
+graph_dict keys: dict_keys(['go', 'string'])
+kg_list: ['go', 'string']
+zarr splits: 2395 train (global), 103 val, 621 test (both hepg2 only)
+```
+
+Every deliberate decision is visible and correct:
+
+| decision | evidence in the log |
+|---|---|
+| our data, read in place | our three h5ad filenames, 656,343 cells |
+| our gene axis | `6,983` throughout, and `adata_output_dim : 6983` |
+| our splits | `103 val / 621 test`, `both hepg2 only` |
+| our exclusions | `724 (file, pert) exclusions` |
+| GO + STRING only | `kg_list: ['go', 'string']` — pxmap/txmap gone |
+| normalisation is ours-for-them | `X max 8.36`, i.e. log1p space, not counts |
+
+⭐ **Data loading took 5 min 25 s** (02:39:12 → 02:44:38) for 656k cells over three h5ads, and
+the whole path from launch to the Lightning trainer took **~6 min**.
+
+ⓘ **The perturbation vocabulary self-extended by 20 symbols** absent from TxPert's shipped
+`gears_gene_set.csv` (9,854 → 9,874), including `ALG1L`, `C14orf178`, `NEDD8-MDP1` and
+`CCDC144NL` — the same symbols our own split had to drop for having no graph node. That is the
+`_extend_pert_vocabulary` path working as designed: it keeps the cohort intact rather than
+silently dropping perturbations, which is what `scripts/eval_competitor.py` would have refused
+on anyway.
+
+⚠️ **This validates the DATALOADER, not the adapter.** `competitors/TxPert/export_occam.py` has
+still never run — it executes in the export leg (`18067028`), which is `afterok`-chained behind
+training. That adapter remains the least-tested part of the port.
+
+### Provenance: it sat in a queue for 19 hours first
+
+Submitted to `vco` at 2026-09-17T15:11 and never started — `QOSGrpGRES`, because another user
+held **32 of `vco`'s h100s** for the whole period. Cancelled and resubmitted on
+`hooke-predict` (13 running, 0 pending), where it started in **15 seconds**.
+
+⚠️ Worth remembering when a competitor arm looks stalled: check `squeue -h -o "%q %T %u %b"`
+for who owns the QOS's GRES cap before assuming the job is broken. Nineteen hours produced no
+log file at all, which reads exactly like a failure and was not one.
+
 ## Status
 
 | step | state |
@@ -603,7 +659,8 @@ never executed once on the real path.
 | 4b — STATE reads our data | ✅ C6 above, smoke-tested end to end |
 | 4c — CellFlow reads our data | ✅ C8 above, smoke-tested on the FULL benchmark |
 | 4d — PerturbDiff reads our data | ✅ C9 above, smoke-tested on the FULL benchmark; validation count matches CellFlow's exactly |
-| 5b — the four Phase-A adapters | ✅ written (C11); ⚠️ **UNEXERCISED** — no checkpoint exists yet |
+| 5b — the four Phase-A adapters | ✅ written (C11); ⚠️ **still UNEXERCISED** — TxPert's runs in the export leg `18067028`, chained behind training |
+| first end-to-end arm | ✅ **TxPert TRAINING** on our data (C12), job `18067027` on hooke-predict |
 | 5 — the prediction bridge | ✅ Phase A + Phase B written, control draw verified identical to `predict_panel`; **gate PASSED** (C7) |
 | 6 — launchers, collector | ✅ C5 above; `scripts/collect_competitors.py` writes `docs/rhj_competitors_results.md` |
 | 7 — tests | ✅ `test_competitor_bridge.py` (10) + `test_competitor_manifest.py` (7) |
