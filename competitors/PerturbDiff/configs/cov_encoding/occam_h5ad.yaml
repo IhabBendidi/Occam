@@ -59,4 +59,22 @@ gene_embedding_path: ["${...path.tmp_dir}/gene_names/pbmc_highly_variavle_gene_e
 pert_embedding_path: ${..path.tmp_dir}/meta_data/idx_to_pertemb.pkl
 celltype_embedding_path: ${..path.tmp_dir}/meta_data/new_all_emb.pkl
 drug_embedding_path: ${..path.tmp_dir}/meta_data/drug_embed_chemberta_cls_dict.pkl
-replogle_gene_embedding_path: ${..path.tmp_dir}/gene_names/replogle_gene_emb_dict_perturbation_emb_dict.pkl
+# ⚠️ OUR REBUILT GENEPT PICKLE, not their 2,024-key one. Theirs was truncated to their
+# 2,000-HVG panel and left 64 of our 611 SCORED perturbations with an all-zero embedding --
+# indistinguishable to the model, for a reason that is a property of the asset and not of
+# PerturbDiff.
+#
+# The rebuild is the union of the full GenePT v2 release (133,736 keys) with theirs, restricted
+# to our 2,381 symbols. It is legitimate because it invents nothing: their pickle is a strict
+# subset of that release and the values are BYTE-IDENTICAL (max abs diff 0.000e+00 over 300
+# shared keys, asserted by the builder, which refuses on any disagreement). Their 15
+# alias-only keys are kept, which is what closes the last 8 of the cohort.
+#
+#   the 611 scored cohort : 89.5% -> 100.0%  (64 zeros -> 0)
+#   all 2,381 symbols     : 84.9% ->  99.8%  (360 zeros -> 5, all train-only)
+#
+# ⚠️ This makes the genept arm NOT comparable to PerturbDiff's published 0.40306, which used
+# the truncated pickle on their own panel. Say so beside the number.
+#
+# Regenerate with: python scripts/build_genept_for_occam.py
+replogle_gene_embedding_path: /rxrx/scratch/sandbox/ihab.bendidi/tx_pretrained_models/Occam/data/assets/genept_occam_rhj_fewshot.pkl

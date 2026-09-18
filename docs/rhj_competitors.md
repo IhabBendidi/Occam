@@ -710,6 +710,65 @@ both encodings, and its own >1-checkpoint guard would then have refused both. It
 now, which narrows the glob and is also forwarded to `cov_encoding.replogle_gene_encoding` so
 the sampling config rebuilds the right covariate encoder.
 
+## ⭐ C14 — the genept pickle was TRUNCATED, not incapable. Rebuilt at 100% cohort coverage.
+
+**Finding: PerturbDiff's genept handicap was an artifact of the asset, and it is removable
+without inventing anything.**
+
+`replogle_gene_emb_dict_perturbation_emb_dict.pkl` — the pickle their fewshot recipe passes —
+holds **2,024 keys**, their 2,000-HVG panel's vocabulary. The **full GenePT v2 release**, on
+disk at `GenePT/genept_embeddings/extracted/GenePT_emebdding_v2/`, holds **133,736 keys at the
+same 3,072 dimensions**.
+
+⛔ **The check that licenses the rebuild**, measured 2026-09-18:
+
+| check | result |
+|---|---|
+| their keys present in the full release | **2,009 / 2,024** |
+| max abs value difference, 300 shared keys | **0.000e+00** — byte-identical |
+
+Same embedding model, same dimensionality, identical values. So the rebuild **invents nothing**;
+it stops truncating an asset that already covers our genes. Per the project's *"not biology is
+not the same as cheating"* rule this is using an asset at its real coverage, which makes the arm
+a more faithful representation of the model. `scripts/build_genept_for_occam.py` **refuses** if
+the values ever disagree, because then it would be changing the arm rather than un-truncating
+it.
+
+### The union, not a replacement — and that is what closes the gap
+
+⚠️ Their pickle has **15 keys the full release lacks** (`AC118549.1`, `C12orf45`, `C7orf26`,
+`C9orf16`, `FAM102B`, …) — aliases they added. The output is `full ∪ theirs`, their value
+winning on a shared key. Those 15 are exactly what takes the cohort from 98.7% to **100%**:
+
+| set | theirs (2,024 keys) | **rebuilt (2,376 keys)** |
+|---|---|---|
+| **the 611 scored perturbations** | 547 (89.5%), **64 zero** | **611 (100.0%), 0 zero** |
+| all 2,381 symbols | 2,021 (84.9%), 360 zero | **2,376 (99.8%), 5 zero** |
+
+The 5 that remain (`C1orf109`, `CCDC130`, `DDN`, `FRG2`, `TDGF1`) are **train-only** and absent
+from both sources; they keep a zero embedding.
+
+⚠️ **This makes the genept arm NOT comparable to PerturbDiff's published 0.40306**, which was
+measured with the truncated pickle on their own panel. That caveat travels with the number.
+
+Artifact: `data/assets/genept_occam_rhj_fewshot.pkl` (65.7 MB) plus a `.json` manifest recording
+both source sha256s, the value check, the merge rule and the residual 5.
+
+### Relaunched
+
+| arm | encoding | train | export | score |
+|---|---|---|---|---|
+| `perturbdiff_genept` | genept, **rebuilt pickle** | **`18072825`** | `18072826` | `18072827` |
+| `perturbdiff_onehot` | onehot | `18072187` | `18072188` | `18072189` |
+
+The first genept chain (`18072184`) was cancelled ~20 min into 80,000 steps and its checkpoint
+directory removed — cheap, and it was training against 64 zeroed perturbations. The onehot arm
+was left running untouched: it has no coverage gap, so nothing about it changed.
+
+ⓘ **The comparison is now cleaner than originally planned.** genept-vs-onehot was going to
+confound "which encoding is better" with "genept is missing 10% of the cohort". Both arms now
+have full cohort coverage, so the contrast measures the encoding.
+
 ## Status
 
 | step | state |
