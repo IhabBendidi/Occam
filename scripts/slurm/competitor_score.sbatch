@@ -58,11 +58,17 @@ ARM="${ARM:?set ARM=txpert|state|cellflow|perturbdiff and pass --export=ALL,ARM,
 SEED="${SEED:?set SEED=42..46 and pass --export=ALL,ARM,SEED}"
 SPLIT="${SLURM_ARRAY_TASK_ID:-0}"
 
-PRED_DIR="$HERE/runs/competitors/$ARM/s${SEED}/split_${SPLIT}"
-OUT_ROOT="$HERE/runs/rhj_splithalf/compet_${ARM}_s${SEED}"
+# ⚠️ ARM_SUFFIX separates VARIANTS OF ONE ARM -- see the note in competitor_export.sbatch.
+# Two configurations of the same arm and seed would otherwise share one output directory and
+# the second would silently overwrite the first.
+ARM_SUFFIX="${ARM_SUFFIX:-}"
+ARM_OUT="${ARM}${ARM_SUFFIX}"
+PRED_DIR="$HERE/runs/competitors/$ARM_OUT/s${SEED}/split_${SPLIT}"
+OUT_ROOT="$HERE/runs/rhj_splithalf/compet_${ARM_OUT}_s${SEED}"
 
 competitor_banner "$ARM" score "$SEED" "$HERE"
 echo "  split   $SPLIT"
+echo "  out arm $ARM_OUT"
 echo "  pred    $PRED_DIR"
 echo "  out     $OUT_ROOT"
 

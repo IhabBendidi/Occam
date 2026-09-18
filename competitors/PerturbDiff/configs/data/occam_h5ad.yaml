@@ -61,14 +61,23 @@ pad_length: 6983
 normalize_counts: false        # already log1p(1e4) on the FULL source panel row sum
 
 # --- cell sets --------------------------------------------------------------
-use_cell_set: 32               # upstream's Replogle setting
+use_cell_set: 16               # the FEWSHOT recipe's value, not the 32 of upstream's
+                               # general Replogle setting. reproducibility/
+                               # perturbdiff__replogle_nadig_fewshot/launch.real.train.sh
+                               # uses PD_CELL_SET=16, and the launcher passes 16, so this
+                               # line was previously dead -- a value in a config that
+                               # never applies is worse than no value at all.
 # How a cell set is defined:
 #   pert_celltype_batch -- upstream PerturbDiff. On this data the median group
 #       holds 1 cell, so ~94% of rows are replacement-drawn duplicates and the
 #       epoch inflates 16x.
 #   pert_celltype       -- STATE's sentence grouping; median 53 cells, 1.2x.
 # Both are supported so the two can be compared; see ZARR_BENCHMARK.md section 4.
-cell_set_group_by: pert_celltype_batch
+# STATE's sentence grouping, which the FEWSHOT recipe uses (PD_GROUP=pert_celltype).
+# NOT upstream's general `pert_celltype_batch`: on this data the median
+# (pert, celltype, batch) group holds 1 cell, so ~94% of rows would be
+# replacement-drawn duplicates and the epoch would inflate 16x. See ZARR_BENCHMARK.md §4.
+cell_set_group_by: pert_celltype
 optimizer_batch_size: ${..optimization.micro_batch_size}
 sample_cell_set_strategy: same_lpb
 use_fixed_pairing: true

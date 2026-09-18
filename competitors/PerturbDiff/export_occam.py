@@ -82,7 +82,7 @@ for _p in (_HERE, os.path.join(_REPO, "competitors", "shared")):
         sys.path.insert(0, _p)
 
 
-def _resolve_checkpoint(seed: int, explicit: str) -> str:
+def _resolve_checkpoint(seed: int, explicit: str, penc: str = "") -> str:
     """The checkpoint PerturbDiff itself selected on VALIDATION, never the last step.
 
     Its training leg runs `ModelCheckpoint(monitor="validation/celleval/selection_score",
@@ -95,14 +95,18 @@ def _resolve_checkpoint(seed: int, explicit: str) -> str:
             raise SystemExit(f"no checkpoint at {explicit}")
         return explicit
     root = os.path.join(_REPO, "runs", "competitors", "perturbdiff", "ckpt")
-    hits = sorted(glob.glob(os.path.join(root, f"pd_occam_*_s{seed}", "*.ckpt")))
+    # ⚠️ `penc` NARROWS THE GLOB. Two encodings of the same seed (genept and onehot) both match
+    # `pd_occam_*_s{seed}`, and the >1 guard below would then refuse both. The run name carries
+    # the encoding (`pd_occam_<group>_lr<lr>_<penc>_cs<n>_s<seed>`), so pass --penc to pick one.
+    pat = f"pd_occam_*_{penc}_*_s{seed}" if penc else f"pd_occam_*_s{seed}"
+    hits = sorted(glob.glob(os.path.join(root, pat, "*.ckpt")))
     if not hits:
         raise SystemExit(
-            f"no checkpoint under {root}/pd_occam_*_s{seed}/. Either training has not "
-            f"finished for seed {seed}, or it wrote elsewhere.")
+            f"no checkpoint under {root}/{pat}/. Either training has not finished for seed "
+            f"{seed}, or it wrote elsewhere, or --penc {penc!r} does not match the run name.")
     if len(hits) > 1:
         raise SystemExit(
-            f"{len(hits)} checkpoints under {root}/pd_occam_*_s{seed}/: {hits}. "
+            f"{len(hits)} checkpoints under {root}/{pat}/: {hits}. "
             f"save_top_k=1 only prunes files it tracked itself, so a smoke run's checkpoint "
             f"can sit beside a real one. Pass --checkpoint explicitly.")
     return hits[0]
@@ -117,6 +121,9 @@ def main(argv=None) -> int:
     ap.add_argument("--panel-dir", required=True)
     ap.add_argument("--bench-dir", required=True)
     ap.add_argument("--checkpoint", default="")
+    ap.add_argument("--penc", default="",
+                    help="perturbation encoding in the run name (genept | onehot). Narrows the "
+                         "checkpoint glob when several encodings share a seed.")
     ap.add_argument("--config-name", default="rawdata_diffusion_sampling")
     ap.add_argument("--cell-type", default="HEPG2")
     ap.add_argument("--sets-per-batch", type=int, default=8)
@@ -137,7 +144,7 @@ def main(argv=None) -> int:
     logger = logging.getLogger(ARM)
     logging.basicConfig(level=logging.INFO, stream=sys.stdout)
 
-    ckpt = _resolve_checkpoint(args.seed, args.checkpoint)
+    ckpt = _resolve_checkpoint(args.seed, args.checkpoint, args.penc)
     print(f"[{ARM}] checkpoint {ckpt}")
 
     split = load_panel_split(args.panel_dir, args.split, target_sum=TRAIN_TARGET_SUM)
@@ -148,7 +155,7 @@ def main(argv=None) -> int:
             f"path.occam_bench_dir={args.bench_dir}",
             "model.input_dim=6983", "model.hidden_num=[6983,512]",
             f"optimization.seed={args.seed}",
-        ])
+        ] + ([f"cov_encoding.replogle_gene_encoding={args.penc}"] if args.penc else []))
     with open_dict(cfg):
         cfg.model_checkpoint_path = ckpt
         cfg.data.occam_verify_sources = False

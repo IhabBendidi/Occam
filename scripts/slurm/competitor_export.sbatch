@@ -61,6 +61,17 @@ ARM="${ARM:?set ARM=txpert|state|cellflow|perturbdiff and pass --export=ALL,ARM}
 SEED=$(( ${SEED_BASE:-42} + ${SLURM_ARRAY_TASK_ID:-0} ))
 N_SPLITS="${N_SPLITS:-5}"
 
+# ⚠️ ARM_SUFFIX separates VARIANTS OF ONE ARM. Without it, two configurations of the same arm
+# and seed -- e.g. PerturbDiff with genept vs onehot perturbation embeddings -- both write to
+# runs/competitors/perturbdiff/s42/, and the second silently overwrites the first. The training
+# leg already separates them (PD_RUN_NAME carries the encoding); these two legs did not.
+#
+# It only names directories. The adapter and the venv still resolve from the BASE arm name.
+ARM_SUFFIX="${ARM_SUFFIX:-}"
+ARM_OUT="${ARM}${ARM_SUFFIX}"
+# Extra flags handed to the adapter, e.g. --checkpoint for a specific variant.
+ADAPTER_ARGS="${ADAPTER_ARGS:-}"
+
 case "$ARM" in
     txpert)      ARM_DIR="$HERE/competitors/TxPert" ;;
     state)       ARM_DIR="$HERE/competitors/STATE" ;;
@@ -81,6 +92,7 @@ PY="$(competitor_venv_python "$ARM" "$HERE")" || exit 1
 competitor_banner "$ARM" export "$SEED" "$HERE"
 echo "  adapter $ADAPTER"
 echo "  splits  0..$(( N_SPLITS - 1 ))"
+echo "  out arm $ARM_OUT"
 
 export PYTHONUNBUFFERED=1
 export PYTHONPATH="$HERE/competitors/shared${PYTHONPATH:+:$PYTHONPATH}"
@@ -88,11 +100,11 @@ unset VIRTUAL_ENV
 
 FAILED=0
 for K in $(seq 0 $(( N_SPLITS - 1 ))); do
-    OUT="$HERE/runs/competitors/$ARM/s${SEED}/split_${K}"
+    OUT="$HERE/runs/competitors/$ARM_OUT/s${SEED}/split_${K}"
     echo "--- split $K -> $OUT"
     if "$PY" -u "$ADAPTER" --seed "$SEED" --split "$K" --out-dir "$OUT" \
             --panel-dir "$HERE/data/benchmarks/rhj_fewshot/splithalf" \
-            --bench-dir "$HERE/data/benchmarks/rhj_fewshot"; then
+            --bench-dir "$HERE/data/benchmarks/rhj_fewshot" $ADAPTER_ARGS; then
         echo "--- split $K OK"
     else
         echo "--- split $K FAILED (exit $?)" >&2
@@ -106,4 +118,5 @@ if [ "$FAILED" -ne 0 ]; then
     echo "   averaged over whatever survived." >&2
     exit 1
 fi
-echo "next: ARM=$ARM SEED=$SEED sbatch --array=0-4 scripts/slurm/competitor_score.sbatch"
+echo "next: ARM=$ARM ARM_SUFFIX=$ARM_SUFFIX SEED=$SEED sbatch --array=0-4 \
+    --export=ALL,ARM,ARM_SUFFIX,SEED scripts/slurm/competitor_score.sbatch"

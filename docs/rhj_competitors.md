@@ -646,6 +646,70 @@ held **32 of `vco`'s h100s** for the whole period. Cancelled and resubmitted on
 for who owns the QOS's GRES cap before assuming the job is broken. Nineteen hours produced no
 log file at all, which reads exactly like a failure and was not one.
 
+## C13 — PerturbDiff launched, both perturbation encodings
+
+**Two training runs, `hooke-predict`, started immediately 2026-09-18.** The only axis varied is
+the perturbation encoding; everything else is byte-identical between them.
+
+| arm | encoding | train | export | score | run name |
+|---|---|---|---|---|---|
+| `perturbdiff_genept` | `genept` | `18072184` | `18072185` | `18072186` | `pd_occam_pert_celltype_lr0.002_genept_cs16_s42` |
+| `perturbdiff_onehot` | `onehot` | `18072187` | `18072188` | `18072189` | `pd_occam_pert_celltype_lr0.002_onehot_cs16_s42` |
+
+Verified from each run's own resolved config:
+
+| setting | value | source |
+|---|---|---|
+| `use_cell_set` | **16** | the FEWSHOT recipe (`PD_CELL_SET=16`), not the 32 of their general Replogle setting |
+| `cell_set_group_by` | **`pert_celltype`** | the fewshot recipe; NOT `pert_celltype_batch` |
+| `input_dim` / `hidden_num` / `pad_length` / `embed_shape` | **6983** / `[6983,512]` / 6983 / 6983 | all four moved together, as the collate asserts |
+| `source_format` / `occam_bench_dir` | `occam` / our `rhj_fewshot` | our h5ads, read in place |
+| `pert_key_type` | `symbol` | `rhj_fewshot` identifies perturbations by symbol |
+| `normalize_counts` | `false` | already log1p(1e4) on the FULL panel row sum |
+| lr / micro_batch / steps / validations | 0.002 / 128 / 80,000 / 5 at every 16,000 | transcribed unchanged |
+| checkpoint monitor | `validation/celleval/selection_score`, max, `save_top_k=1` | theirs |
+
+⚠️ **`use_cell_set: 32` was dead in the config file** — the launcher had always passed 16, so the
+config's value never applied. A value in a config that never takes effect is worse than no
+value, so the config now says 16 and cites the recipe. Same for `cell_set_group_by`, which said
+`pert_celltype_batch` while the launcher passed `pert_celltype`.
+
+### ⚠️ Why BOTH encodings: genept does not cover our panel
+
+`genept` is what their fewshot launcher passes, and its pickle was built for their **2,000-gene**
+panel. Measured coverage of our symbols:
+
+| set | covered by genept | zero embedding |
+|---|---|---|
+| **the frozen 611-perturbation cohort (what is scored)** | 547 (**89.5%**) | **64 (10.5%)** |
+| `val` (103) | 94 (91.3%) | 9 (8.7%) |
+| `test_unseen_pert` (621) | 552 (88.9%) | 69 (11.1%) |
+| `train` (2,381) | 2,021 (84.9%) | 360 (15.1%) |
+
+The pickle holds **2,024 keys** — their vocabulary, not ours. It clears
+`max_zero_embedding_frac: 0.5` comfortably (0.151), so the run proceeds — but **64 of the 611
+scored perturbations would share a single all-zero representation**, i.e. the model cannot tell
+them apart, for a reason that is an artifact of their asset rather than of the model.
+
+`onehot` is full-coverage over all 2,381 symbols and is the **default** in their own
+`cov_encoding` config, whose comment reads *"what the benchmark run uses"*. Their published
+0.40306 came from the launcher, i.e. genept. Running both measures what the encoding is worth
+on our panel instead of guessing, and the genept arm stays comparable to their number.
+
+### ⚠️ A collision the training leg hid
+
+The train leg separates variants by run name (`PD_RUN_NAME` carries the encoding), but the
+**export and score legs keyed only on arm + seed**, so both encodings would have written to
+`runs/competitors/perturbdiff/s42/` and `compet_perturbdiff_s42` — the second silently
+overwriting the first. Added `ARM_SUFFIX` to both legs (`perturbdiff_genept` /
+`perturbdiff_onehot`); it names directories only, and the adapter and venv still resolve from
+the base arm name.
+
+`export_occam.py` needed the same treatment: its checkpoint glob `pd_occam_*_s{seed}` matches
+both encodings, and its own >1-checkpoint guard would then have refused both. It takes `--penc`
+now, which narrows the glob and is also forwarded to `cov_encoding.replogle_gene_encoding` so
+the sampling config rebuilds the right covariate encoder.
+
 ## Status
 
 | step | state |
