@@ -396,6 +396,38 @@ def occam_setup_dataset(dm, stage=None):
             ),
         )
 
+    # ⛔ CHECK THE ACTUAL ATTRIBUTE THE MASK USES, NOW THAT THE DATASETS EXIST.
+    #
+    # `generate_samples` computes `np.isin(batch["col_genes"][0], load_selected_genes(cfg))`,
+    # and `getitem_impl` fills `col_genes` from `dataset.selected_genes`. Every earlier
+    # version of this check tested a PROXY -- first that the panel loaded, then that it had
+    # the right length, then that `read_occam_line`'s symbols matched it -- and all three
+    # passed while `selected_genes` held Ensembl ids and the mask selected ZERO columns. Four
+    # runs died at the first validation, ~45 min in, for that reason.
+    #
+    # So: compare the two objects the model will actually compare.
+    import numpy as _np
+
+    from src.apps.sampling.sampling_generation_helpers import load_selected_genes as _panel
+
+    class _P:
+        pass
+
+    _probe = _P()
+    _probe.data = cfg
+    _want = _np.asarray([str(g) for g in _panel(_probe)])
+    _have = _np.asarray([str(g) for g in (dm.train_dataset.selected_genes or [])])
+    _hit = int(_np.isin(_have, _want).sum())
+    if _hit != len(_want) or len(_have) != len(_want):
+        raise RuntimeError(
+            f"`dataset.selected_genes` ({len(_have)} ids, e.g. {_have[:3].tolist()}) does not "
+            f"match the validation panel ({len(_want)} ids, e.g. {_want[:3].tolist()}): only "
+            f"{_hit} overlap. `getitem_impl` puts selected_genes into `col_genes`, and "
+            f"`generate_samples` masks with np.isin(col_genes, panel) -- a mismatch gives an "
+            f"EMPTY selection and the validation dies on empty input ~45 min in.")
+    dm.py_logger.info(
+        "col_genes <-> validation panel: all %d match (e.g. %s)", _hit, _have[:3].tolist())
+
     # Preload expression in the MAIN process so forked workers share it copy-on-write
     # instead of each re-reading gigabytes.
     getattr(dm, "train_dataset").store.preload()

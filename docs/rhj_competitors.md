@@ -860,6 +860,62 @@ Both training, finite gradients (total norm 12.40 / 6.15), **0.145 s/step** → 
 **3.2 h** plus five validation cell-eval passes. The two differ in the expected place:
 genept trains `class_embedding.emb.weight`, onehot `class_embedding.null_emb.weight`.
 
+## ⛔ C20 — PerturbDiff failed its first validation FOUR times. The lesson is about verification.
+
+Four runs, ~45 min each, all dying at the same place: the first validation cell-eval at global
+step 16,000. **Training was healthy every single time** -- 0.143-0.187 s/step, losses falling
+(`training_loss 2.78`, `validation_loss 2.580`), gradients finite (total norm 0.762). Only the
+validation callback failed.
+
+| attempt | jobs | cause |
+|---|---|---|
+| 1 | `18072825` `18072187` | `get_short_dsname` asserts on a dataset name it cannot map to a family; ours were cell lines |
+| 2 | `18080122` `18080125` | `load_selected_genes` called `Path(None)` -- our axis needs no panel file |
+| 3 | — | (my axis guard compared `ens` to a `selected` I had just changed to `sym`, so it fired on the 2nd dataset) |
+| 4 | `18089025` `18089028` | the gene mask selected **zero** columns -> `r2_score` on `shape=(0,)` |
+
+### The real defect was my verification, not the code
+
+`generate_samples` masks with `np.isin(batch["col_genes"][0], load_selected_genes(cfg))`, and
+`getitem_impl` fills `col_genes` from **`dataset.selected_genes`** (`dataset_core.py:227`) --
+*not* from `gene_vars`, which is the attribute that looks like it should. I fixed `gene_vars`.
+
+Each attempt I added a check, and each check tested a PROXY that passed while the real thing
+was broken:
+
+| attempt | what I asserted | why it passed anyway |
+|---|---|---|
+| 2 | the panel file loads | it did |
+| 3 | the panel has 6,983 entries | it did -- **length is not agreement** |
+| 4 | `read_occam_line`'s symbols match the panel | they did -- wrong object |
+| ✅ | **`dataset.selected_genes` vs the panel, on a real batch** | this is the comparison the model makes |
+
+⭐ **The fix that actually worked was a 9-minute interactive run**, not a check: build the
+datamodule, pull a real validation batch, print `np.isin(col_genes, panel).sum()`.
+
+```
+col_genes[:3]  ['DPM1', 'GCLC', 'NIPAL3']
+panel[:3]      ['DPM1', 'GCLC', 'NIPAL3']
+mask.sum()     6983 / 6983          VERDICT OK
+pert_emb       (1, 16, 6983)        batch x cell_set 16 x genes
+```
+
+It also caught my own broken axis guard on the first try -- a bug that would have cost a fifth
+45-minute run.
+
+⚠️ **WHY THIS WAS SO EXPENSIVE, and the one structural thing to remember.** The validation
+callback CATCHES its own exceptions, logs *"not publishing a score"*, and lets training
+continue. `ModelCheckpoint(monitor="validation/celleval/selection_score")` then fails on the
+missing metric. So every defect in that path surfaces **45 minutes later, as a different
+error, in a different component**. Four separate root causes all presented as the same
+`MisconfigurationException`.
+
+The setup probe in `occam_setup_dataset` now compares the two objects the model compares, after
+the datasets exist. Anything else in that path should be checked the same way: interactively,
+against the real attribute, before a job is submitted.
+
+Relaunched: genept `18091494`, onehot `18091497`.
+
 ## ⭐ C19 — FIRST COMPETITOR NUMBER: TxPert 0.3014 on split 0, from an epoch-20 interim
 
 **The port produces a score.** Job `18088688`, 8 min 46 s, split 0 only.

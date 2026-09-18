@@ -280,8 +280,20 @@ def get_selected_gene_vars_occam(dataset) -> None:
             verify_sources=False,
             max_cells=getattr(dataset.data_args, "occam_max_cells_per_line", None))
         if selected is None:
-            selected = list(ens)
-        elif list(ens) != selected:
+            # ⚠️ SYMBOLS. `getitem_impl` puts `dataset.selected_genes` -- not `gene_vars` --
+            # into the batch's `col_genes` slot (dataset_core.py:227), and
+            # `generate_samples` masks with `np.isin(col_genes, load_selected_genes(cfg))`,
+            # which returns our axis SYMBOLS. Ensembl here makes that mask ALL FALSE, so the
+            # validation sees (n, 0) and `r2_score` dies on empty input.
+            #
+            # MEASURED FOUR TIMES, ~45 min each (18072825/18072187, 18080122/18080125,
+            # 18089025/18089028). The third attempt fixed `gene_vars`, which is the attribute
+            # that LOOKS like it feeds `col_genes` and does not.
+            selected = list(sym)
+        elif list(sym) != selected:
+            # ⚠️ COMPARE THE SAME ID SPACE `selected` HOLDS. This compared `ens` against a
+            # `selected` that had just been changed to symbols, so it fired on the SECOND
+            # dataset of every run -- a one-line change that broke its own guard.
             raise ValueError(
                 f"[{ds_name}] gene axis differs from the first dataset's. Every line must "
                 f"carry the same frozen axis in the same order; the prediction bridge is "
