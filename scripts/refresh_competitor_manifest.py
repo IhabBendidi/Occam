@@ -30,7 +30,10 @@ MANIFEST = os.path.join(COMPET, "MANIFEST.json")
 
 # Run products and environments: never part of the port's integrity baseline.
 DENY_DIRS = {".venv", "__pycache__", "outputs", "wandb", "lightning_logs", "indices_cache",
-             "ckpt", "valscore", "runs", ".pytest_cache", "site-packages"}
+             "ckpt", "valscore", "runs", ".pytest_cache", "site-packages",
+             # cell-eval scratch: pdex writes ~130 MB of DE csv per validation pass. These
+             # are run products, not port source, and they churn the baseline every run.
+             "cell-eval-outdir", "celleval_scratch"}
 DENY_EXTS = {".pyc", ".pyo", ".so"}
 
 

@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import gc
 import logging
+from pathlib import Path
 
 import numpy as np
 import torch
@@ -106,6 +107,15 @@ class ValidationCellEvalCallback(Callback):
                 adata_pred, adata_real, dm.pert_col, dm.get_control_pert()
             )
             logger.info("validation cell-eval: injected %d real control rows", n)
+            # ⚠️ outdir MUST be per-run. `write_csv=False` suppresses our own results
+            # CSVs but NOT pdex's DE dumps, and `MetricsEvaluator`'s default is the
+            # RELATIVE "./cell-eval-outdir" -- i.e. the launcher's cwd, which is the
+            # checked-out repo. That put 133 MB of DE csv into `competitors/` and, worse,
+            # would have two concurrent seeds writing the same filenames.
+            outdir = Path(
+                trainer.log_dir or getattr(trainer, "default_root_dir", None) or "."
+            ) / "celleval_scratch"
+            outdir.mkdir(parents=True, exist_ok=True)
             metrics = score_celleval_pair(
                 adata_pred,
                 adata_real,
@@ -113,6 +123,7 @@ class ValidationCellEvalCallback(Callback):
                 cell_type_key=dm.cell_type_key,
                 control_pert=dm.get_control_pert(),
                 embed_key=getattr(dm, "embed_key", None),
+                outdir=outdir,
                 profile=self.profile,
                 write_csv=False,   # ~120 MB of DE CSVs per pass otherwise
             )

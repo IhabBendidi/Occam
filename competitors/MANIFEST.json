@@ -665,7 +665,7 @@
       "n_files": 103
     },
     "STATE": {
-      "bytes": 140306316,
+      "bytes": 1157983,
       "files": {
         "export_occam.py": {
           "bytes": 12205,
@@ -678,14 +678,6 @@
         "state/README.md": {
           "bytes": 9208,
           "sha256": "568c0b4f9d93374f7ebc7467c226fdde0050abfd60147bce0b316163bf4199d6"
-        },
-        "state/cell-eval-outdir/HEPG2_pred_de.csv": {
-          "bytes": 67199397,
-          "sha256": "9d86452e9b0ddaabacbf1f4d3e81558f116682b941382fa52d60d3eff491bc8a"
-        },
-        "state/cell-eval-outdir/HEPG2_real_de.csv": {
-          "bytes": 71949616,
-          "sha256": "c471221a47478aef5a8f88ca22fef1bede7a86e0676dfa8afe674be8c2a7502e"
         },
         "state/pyproject.toml": {
           "bytes": 1397,
@@ -976,8 +968,8 @@
           "sha256": "8d0197523d775c4e81a981964ce9ac2a533da88f39f9ef90df41b3c856ba8fdc"
         },
         "state/src/state/tx/callbacks/validation_celleval.py": {
-          "bytes": 9630,
-          "sha256": "b55d16ff22ed86d322c2f1d7ef385908bed98b5021a3c2a2e5a3ace1d951b6cd"
+          "bytes": 10310,
+          "sha256": "eaf50935a5236c236e064845a9618a1e9fb3c536a232d365dcf50fe2c359cf3b"
         },
         "state/src/state/tx/data/__init__.py": {
           "bytes": 3307,
@@ -1156,7 +1148,7 @@
           "sha256": "3a9a3140964ed6334134f4ddb695b58a19266b0a12a67ae7699fb2a28f627905"
         }
       },
-      "n_files": 122
+      "n_files": 120
     },
     "TxPert": {
       "bytes": 900881,

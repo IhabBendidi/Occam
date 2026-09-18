@@ -131,3 +131,9 @@ runs/competitors/
 # themselves are ~100 MB each and go to HuggingFace, not git.
 reproducibility/**/*.ckpt
 reproducibility/**/*.pth
+
+# cell-eval scratch. STATE's validation callback used to default MetricsEvaluator's outdir to
+# the RELATIVE "./cell-eval-outdir", which lands in the checked-out repo (133 MB of pdex DE
+# csv) and collides between concurrent seeds. Fixed to write per-run; ignored belt-and-braces.
+competitors/**/cell-eval-outdir/
+**/celleval_scratch/
