@@ -1,6 +1,6 @@
 # PerturbDiff on Occam's `rhj_fewshot`. OUR three h5ads, read in place.
 #
-# The sibling of `ihabxcell_hepg2_fewshot_zarr.toml`, which pointed at hooke-tx canonical zarr
+# The sibling of `ihabxcell_hepg2_fewshot_zarr.toml`, which pointed at the upstream benchmark canonical zarr
 # dumps on a 2,000-gene panel. Nothing here is converted or duplicated: `[datasets]` names our
 # own source files, exactly as `data/benchmarks/rhj_fewshot/files/*.json` records them.
 #

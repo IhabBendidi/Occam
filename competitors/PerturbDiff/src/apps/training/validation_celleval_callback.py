@@ -1,13 +1,13 @@
 """Score the VALIDATION split with cell-eval during training, so checkpoints can be selected on it.
 
-Why this exists. On the hooke-tx zarr benchmark PerturbDiff's only live validation metric was
+Why this exists. On the the upstream benchmark zarr benchmark PerturbDiff's only live validation metric was
 `validation_test_loss_epoch` -- a loss, computed on the TEST split, because the benchmark's original
 split file ships an empty `validation` list. Selecting a checkpoint on that is selecting on test.
 With `configs/manifests/ihabxcell_hepg2_fewshot_zarr.toml` the validation split is real (4,825
 perturbed cells), and this callback turns it into the same cell-eval metric the other model families
 are selected on.
 
-Contract shared with hooke-tx, so the arms stay comparable:
+Contract shared with the upstream benchmark, so the arms stay comparable:
 
   * metric published: `validation/celleval/selection_score` = mean(pearson_delta,
     discrimination_score_l1), higher is better. Both raw components are published too.
@@ -35,7 +35,7 @@ from pytorch_lightning import Callback
 
 logger = logging.getLogger(__name__)
 
-# Keep in lockstep with hooke_tx.eval.evaluation.SELECTION_SCORE_COMPONENTS. Changing this changes
+# Keep in lockstep with the upstream tree.eval.evaluation.SELECTION_SCORE_COMPONENTS. Changing this changes
 # what "best checkpoint" means, and silently makes arms non-comparable.
 SELECTION_SCORE_COMPONENTS = ("pearson_delta", "discrimination_score_l1")
 SELECTION_SCORE_NAME = "selection_score"
@@ -46,7 +46,7 @@ def read_agg_metrics(eval_dir: Path) -> dict[str, float]:
     """Mean cell-eval metrics from the `<cell_type>_agg_results.csv` files in `eval_dir`.
 
     cell-eval writes one file per cell type; the benchmark has a single one (HepG2), but averaging
-    across whatever is present matches `merge_celltype_celleval_metrics` on the hooke-tx side.
+    across whatever is present matches `merge_celltype_celleval_metrics` on the the upstream benchmark side.
     """
     import pandas as pd
 

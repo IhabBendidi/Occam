@@ -22,7 +22,7 @@ space, and the scoring path.
 `transfer` is not earning its parameters; a model above `experimental` is likely exploiting
 the two-sided noise asymmetry rather than being better.
 
-⚠️ **Their published numbers are not comparable and are not reproduced here.** `hooke-tx`'s
+⚠️ **Their published numbers are not comparable and are not reproduced here.** `the upstream benchmark`'s
 `replogle_nadig_fewshot` is 2,000 genes / 380 test perturbations / 4 cell lines from a
 different preprocessing of the same experiment (their own task config says so). For
 orientation only, their inject-real `pearson_delta` was TxPert 0.50787 ± 0.00614, CellFlow
@@ -63,7 +63,7 @@ exactly 2000.0. The 6,983 genes carry 86.6% of each cell's UMI, and the share va
 ### Why that single fact decides the port
 
 Competitors are handed `target_sum = 10_000` data, because their pipelines assume
-pre-normalised input — every arm passes `target_sum=null, log1p=false`, since the hooke-tx
+pre-normalised input — every arm passes `target_sum=null, log1p=false`, since the the upstream benchmark
 data arrived already `log1p(1e4)`. **Our h5ads are raw counts**, so we do that normalisation
 for them. Converting their output back to our space is then **exact**, because the per-cell
 denominator cancels:
@@ -223,7 +223,7 @@ Upstream commit `18e159145bdd7c59`.
 All nine extension points identified during planning are present and verified:
 `STATE/state/src/state/tx/data/{__init__,zarr_perturbation}.py`, `STATE/hepg2.toml`,
 `TxPert/gspp/data/datamodule.py`, `TxPert/configs/config-txpert-zarr-fewshot.yaml`,
-`CellFlow/hooke_bridge/load.py`, `CellFlow/configs/replogle_nadig_fewshot.yaml`,
+`CellFlow/occam_bridge/load.py`, `CellFlow/configs/replogle_nadig_fewshot.yaml`,
 `PerturbDiff/src/apps/training/training_datamodule_builder.py`, and its manifest TOML.
 
 ⚠️ **One upstream claim corrected.** The `PR_*` notes record CellFlow's environment as
@@ -292,7 +292,7 @@ And one that was not a build failure at all:
 | score (Phase B) | `competitor_score.sbatch` | cpu, 16 cpu, 64 G, 2 h | split 0–4 |
 
 Resources and every hyperparameter are transcribed from
-`hooke-tx/reproducibility/<arm>__replogle_nadig_fewshot/launch.*.sh`, with the **time and
+`the upstream benchmark/reproducibility/<arm>__replogle_nadig_fewshot/launch.*.sh`, with the **time and
 memory raised where our axis is 3.5× wider** (6,983 vs 2,000 genes) and nothing else touched.
 
 `tests/test_competitor_manifest.py` enforces four things about them:
@@ -536,7 +536,7 @@ port and a clean port look identical to a hash comparison.
 3. **`test_every_adapted_file_is_protected_from_being_re_copied`** — walks the copied tree,
    finds every file whose name is in `ADAPTED`, and asserts that any of them which *also exist
    upstream* are in `PROTECTED`. New files (`occam_source.py`, `occam_bridge.py`,
-   `hooke_bridge/occam.py`, `export_occam.py`) need no guard: no allowlisted upstream tree
+   `occam_bridge/occam.py`, `export_occam.py`) need no guard: no allowlisted upstream tree
    contains them, so a copy cannot touch them.
 
 Restored from `git checkout --`, which is the only reason this cost minutes rather than the
@@ -768,6 +768,108 @@ was left running untouched: it has no coverage gap, so nothing about it changed.
 ⓘ **The comparison is now cleaner than originally planned.** genept-vs-onehot was going to
 confound "which encoding is better" with "genept is missing 10% of the cohort". Both arms now
 have full cohort coverage, so the contrast measures the encoding.
+
+## C15 — the upstream benchmark's name is gone, and comparability to it is no longer a goal
+
+**Decision 2026-09-18, the user's words: *"we never care about being comparable to hooke-tx.
+actually remove even mentions of the word hooke from the codebase"*.**
+
+**537 references removed** across the four arms, our scripts, our docs and the launcher
+headers. Two classes are deliberately KEPT, and `tests/test_competitor_manifest.py` now
+asserts nothing else comes back:
+
+| kept | why |
+|---|---|
+| **`hooke-predict`** (87) | a live Slurm **QOS and wckey** — a cluster resource, not our naming. Every launcher submits to it and four chains were running on it. Removing it breaks them. |
+| `scripts/copy_competitor_code.py` | its `UPSTREAM` constant is a real path in someone else's repo, and its denylist globs match **filenames on disk** there. Both are **data, not prose**. |
+
+⚠️ **The sweep broke both of those once each**, which is why they are now shielded and
+commented: `UPSTREAM` was rewritten so the copier could not find upstream, and the denylist's
+`"*hooke*"` became `"*upstream*"`, which silently stopped denying anything and let a tree of
+reference files return on the next copy.
+
+### What was deleted rather than renamed
+
+~200 of the references lived in upstream **reference material for a benchmark we no longer
+compare against**: their launchers, their zarr manifests, their design docs, their old configs
+and the tests that exercised them. None was reachable from an occam config. Deleting beat
+renaming, and the tracked tree fell from **6.6 MB to 5.8 MB**.
+
+### The rename, where identifiers actually moved
+
+| before | after |
+|---|---|
+| `hooke_bridge/` (CellFlow) | **`occam_bridge/`** |
+| `load_hooke_anndata` / `load_hooke_sources` | `load_dump_anndata` / `load_dump_sources` |
+| `hooke_tx_dir` | `scorer_pythonpath` |
+| wandb project `Hooke-External` | **`Occam-Competitors`** |
+
+### ⭐ CellFlow's selection now scores through OUR cell-eval
+
+Its callback used to shell out to a sibling repo's `celleval_artifacts.py` in that repo's own
+venv — which pinned **cell-eval 0.7.2 / pdex 0.2.2–0.3.0**, not the **0.6.0 / pdex 0.1.24**
+every reported number comes from. Two problems, both now gone:
+
+* the arm depended on another repo existing at a hard-coded path, and
+* its in-training selection metric was computed by a **different scorer** than its reported one.
+
+`cellflow_selection.py` now calls `occam.vcell.panel.celleval_v1.run_celleval_v1` in a
+subprocess. Still a subprocess because jax and cell-eval do not co-exist in one environment —
+the same constraint that makes the prediction bridge two-phase. The config carries no scorer
+paths at all now, and it **raises** if cell-eval returns no `pearson_delta` /
+`discrimination_score_l1`, because then no checkpoint could be selected.
+
+### The copier is now a ONE-SHOT tool that refuses to run
+
+`PROTECTED` cannot express *"this whole tree is ours now"*, because the allowlist copies
+**directories** (`src`, `configs`, `gspp`). So re-copying restored upstream originals — and
+undid the rename — **twice in one afternoon**. `copy_competitor_code.py` now refuses while
+`MANIFEST.json` exists; `--force` overrides.
+
+`scripts/refresh_competitor_manifest.py` replaces it for the one job that remains: updating
+the integrity baseline after a deliberate edit, without copying anything.
+
+### Manifest schema 1 → 2: integrity, not upstream equality
+
+Schema 1 recorded each file's **upstream** sha256 and a test asserted every file still matched
+except an `ADAPTED` allowlist. That became meaningless once the port diverged from upstream
+across ~70 files. The hashes are now the port's **own** baseline, which is what the check is
+actually for: catching a vendored file modified without the record being refreshed. It caught
+exactly that, twice, during this change.
+
+## ⛔ C16 — PerturbDiff died 4 minutes into training. Not the rename: a dataset-name contract.
+
+**Both arms FAILED** (`18072825`, `18072187`, exit 1 after ~4 min) at
+`src/common/utils.py::get_short_dsname` → **`assert 0`**.
+
+That function maps a dataset name to a family by substring — `tahoe` / `pbmc` / `replogle` /
+`cellxgene` — and asserts otherwise. `_compute_loss` calls it on **every batch**. My
+`occam_setup` named datasets after the cell line (`HEPG2`, `jurkat`, `RPE1`), which matches
+none of them.
+
+⭐ **Their own zarr path documents this exact trap and solves it the same way I now do** — and
+it also calls `get_short_dsname(name)` at setup *"to fail loudly here rather than deep inside
+the model."* My port skipped that one line, which is the whole difference between failing in
+4 minutes of GPU time and failing at second zero.
+
+**Fix:** datasets are named **`replogle_nadig_<line>`**. That is the honest prefix — these ARE
+the Replogle/Nadig sources — so the family the loss branches on is the one it would have picked
+for the same data as a zarr dump. The setup-time check is now in place too.
+
+`export_occam.py` resolves the dataset by **suffix** rather than hardcoding either form, since
+the dataset name is no longer the cell line.
+
+Verified before relaunch: `['replogle_nadig_HEPG2', 'replogle_nadig_jurkat',
+'replogle_nadig_RPE1']` → `['replogle', 'replogle', 'replogle']`.
+
+| arm | encoding | train | export | score |
+|---|---|---|---|---|
+| `perturbdiff_genept` | genept, rebuilt pickle | **`18075222`** | `18075223` | `18075224` |
+| `perturbdiff_onehot` | onehot | **`18075225`** | `18075226` | `18075227` |
+
+Both training, finite gradients (total norm 12.40 / 6.15), **0.145 s/step** → 80,000 steps ≈
+**3.2 h** plus five validation cell-eval passes. The two differ in the expected place:
+genept trains `class_embedding.emb.weight`, onehot `class_embedding.null_emb.weight`.
 
 ## Status
 

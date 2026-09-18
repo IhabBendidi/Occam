@@ -1,4 +1,4 @@
-"""Expression transforms matching Hooke-Tx experiment knobs."""
+"""Expression transforms matching Upstream-Tx experiment knobs."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ def apply_normalize_log1p(
 ) -> AnnData:
     """Library-size normalize and/or log1p ``adata.X`` (dense float32).
 
-    Mirrors Hooke ``data.target_sum`` / ``data.log1p`` for public Norman/Replogle
+    Mirrors Upstream ``data.target_sum`` / ``data.log1p`` for public Norman/Replogle
     dumps that store raw (or un-logged) counts in ``X.zarr``.
     """
     out = adata if inplace else adata.copy()

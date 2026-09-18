@@ -1,4 +1,4 @@
-"""Split JSON helpers (Hooke / cell-eval ``{"folds": [...]}`` format)."""
+"""Split JSON helpers (Upstream / cell-eval ``{"folds": [...]}`` format)."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ def load_fold(
     *,
     fold: int = 0,
 ) -> dict[str, list[int]]:
-    """Load one fold of cell indices from a Hooke/cell-eval split JSON.
+    """Load one fold of cell indices from a Upstream/cell-eval split JSON.
 
     Expected shape::
 

@@ -15,7 +15,7 @@ from src.data.metadata_cache import GlobalH5MetadataCache
 
 
 # --------------------------------------------------------------------------- #
-# hooke-tx canonical zarr path
+# the upstream benchmark canonical zarr path
 # --------------------------------------------------------------------------- #
 def read_zarr_manifest(toml_path):
     """Parse the dataset manifest -- the same TOML format STATE consumes.
@@ -195,6 +195,7 @@ def occam_setup(dm, stage=None):
     them, which is what makes the task few-shot-in-a-new-context rather than
     never-seen-at-all.
     """
+    from src.common.utils import get_short_dsname
     from src.data.occam_bridge import occam_line_from_path, read_occam_line
 
     cfg = dm.data_args
@@ -215,7 +216,21 @@ def occam_setup(dm, stage=None):
                 f"two manifest entries resolve to the same cell line {line!r}: "
                 f"{seen[line]!r} and {label!r}")
         seen[line] = label
-        dm.dataset_name_list.append(line)
+        # ⚠️ THE DATASET NAME MUST CONTAIN A FAMILY `get_short_dsname` KNOWS.
+        # `src/common/utils.py::get_short_dsname` matches the substrings tahoe / pbmc /
+        # replogle / cellxgene and `assert 0` otherwise, and `_compute_loss` calls it on every
+        # batch's `ds_name`. Naming our datasets after the cell line alone ("HEPG2", "jurkat",
+        # "RPE1") matched nothing and killed training ~4 min in, inside the loss -- measured
+        # 2026-09-18, jobs 18072825 and 18072187.
+        #
+        # `replogle_nadig_` is the honest prefix: these ARE the Replogle/Nadig sources
+        # (nadig_2024_hepg2, nadig_2024_jurkat, replogle_2022_rpe1_e), so the family the loss
+        # branches on is the one it would have picked for the same data as a zarr dump. Their
+        # own `_zarr_dataset_name` solves this the same way, by deriving a name that contains
+        # "replogle" rather than using the manifest label.
+        name = f"replogle_nadig_{line}"
+        get_short_dsname(name)      # fail loudly HERE, not deep inside the model
+        dm.dataset_name_list.append(name)
         dm.file_list.append(str(path))
         dm.key_info_list.append(
             {
@@ -224,13 +239,14 @@ def occam_setup(dm, stage=None):
                 "batch_col": cfg.perturbseq_batch_col,
                 "occam_bench_dir": bench_dir,
                 "occam_line": line,
+                "occam_dataset_name": name,
                 "split_file": None,
                 "split_fold": 0,
                 "is_training": training.get(label, "train") == "train",
             }
         )
-        if label != line:
-            dm.py_logger.info("manifest '%s' -> cell line '%s'", label, line)
+        dm.py_logger.info("manifest '%s' -> cell line '%s' -> dataset '%s'",
+                          label, line, name)
 
     n = len(dm.dataset_name_list)
     dm.data_type_list = ["Perturb-seq"] * n

@@ -111,7 +111,7 @@ class CellFlowTrainer:
             The trained model.
         """
         self.training_logs = {"loss": []}
-        # LOCAL DEVIATION FROM UPSTREAM (competitors/CellFlow/README_HOOKE_TX.md).
+        # LOCAL DEVIATION FROM UPSTREAM (competitors/CellFlow/the upstream release notes).
         #
         # These were hardcoded to PRNGKey(0) / default_rng(0), and `seed` reached only
         # `self.rng_subsampling`, which nothing reads. So the training step RNG and the batch

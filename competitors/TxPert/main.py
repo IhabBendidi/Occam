@@ -315,7 +315,7 @@ def train(cfg: DictConfig):
 
     # Write pred/real AnnData instead of scoring in-process, so ONE forward pass can be scored
     # under several predicted-control conventions by the shared scorer
-    # (../../hooke_tx/eval/celleval_artifacts.py). export_for_celleval above can only ever produce
+    # (../../the upstream tree/eval/celleval_artifacts.py). export_for_celleval above can only ever produce
     # the inject-real convention, because it injects the real controls into both objects itself.
     #
     # Used by launch/txpert_fewshot_eval.sh together with `mode=test checkpoint_path=...`, so the

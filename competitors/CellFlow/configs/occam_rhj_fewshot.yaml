@@ -16,7 +16,7 @@
 # THE DELTAS, all in the `data` block, all recorded in docs/rhj_competitors.md C8:
 #   1. `occam_bench_dir` instead of `data_dir` + `split_path` + `train_sources` +
 #      `vocabulary_data_dirs`. The frozen benchmark owns the split, the gene axis, the
-#      exclusions and the source sha256s, and `hooke_bridge/occam.py` reads it LIVE -- so
+#      exclusions and the source sha256s, and `occam_bridge/occam.py` reads it LIVE -- so
 #      there is no row-index JSON that can drift, and `train_cellflow.py` REFUSES if a
 #      `split_path` is also given.
 #   2. 6,983 genes instead of 2,000, ours, in `gene_axis.csv` order. `assert_axis_order`
@@ -36,11 +36,11 @@
 # ⚠️ `target_sum: null` and `log1p: false` are REQUIRED, not defaults. The data arrives
 # already normalised at 10,000 on the FULL source panel row sum; a second transform would
 # renormalise on the 6,983-gene sum, which leaves `pearson_delta` alone but shifts `mae` and
-# moves the DE calls. `hooke_bridge/occam.py` refuses any other combination.
+# moves the DE calls. `occam_bridge/occam.py` refuses any other combination.
 #
 # ⚠️ CHECKPOINT SELECTION STAYS THEIRS: the in-memory best state by
 # mean(pearson_delta, discrimination_score_l1), restored before the pickle is saved, scored by
-# the shared hooke-tx scorer at whatever cell-eval that venv pins. That is a training-internal
+# OUR cell-eval 0.6.0 -- the same scorer every reported number comes from.
 # choice -- our own model also selects on an internal metric. **Every reported number comes
 # from our own 0.6.0 path** (scripts/eval_competitor.py). If `run_meta.json` carries no
 # `selection` block, the pickle holds the FINAL state and that must be said beside the number.
@@ -66,7 +66,7 @@ data:
   max_cells: null
 
 pca:
-  # DELTA 4: match hooke-tx's PCA width on this benchmark.
+  # DELTA 4: match the upstream benchmark's PCA width on this benchmark.
   n_comps: 256
 
 model:
@@ -114,16 +114,18 @@ train:
   # DELTA 5: score every validation perturbation, not a random sample of 8 / 32.
   n_conditions_on_log_iteration: 60
   n_conditions_on_train_end: 60
-  # Validation cell-eval and best-state selection. Scored by the SHARED scorer under hooke-tx's
-  # own interpreter, so the selection metric and the reported metric come from one code path and
-  # one cell-eval version -- this venv resolves pdex 0.3.0 against 0.2.2 elsewhere, and
-  # CellFlow's own _run_celleval passes no pdex_kwargs.
+  # Validation cell-eval and best-state selection, scored by OUR cell-eval
+  # 0.6.0 / pdex 0.1.24 -- the SAME scorer every reported number comes from.
+  # It used to shell out to a sibling repo's scorer on a different cell-eval
+  # (0.7.2 / pdex 0.2.2-0.3.0), so this arm's selection metric and its
+  # reported metric disagreed by construction, and the arm depended on that
+  # repo existing at a hard-coded path. Both problems are gone.
   selection:
     enabled: true
     profile: full
-    scorer_py: /rxrx/scratch/sandbox/ihab.bendidi/bc-hooke/src/hooke-tx/.venv/bin/python
-    scorer: /rxrx/scratch/sandbox/ihab.bendidi/bc-hooke/src/hooke-tx/hooke_tx/eval/celleval_artifacts.py
-    hooke_tx_dir: /rxrx/scratch/sandbox/ihab.bendidi/bc-hooke/src/hooke-tx
+    # No scorer paths: selection runs OUR cell-eval 0.6.0, whose interpreter and repo root
+    # are the defaults in cellflow_selection.py. Override with occam_py / occam_repo only if
+    # they move.
 output:
   dir: /rxrx/scratch/sandbox/ihab.bendidi/tx_pretrained_models/Occam/runs/competitors/cellflow
   run_name: occam_rhj_fewshot_s42

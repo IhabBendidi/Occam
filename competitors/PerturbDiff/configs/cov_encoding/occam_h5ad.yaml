@@ -1,6 +1,6 @@
 # Covariate encoding for Occam's `rhj_fewshot`.
 #
-# Derived from `hooke_tx_zarr.yaml`, which was written for the hooke-tx zarr dumps. ONE delta:
+# Derived from `upstream_zarr.yaml`, which was written for the the upstream benchmark zarr dumps. ONE delta:
 #
 #   `pert_key_type: symbol` instead of `ensembl`.
 #

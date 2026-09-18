@@ -1,7 +1,7 @@
 """Native-zarr perturbation data module for STATE.
 
 A drop-in alternative to ``cell_load``'s ``PerturbationDataModule`` that reads the
-**hooke-tx canonical zarr format** (``X.zarr`` + ``obs.parquet`` + ``var.parquet``)
+**the upstream benchmark canonical zarr format** (``X.zarr`` + ``obs.parquet`` + ``var.parquet``)
 instead of ``.h5ad``, and uses **index-based** splits (a JSON of row indices) instead
 of perturbation-name lists in a TOML.
 
@@ -13,7 +13,7 @@ training loop, and ``_predict.py`` work unchanged.
 
 Design notes
 ------------
-* Reads the **canonical** ``obs.parquet`` schema (stable across every hooke-tx
+* Reads the **canonical** ``obs.parquet`` schema (stable across every the upstream benchmark
   dataset): perturbation derived from ``gene_pert`` / ``mol_pert`` via
   :func:`encode_obs_pert`, control via ``negative_control``, and context/batch
   from the configured ``cell_type_key`` / ``batch_col`` columns. No dependence
@@ -21,7 +21,7 @@ Design notes
 * ``source_format="anndata"`` reads an ``.h5ad`` instead, using direct obs columns
   (``pert_col`` / ``batch_col`` / ``cell_type_key`` name real columns).
 * Normalization is config-driven (``target_sum`` / ``log1p``), mirroring
-  ``hooke_tx.data.dataset.TaskDataset.transform``: pre-normalized data uses
+  ``the upstream tree.data.dataset.TaskDataset.transform``: pre-normalized data uses
   ``target_sum=None, log1p=False`` (no-op); raw counts use ``target_sum=300000,
   log1p=True``.
 * Gene selection via ``selected_ensembl_gene_ids_path`` subsets ``X`` columns
@@ -60,12 +60,12 @@ _SPLITS = ("train", "val", "test")
 
 
 # --------------------------------------------------------------------------- #
-# Small helpers (mirror hooke_tx + cell_load behavior)
+# Small helpers (mirror the upstream tree + cell_load behavior)
 # --------------------------------------------------------------------------- #
 def encode_pert(gene_pert) -> str:
     """Convert a canonical ``gene_pert`` entry into a perturbation string.
 
-    Mirrors ``hooke_tx.eval.adapters.celleval.encode_gene_pert`` (plus empty):
+    Mirrors ``the upstream tree.eval.adapters.celleval.encode_gene_pert`` (plus empty):
       - empty            -> ``"empty"`` (control sentinel)
       - single genetic   -> Ensembl id (e.g. ``"ENSG00000141510"``)
       - multiple genetic -> sorted ids joined by ``"+"``
@@ -90,7 +90,7 @@ def encode_mol_pert(mol_pert) -> str:
     """Convert a canonical ``mol_pert`` entry into a perturbation string.
 
     Matches Arc STATE / cell-load ``drugname_drugconc``: Python ``repr`` of a
-    list of ``(name, µM, 'uM')`` tuples. ``mol_pert[2]`` is nM in the Hooke dump.
+    list of ``(name, µM, 'uM')`` tuples. ``mol_pert[2]`` is nM in the Upstream dump.
     Short tuples without name/dose fall back to ``p[1]``.
 
     Empty rows are handled by :func:`encode_obs_pert`; this expects non-empty.
@@ -118,7 +118,7 @@ def _mol_arc_tuple(p) -> tuple:
 def encode_obs_pert(gene_pert=None, mol_pert=None, *, negative_control: bool = False) -> str:
     """Encode perturbation identity from canonical ``gene_pert`` / ``mol_pert``.
 
-    Thin local mirror of ``hooke_tx.eval.adapters.celleval.encode_obs_pert``.
+    Thin local mirror of ``the upstream tree.eval.adapters.celleval.encode_obs_pert``.
     Genetic-only datasets (empty ``mol_pert``) keep prior ``encode_pert`` behavior.
     Mixed gene+mol on one cell is rejected.
     """
@@ -325,7 +325,7 @@ class _Source:
         self.feature_loading = feature_loading
         self._x = None  # lazily materialized expression matrix (numpy / zarr / backed)
         self._adata = None
-        # Expression artifact paths (zarr mode), mirrors hooke-tx X.zarr / X.npy pair.
+        # Expression artifact paths (zarr mode), mirrors the upstream benchmark X.zarr / X.npy pair.
         self._zarr_path = str(self.path / "X.zarr")
         self._npy_path = str(self.path / "X.npy")
 
@@ -416,11 +416,11 @@ class _Source:
             )
             self.gene_symbols = [var_symbol[pos[g]] for g in selected_genes]
 
-    # -- materialize the expression matrix (mirrors hooke-tx feature_loading) #
+    # -- materialize the expression matrix (mirrors the upstream benchmark feature_loading) #
     def _ensure_open(self):
         """Materialize ``self._x`` according to ``feature_loading``.
 
-        Mirrors ``hooke_tx.data.dataset.TaskDataset.setup_details``:
+        Mirrors ``the upstream tree.data.dataset.TaskDataset.setup_details``:
           - ``ram``  : full ``X.npy`` in RAM if present, else full ``X.zarr``.
           - ``npy``  : require ``X.npy`` and mmap it.
           - ``zarr`` : lazy ``zarr.open`` (per-row chunk reads; slowest).

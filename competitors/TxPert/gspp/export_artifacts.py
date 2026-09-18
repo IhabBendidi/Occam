@@ -7,7 +7,7 @@ how ``test_replogle_zarr/`` ended up with two agg CSVs that survive only because
 them by hand.
 
 Instead: predict once, write ``adata_pred.h5ad`` + ``adata_real.h5ad``, then let the SHARED scorer
-(``hooke_tx/eval/celleval_artifacts.py``) score those artifacts twice into separate results dirs.
+(``the upstream tree/eval/celleval_artifacts.py``) score those artifacts twice into separate results dirs.
 That is exactly how STATE's two arms are produced, so the two competitors' conventions mean the
 same thing and are computed by the same code.
 
@@ -21,7 +21,7 @@ THE TWO CONVENTIONS FOR TXPERT:
       therefore in-distribution, not an extrapolation, and needs no training change.
   real ("inject controls")          -- the measured control cells, which the scorer swaps in.
 
-Note this is NOT the PCA-decode sense of "reconstruct" used for hooke-tx; like STATE, TxPert
+Note this is NOT the PCA-decode sense of "reconstruct" used for the upstream benchmark; like STATE, TxPert
 genuinely emits a predicted control. There is no codec here.
 
 HOW THE CONTROLS ARE PREDICTED. Through ``XcelltypePerturbDataset`` and ``evaluate()``, the same

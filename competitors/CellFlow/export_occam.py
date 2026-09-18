@@ -117,8 +117,8 @@ def main(argv=None) -> int:
     from cellflow.model import CellFlow
 
     from export_predictions import TRAIN_TARGET_SUM, export_split, load_panel_split
-    from hooke_bridge import load_pca_artifacts, reconstruct_from_pca
-    from hooke_bridge.occam import assert_axis_order
+    from occam_bridge import load_pca_artifacts, reconstruct_from_pca
+    from occam_bridge.occam import assert_axis_order
 
     run_dir = _resolve_run_dir(args.seed, args.checkpoint)
     split = load_panel_split(args.panel_dir, args.split, target_sum=TRAIN_TARGET_SUM)
@@ -173,7 +173,7 @@ def main(argv=None) -> int:
                 raise RuntimeError(
                     f"CellFlow.predict returned nothing for {pert!r}. If the message is "
                     f"'Representation ... not found', the one-hot vocabulary was built "
-                    f"without it -- see hooke_bridge/occam.py::occam_pert_tokens.")
+                    f"without it -- see occam_bridge/occam.py::occam_pert_tokens.")
             x_pca = np.asarray(next(v for k, v in preds.items() if str(k) == pert),
                                dtype=np.float32)
             if x_pca.ndim == 1:

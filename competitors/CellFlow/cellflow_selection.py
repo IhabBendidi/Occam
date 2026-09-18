@@ -13,7 +13,7 @@ quantity as the reported metric, computed by the same code. CellFlow's own `_run
 (`predict_cellflow.py:150-157`) passes no `pdex_kwargs`, where the shared scorer always passes
 `{"exp_post_agg": True, "is_log1p": True}`; and this venv resolves pdex 0.3.0 against 0.2.2
 elsewhere. Rather than reproduce those differences, every score — validation and test — is
-produced by `hooke_tx/eval/celleval_artifacts.py` running under hooke-tx's own interpreter. The
+produced by `the upstream tree/eval/celleval_artifacts.py` running under the upstream benchmark's own interpreter. The
 same two-interpreter arrangement the STATE and TxPert eval legs use, and for the same reason.
 
 WHY CHECKPOINTING COSTS NOTHING EXTRA. `CellFlow.save()` cloudpickles the whole instance
@@ -41,7 +41,7 @@ from typing import Any
 
 import numpy as np
 
-# Keep in lockstep with hooke_tx.eval.evaluation.SELECTION_SCORE_COMPONENTS. Changing this changes
+# Keep in lockstep with the upstream tree.eval.evaluation.SELECTION_SCORE_COMPONENTS. Changing this changes
 # what "best" means and silently makes the arms non-comparable.
 SELECTION_SCORE_COMPONENTS = ("pearson_delta", "discrimination_score_l1")
 SELECTION_SCORE_NAME = "selection_score"
@@ -114,7 +114,7 @@ class SelectionCallback:
     :param output_root: per-validation artifacts and results land under here.
     :param scorer_py: interpreter that owns the shared scorer's dependencies.
     :param scorer: path to ``celleval_artifacts.py``.
-    :param hooke_tx_dir: put on ``PYTHONPATH`` for the scorer.
+    :param scorer_pythonpath: put on ``PYTHONPATH`` for the scorer.
     """
 
     def __init__(
@@ -128,7 +128,7 @@ class SelectionCallback:
         output_root: Path | str,
         scorer_py: Path | str,
         scorer: Path | str,
-        hooke_tx_dir: Path | str,
+        scorer_pythonpath: Path | str,
         profile: str = "full",
         num_threads: int | None = None,
         keep_artifacts: bool = False,
@@ -141,13 +141,13 @@ class SelectionCallback:
         self.output_root = Path(output_root)
         self.scorer_py = Path(scorer_py)
         self.scorer = Path(scorer)
-        self.hooke_tx_dir = Path(hooke_tx_dir)
+        self.scorer_pythonpath = Path(scorer_pythonpath)
         self.profile = profile
         self.num_threads = num_threads or len(os_sched_affinity())
         self.keep_artifacts = keep_artifacts
 
         # `pcs` is varm["PCs"], i.e. (n_genes, n_comps) -- the orientation
-        # hooke_bridge.reconstruct_from_pca expects.
+        # occam_bridge.reconstruct_from_pca expects.
         if self.pcs.shape[0] != len(self.genes):
             raise ValueError(
                 f"PCA basis covers {self.pcs.shape[0]} genes but {len(self.genes)} gene names "
@@ -186,7 +186,7 @@ class SelectionCallback:
         deliberate: selection and reporting must not be able to drift on preprocessing, and it
         also removes any question about the basis orientation.
         """
-        from hooke_bridge import reconstruct_from_pca
+        from occam_bridge import reconstruct_from_pca
 
         return reconstruct_from_pca(
             x_pca, means=self.means, pcs=self.pcs, clip_min=CLIP_MIN, clip_max=CLIP_MAX
@@ -275,7 +275,7 @@ class SelectionCallback:
         build(pred_blocks, pred_labels).write_h5ad(work / "adata_pred.h5ad")
         build(real_blocks, real_labels).write_h5ad(work / "adata_real.h5ad")
 
-        env_pythonpath = str(self.hooke_tx_dir)
+        env_pythonpath = str(self.scorer_pythonpath)
         base = [str(self.scorer_py), str(self.scorer)]
         results = work / "results"
         self._run(

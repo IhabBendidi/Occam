@@ -225,7 +225,7 @@ def main(argv=None) -> int:
           f"{occam['n_splits']} split(s).\n")
 
     W("## ⚠️ Their published numbers, and why they are not in the table above\n")
-    W("`hooke-tx`'s `replogle_nadig_fewshot` is **2,000 genes / 380 test perturbations / 4 "
+    W("`the upstream benchmark`'s `replogle_nadig_fewshot` is **2,000 genes / 380 test perturbations / 4 "
       "cell lines**, built from a different preprocessing of the same experiment — their own "
       "task config warns the two are not comparable. For orientation only, their inject-real "
       "`pearson_delta` was:\n")

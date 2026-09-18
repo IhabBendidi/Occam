@@ -1,7 +1,7 @@
 """Load Occam's `rhj_fewshot` benchmark as a gspp-shaped AnnData.
 
 The sibling of `zarr_loader.py`. Same output contract, different source: instead of a
-hooke-tx zarr dump on a 2,000-gene panel, this reads **Occam's own h5ads** through
+the upstream benchmark zarr dump on a 2,000-gene panel, this reads **Occam's own h5ads** through
 `competitors/shared/occam_data.py` -- our three source files, our frozen 6,983-gene axis, our
 splits, in place. Nothing is converted and no second copy exists on disk.
 

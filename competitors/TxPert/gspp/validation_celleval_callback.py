@@ -7,7 +7,7 @@ the last epoch (`save_last`), which is honest but leaves the epoch budget unchos
 cells over 60 perturbations), and this callback turns it into the same cell-eval metric the other
 three model families are selected on.
 
-Contract shared with hooke-tx, STATE and PerturbDiff, so the arms stay comparable:
+Contract shared with the upstream benchmark, STATE and PerturbDiff, so the arms stay comparable:
 
   * metric published: `val/celleval/selection_score` = mean(pearson_delta,
     discrimination_score_l1), higher is better. Both raw components are published too.
@@ -40,7 +40,7 @@ import torch
 from lightning import Callback
 from loguru import logger
 
-# Keep in lockstep with hooke_tx.eval.evaluation.SELECTION_SCORE_COMPONENTS. Changing this changes
+# Keep in lockstep with the upstream tree.eval.evaluation.SELECTION_SCORE_COMPONENTS. Changing this changes
 # what "best checkpoint" means, and silently makes arms non-comparable.
 SELECTION_SCORE_COMPONENTS = ("pearson_delta", "discrimination_score_l1")
 SELECTION_SCORE_NAME = "selection_score"
@@ -52,7 +52,7 @@ def read_agg_metrics(eval_dir: Path) -> dict[str, float]:
 
     cell-eval writes one file per cell type; this benchmark has a single one (`hepg2`, lowercase
     in TxPert's outputs versus `HepG2` in STATE's), but averaging across whatever is present
-    matches `merge_celltype_celleval_metrics` on the hooke-tx side.
+    matches `merge_celltype_celleval_metrics` on the the upstream benchmark side.
     """
     import pandas as pd
 

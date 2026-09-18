@@ -3,7 +3,7 @@ name = "perturbdiff"
 version = "0.1.0"
 description = "PerturbDiff: Functional Diffusion for Single-Cell Perturbation Modeling"
 readme = "README.md"
-# 3.11 floor is required by the hooke-tx zarr benchmark path, not by upstream
+# 3.11 floor is required by the the upstream benchmark zarr benchmark path, not by upstream
 # PerturbDiff (whose README says 3.9):
 #   * X.zarr is zarr format v3 -> zarr-python >=3 -> Python >=3.11
 #   * tomllib (dataset manifests) is stdlib only from 3.11
@@ -49,7 +49,7 @@ dependencies = [
   # Logging backend for configs/lightning/logger WandbLogger.
   # Not needed when running with the README's $NO_WANDB override.
   "wandb>=0.16",
-  # --- hooke-tx zarr benchmark path (not upstream PerturbDiff) -------------
+  # --- the upstream benchmark zarr benchmark path (not upstream PerturbDiff) -------------
   # Reading the canonical zarr datasets (X.zarr + obs/var.parquet) and scoring
   # with the same metrics as ../STATE. See ZARR_BENCHMARK.md.
   "zarr>=3",                   # X.zarr is zarr format v3

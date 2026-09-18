@@ -1,4 +1,4 @@
-"""Load a Hooke-Tx onboarding dump into AnnData."""
+"""Load a Upstream-Tx onboarding dump into AnnData."""
 
 from __future__ import annotations
 
@@ -79,7 +79,7 @@ def _gather_rows(store, row_idx: np.ndarray, col_idx: np.ndarray | None) -> np.n
     return np.asarray(store[np.ix_(row_idx, col_idx)], dtype=np.float32)
 
 
-def load_hooke_anndata(
+def load_dump_anndata(
     data_dir: Path | str,
     *,
     selected_genes: Path | Sequence[str] | None = None,
@@ -96,7 +96,7 @@ def load_hooke_anndata(
     Parameters
     ----------
     data_dir:
-        Hooke dump directory (as in ``DATA_SOURCES``).
+        Upstream dump directory (as in ``DATA_SOURCES``).
     selected_genes:
         Optional Ensembl ID list (path or sequence). Columns of ``X`` are reordered
         to this list; missing IDs raise.
@@ -105,7 +105,7 @@ def load_hooke_anndata(
     max_cells / row_indices:
         Optional row subset (for smokes). ``row_indices`` wins if both given.
     target_sum / log1p:
-        Optional Hooke-style transforms applied after load.
+        Optional Upstream-style transforms applied after load.
     """
     data_dir = Path(data_dir)
     obs_path = data_dir / "obs.parquet"
@@ -150,7 +150,7 @@ def load_hooke_anndata(
     var_sub = pd.DataFrame(index=pd.Index(genes, name=_GENE_COL))
 
     adata = ad.AnnData(X=x, obs=obs_sub, var=var_sub)
-    adata.uns["hooke_bridge"] = {
+    adata.uns["occam_bridge"] = {
         "data_dir": str(data_dir),
         "feature": backend,
         "n_cells_full": n_cells,
@@ -225,7 +225,7 @@ def control_row_indices(
     return ctrl_idx
 
 
-def load_hooke_sources(
+def load_dump_sources(
     sources: Sequence[dict],
     *,
     selected_genes: Path | Sequence[str] | None = None,
@@ -235,7 +235,7 @@ def load_hooke_sources(
     on_missing_genes: Literal["error", "intersect"] = "error",
     seed: int = 0,
 ) -> ad.AnnData:
-    """Concatenate several Hooke dumps that share a gene space into one AnnData.
+    """Concatenate several Upstream dumps that share a gene space into one AnnData.
 
     Each entry of ``sources`` is ``{"data_dir": ..., "row_indices": ... | None}``.
     Adds ``obs['source_dir']`` and preserves each dump's own ``cell_type`` column,
@@ -247,7 +247,7 @@ def load_hooke_sources(
     parts: list[ad.AnnData] = []
     for spec in sources:
         data_dir = Path(spec["data_dir"])
-        part = load_hooke_anndata(
+        part = load_dump_anndata(
             data_dir,
             selected_genes=selected_genes,
             feature=spec.get("feature", feature),
@@ -269,14 +269,14 @@ def load_hooke_sources(
         return parts[0]
 
     combined = ad.concat(parts, axis=0, join="outer", index_unique="-")
-    combined.uns["hooke_bridge"] = {
+    combined.uns["occam_bridge"] = {
         "sources": [str(Path(s["data_dir"])) for s in sources],
         "n_obs_per_source": [int(p.n_obs) for p in parts],
     }
     return combined
 
 
-def write_synthetic_hooke_dump(
+def write_synthetic_dump(
     out_dir: Path | str,
     *,
     n_cells: int = 40,
@@ -285,7 +285,7 @@ def write_synthetic_hooke_dump(
     with_combos: bool = True,
     cell_type: str = "K562",
 ) -> Path:
-    """Write a tiny Hooke-shaped dump for unit tests (zarr + parquet)."""
+    """Write a tiny Upstream-shaped dump for unit tests (zarr + parquet)."""
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     rng = np.random.default_rng(seed)

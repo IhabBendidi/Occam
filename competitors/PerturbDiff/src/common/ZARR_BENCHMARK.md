@@ -91,8 +91,8 @@ from anywhere other than the repo root and `_paths` silently becomes `{}` (no er
 
 Two further notes:
 
-* It hard-codes `trixie_path.yaml` by name. A new `configs/path/hooke_tx_path.yaml` selected via
-  the hydra CLI (`path=hooke_tx_path`) will **not** be picked up here — the hydra config and this
+* It hard-codes `trixie_path.yaml` by name. A new `configs/path/upstream_path.yaml` selected via
+  the hydra CLI (`path=upstream_path`) will **not** be picked up here — the hydra config and this
   module read different files. In practice only `WANDB_LOGGING_DIR` comes from here, so it is
   cosmetic, but worth knowing when the wandb directory looks wrong.
 * `CELLFLOW_*` / `STATE_*` constants (22-37) are all `None` placeholders; the `STATE_*` block is

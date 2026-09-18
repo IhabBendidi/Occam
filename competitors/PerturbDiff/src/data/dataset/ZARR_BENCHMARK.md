@@ -121,7 +121,7 @@ def retrieve_counts_zarr(dataset, handle, ds_name, local_idx) -> torch.Tensor:
 * Return shape must stay `[1, G]` — `collate_fn` does `batch_counts.append(counts[0])` (74-75).
 * Build `gene_index_map` **once** at setup from `var.parquet.ensembl_gene_id` (mirrors
   `_Source.__init__`, `zarr_perturbation.py:260-275`), instead of per-row dict lookups.
-* Do **not** apply target_sum/log1p: the hooke-tx `X.zarr` is already `log1p(1e4)`-normalized, so
+* Do **not** apply target_sum/log1p: the the upstream benchmark `X.zarr` is already `log1p(1e4)`-normalized, so
   the STATE run uses `target_sum=null, log1p=false`. Keep `normalize_counts: false`.
 * Raise loudly if a selected gene is missing from `var` (STATE errors at
   `zarr_perturbation.py:266-271`); PerturbDiff's current behavior of silently zero-filling

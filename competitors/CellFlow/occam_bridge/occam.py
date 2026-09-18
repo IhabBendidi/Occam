@@ -1,7 +1,7 @@
 """Read Occam's `rhj_fewshot` benchmark as a CellFlow-shaped AnnData.
 
 The sibling of `load.py`. Same output contract -- `-> ad.AnnData` with the obs columns
-`apply_cellflow_gene_schema` requires -- but a different origin: instead of a hooke-tx dump
+`apply_cellflow_gene_schema` requires -- but a different origin: instead of a the upstream benchmark dump
 (`obs.parquet` + `var.parquet` + `X.zarr`) on a 2,000-gene panel, this reads **Occam's own
 h5ads** through `competitors/shared/occam_data.py`. Our three source files, our frozen
 6,983-gene axis, our splits, in place. Nothing is converted and no second copy exists on disk.
@@ -51,7 +51,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 import numpy as np
 import pandas as pd
 
-# `competitors/shared` is three levels up from CellFlow/hooke_bridge/.
+# `competitors/shared` is three levels up from CellFlow/occam_bridge/.
 _SHARED = os.path.abspath(os.path.join(
     os.path.dirname(__file__), "..", "..", "shared"))
 if os.path.isdir(_SHARED) and _SHARED not in sys.path:
@@ -71,7 +71,7 @@ SUPPORTING_LINES = ("jurkat", "RPE1")
 
 
 def occam_enabled(data_cfg: Dict[str, Any]) -> bool:
-    """True when the config asks for our benchmark instead of a hooke-tx dump."""
+    """True when the config asks for our benchmark instead of a the upstream benchmark dump."""
     return bool(data_cfg.get("occam_bench_dir"))
 
 
@@ -171,7 +171,7 @@ def load_occam_anndata(data_cfg: Dict[str, Any], *,
                      var=var)
     out.obs.index = out.obs.index.astype(str)
     out.uns["occam"] = dict(adata.uns.get("occam", {}))
-    out.uns["hooke_bridge"] = {
+    out.uns["occam_bridge"] = {
         "data_dir": bench_dir,
         "feature": "occam_h5ad",
         "n_cells_full": int(out.n_obs),
@@ -191,8 +191,8 @@ def load_occam_sources(data_cfg: Dict[str, Any], *, seed: int = 0,
     out of HepG2 still TRAINS from jurkat and RPE1, which is what makes the task
     few-shot-in-a-new-context rather than never-seen-at-all.
 
-    Mirrors `load_hooke_sources`'s output, including
-    `uns["hooke_bridge"]["n_obs_per_source"]`, so the caller's per-source logging works
+    Mirrors `load_dump_sources`'s output, including
+    `uns["occam_bridge"]["n_obs_per_source"]`, so the caller's per-source logging works
     unchanged.
     """
     del seed  # the split is deterministic; nothing here samples
@@ -201,9 +201,9 @@ def load_occam_sources(data_cfg: Dict[str, Any], *, seed: int = 0,
                                verify_sources=verify_sources)
     lines = np.asarray(adata.obs["cell_type"], dtype=str)
     order = list(OCCAM_CELL_LINES)
-    adata.uns["hooke_bridge"] = dict(adata.uns.get("hooke_bridge", {}))
-    adata.uns["hooke_bridge"]["sources"] = order
-    adata.uns["hooke_bridge"]["n_obs_per_source"] = [
+    adata.uns["occam_bridge"] = dict(adata.uns.get("occam_bridge", {}))
+    adata.uns["occam_bridge"]["sources"] = order
+    adata.uns["occam_bridge"]["n_obs_per_source"] = [
         int((lines == ln).sum()) for ln in order]
     return adata
 

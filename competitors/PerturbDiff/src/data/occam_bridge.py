@@ -2,7 +2,7 @@
 
 The sibling of `zarr_metadata_cache.py` + `zarr_store.py` + `dataset_io_zarr.py`, collapsed
 into one module because the occam versions of all three are short. Same duck-typed surfaces,
-different origin: instead of a hooke-tx canonical dump (`X.zarr` + `obs.parquet` +
+different origin: instead of a the upstream benchmark canonical dump (`X.zarr` + `obs.parquet` +
 `var.parquet`) on a 2,000-gene panel, this reads **Occam's own h5ads** through
 `competitors/shared/occam_data.py`. Our three source files, our frozen 6,983-gene axis, our
 splits, in place. Nothing is converted and no second copy exists on disk.

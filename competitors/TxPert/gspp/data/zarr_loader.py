@@ -1,4 +1,4 @@
-"""Read the hooke-tx canonical zarr format into the AnnData shape gspp expects.
+"""Read the the upstream benchmark canonical zarr format into the AnnData shape gspp expects.
 
 The benchmark datasets are ``X.zarr`` (zarr v3) + ``obs.parquet`` + ``var.parquet``, one
 directory per cell line, listed in a manifest TOML. This is the same data, the same manifest
@@ -11,7 +11,7 @@ Two things make this more than a format shim:
   Ensembl ids inside ``obs.gene_pert``). gspp is gene-symbol native: ``pert2id`` comes from
   ``data/gears_gene_set.csv`` and every knowledge graph is keyed by symbol. So perturbation ids
   and gene names are translated to symbols on load.
-* **Splits.** The hooke-tx split file is *row-index* based, not perturbation-name based.
+* **Splits.** The the upstream benchmark split file is *row-index* based, not perturbation-name based.
   :func:`load_split_perturbations` converts fold indices into the perturbation-name sets that
   ``PertDataModule.condition_group`` wants, and checks the two are disjoint (if a perturbation
   straddled the split, name-based exclusion downstream would silently leak).
@@ -48,8 +48,8 @@ _OBS_COLUMNS = ["cell_type", "batch_center", "gene_pert"]
 class GeneIDMapper:
     """Ensembl <-> symbol translation, from the map vendored in ``data/``.
 
-    Port of ``hooke_tx/data/tx_utils.GeneIDMapper``, which reads the same parquet from a
-    personal ``/rxrx/data/user`` directory. Using an identical mapping matters: hooke-tx's own
+    Port of ``the upstream tree/data/tx_utils.GeneIDMapper``, which reads the same parquet from a
+    personal ``/rxrx/data/user`` directory. Using an identical mapping matters: the upstream benchmark's own
     adjacency-map embedder resolves graph symbols this way, so a different table would give the
     two arms different graph node sets.
     """
@@ -178,7 +178,7 @@ def load_zarr_datasets(
 def load_split_perturbations(manifest: dict, adata: sc.AnnData) -> dict[str, list[str]]:
     """Resolve the index-based split file into train / validation / test perturbation-name sets.
 
-    hooke-tx stores splits as ``{"folds": [{"finetune": [...], "validation": [...],
+    the upstream benchmark stores splits as ``{"folds": [{"finetune": [...], "validation": [...],
     "test": [...]}]}`` where the lists are **row indices into that dataset's obs.parquet**. gspp
     splits by perturbation *name*, so we map indices to names.
 

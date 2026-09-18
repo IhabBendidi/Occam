@@ -41,7 +41,7 @@ SKIP_METRICS = ["pearson_edistance", "clustering_agreement"]
 PDEX_KWARGS = dict(exp_post_agg=True, is_log1p=True)
 
 # Control label written into the scored AnnData. Matches ../PerturbDiff's
-# `control_pert: empty` and hooke-tx's HOOKE_CONTROL_PERT, so all arms name controls
+# `control_pert: empty` and the upstream benchmark's CONTROL_PERT, so all arms name controls
 # identically. gspp's internal sentinel is "ctrl"; the translation happens at export.
 CONTROL_OUT = "empty"
 

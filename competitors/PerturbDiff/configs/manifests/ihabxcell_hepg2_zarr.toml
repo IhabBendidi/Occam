@@ -10,10 +10,10 @@
 # See data_module_setup._zarr_dataset_name.
 
 [datasets]
-ihabxcell_hepg2  = "/rxrx/scratch/hooke_tx/public/ihabxcell_replogle_nadig_hepg2"
-ihabxcell_jurkat = "/rxrx/scratch/hooke_tx/public/ihabxcell_replogle_nadig_jurkat"
-ihabxcell_k562   = "/rxrx/scratch/hooke_tx/public/ihabxcell_replogle_nadig_k562"
-ihabxcell_rpe1   = "/rxrx/scratch/hooke_tx/public/ihabxcell_replogle_nadig_rpe1"
+ihabxcell_hepg2  = "/rxrx/scratch/the upstream tree/public/ihabxcell_replogle_nadig_hepg2"
+ihabxcell_jurkat = "/rxrx/scratch/the upstream tree/public/ihabxcell_replogle_nadig_jurkat"
+ihabxcell_k562   = "/rxrx/scratch/the upstream tree/public/ihabxcell_replogle_nadig_k562"
+ihabxcell_rpe1   = "/rxrx/scratch/the upstream tree/public/ihabxcell_replogle_nadig_rpe1"
 
 [training]
 ihabxcell_hepg2 = "train"

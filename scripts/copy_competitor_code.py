@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Copy competitor CODE (never data) from hooke-tx, and record exactly what was copied.
+"""Copy competitor CODE (never data) from the upstream benchmark, and record exactly what was copied.
 
 WHY A SCRIPT AND NOT `cp`
 -------------------------
@@ -36,7 +36,12 @@ from datetime import date
 from typing import Dict, List, Tuple
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-UPSTREAM = "/mnt/ps/home/CORP/ihab.bendidi/sandbox/bc-hooke/src/hooke-tx/competitors"
+# ⚠️ AN EXTERNAL FILESYSTEM PATH. It keeps the upstream tree's real directory names
+# because that is where the code actually lives -- the 2026-09-18 name sweep rewrote
+# this string and broke the copier until it was restored. Renaming our own references
+# is a docs decision; renaming someone else's directory on disk is not ours to make.
+UPSTREAM = ("/mnt/ps/home/CORP/ihab.bendidi/sandbox/bc-hooke/src/"
+            "hooke-tx/competitors")   # noqa: legacy-name
 DEST = os.path.join(REPO, "competitors")
 
 # Per arm: the exact paths to copy, relative to that arm's upstream directory. Code, configs,
@@ -48,21 +53,19 @@ ALLOWLIST: Dict[str, List[str]] = {
         # `pyproject.toml` has `readme = "README.md"`; without it `uv sync` fails the
         # editable build with `OSError: Readme file does not exist`. MEASURED 2026-09-17.
         "state/README.md",
-        "state/train_state_fewshot.sh", "state/predict_state_fewshot.sh",
-        "state/tests/test_zarr_perturbation.py",
-        "hepg2.toml", "hepg2_noval.toml", "hepg2_noval_fixedbatch.toml",
-        "state/ihabxcell_hepg2_fewshot_zarr.toml",
     ],
     "TxPert": [
-        "gspp", "main.py", "configs", "launch", "data", "tests",
+        "gspp", "main.py", "configs", "data", "tests",
         "pyproject.toml", "uv.lock", ".python-version",
-        "README_HOOKE_TX.md", "CLAUDE.md",
     ],
     "CellFlow": [
-        "hooke_bridge", "train_cellflow.py", "predict_cellflow.py",
-        "cellflow_selection.py", "configs", "tests",
-        "train_replogle_nadig_fewshot.sh", "predict_replogle_nadig_fewshot.sh",
-        "README.md",
+        # ⚠️ `occam_bridge/`, `train_cellflow.py`, `predict_cellflow.py`,
+        # `cellflow_selection.py`, `configs/` and `tests/` are NOT listed. They are OURS now:
+        # the bridge was renamed from `hooke_bridge` and carries our `occam.py`, the selection
+        # callback scores through our cell-eval, and the only config we keep is ours. Listing
+        # them re-copies the upstream originals OVER the port -- measured twice on 2026-09-18,
+        # each time restoring a tree of files this rename had deleted. The arm's own code is
+        # tracked in git; upstream is no longer its source of truth.
         ".python-version",            # at the ARM root, not under cellflow/
         "cellflow/src", "cellflow/pyproject.toml",
         # `cellflow/pyproject.toml` declares `readme = "README.md"` and a
@@ -77,9 +80,8 @@ ALLOWLIST: Dict[str, List[str]] = {
         "cellflow/uv.lock",
     ],
     "PerturbDiff": [
-        "src", "configs", "launch", "tools",
+        "src", "configs", "tools",
         "pyproject.toml", "uv.lock", ".python-version",
-        "ZARR_BENCHMARK.md", "CLAUDE.md",
     ],
 }
 
@@ -91,7 +93,19 @@ DENY_DIRS = {
     "results_real", "results_decoded", "results_generated", "docs", "hub",
 }
 DENY_DIR_GLOBS = ("processed_data*", "test_norman*", "test_replogle*", "*.egg-info")
+# Upstream reference material for a benchmark we do not compare against (decision
+# 2026-09-18: "we never care about being comparable to the upstream benchmark"). Their launchers, their
+# zarr manifests and their design docs described that benchmark; none is reachable from an
+# occam config, and together they carried ~200 of the 537 name references. Refused rather
+# than dropped from the allowlist alone, so re-adding a tree cannot quietly bring them back.
 DENY_FILE_GLOBS = (
+    # ⚠️ THESE GLOBS MUST KEEP THE UPSTREAM TREE'S OWN SPELLING. They match FILENAMES on
+    # disk in someone else's repo, so they are data, not prose. The 2026-09-18 name sweep
+    # rewrote "*hooke*" to "*upstream*" here, which silently stopped denying anything and let
+    # a tree of reference files come back on the next copy.
+    "*HOOKE*", "*hooke*", "ZARR_BENCHMARK.md",     # noqa: legacy-name
+    "*_fewshot.sh", "*_zarr_*.sh", "*_fewshot_*.sh",
+    "ihabxcell_*.toml", "hepg2*.toml",
     "*.ckpt", "*.pkl", "*.pt", "*.pth", "*.h5ad", "*.h5", "*.npy", "*.npz", "*.zarr",
     "*.out", "*.err", "*.log", "*.sif", "*.parquet", "*.arrow", "*.feather",
     "*.pyc", "*.pyo", "*.so", "*_agg_results.csv", "*_de.csv",
@@ -115,9 +129,10 @@ PROTECTED = {
     "STATE": (
         "state/src/state/tx/data/zarr_perturbation.py",
     ),
-    "CellFlow": (
-        "train_cellflow.py",
-    ),
+    # CellFlow's adapted files are no longer in its ALLOWLIST at all, so there is nothing for
+    # the copier to overwrite and nothing to protect. Empty deliberately, with this note, so
+    # the absence reads as a decision rather than an omission.
+    "CellFlow": (),
     "PerturbDiff": (
         "src/data/metadata_cache.py",
         "src/data/dataset/dataset_core.py",
@@ -179,11 +194,33 @@ def main(argv=None) -> int:
     ap.add_argument("--upstream", default=UPSTREAM)
     ap.add_argument("--dest", default=DEST)
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--force", action="store_true",
+                    help="re-copy anyway. ⛔ This OVERWRITES the port with upstream originals "
+                         "for every file not in PROTECTED.")
     args = ap.parse_args(argv)
 
     arms = args.arm or sorted(ALLOWLIST)
     if not os.path.isdir(args.upstream):
         raise SystemExit(f"upstream not found: {args.upstream}")
+
+    # ⛔ THIS IS A ONE-SHOT PORT TOOL. Upstream is no longer the source of truth for these
+    # arms: their code lives in our git, has been adapted in nine files, and had every
+    # reference to the upstream benchmark's name removed (2026-09-18). Re-copying restores the
+    # originals for everything not in PROTECTED -- which happened twice that day, each time
+    # undoing the rename across a tree of files and silently reintroducing names the user had
+    # asked to be gone.
+    #
+    # PROTECTED cannot express "this whole tree is ours now", because the allowlist copies
+    # DIRECTORIES (`src`, `configs`, `gspp`). So the refusal is the guard.
+    man_exists = os.path.isfile(os.path.join(args.dest, "MANIFEST.json"))
+    if man_exists and not (args.force or args.dry_run):
+        print(f"[copy] ⛔ REFUSING: {os.path.relpath(os.path.join(args.dest, 'MANIFEST.json'), REPO)} "
+              f"already exists, so the port has been done.")
+        print(f"[copy] Upstream is no longer the source of truth for these arms -- their code "
+              f"is in our git and has been adapted and renamed.")
+        print(f"[copy] Re-copying OVERWRITES the port for every file not in PROTECTED.")
+        print(f"[copy] Pass --force if that is genuinely what you want, or --dry-run to look.")
+        return 0
 
     man_path = os.path.join(args.dest, "MANIFEST.json")
     manifest = json.load(open(man_path)) if os.path.isfile(man_path) else {"schema": 1}

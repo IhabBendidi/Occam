@@ -1,11 +1,11 @@
-"""Expression-matrix handles for the hooke-tx canonical zarr format.
+"""Expression-matrix handles for the the upstream benchmark canonical zarr format.
 
 Counterpart to :class:`src.data.file_handle.H5Store`, exposing the same three
 methods the dataset uses (``dataset_file`` / ``close_all`` / ``__getstate__``) so
 :class:`~src.data.dataset.dataset_core.H5adSentenceDataset` needs no structural
 change.
 
-``feature_loading`` mirrors ``TaskDataset.setup_details`` in hooke-tx and
+``feature_loading`` mirrors ``TaskDataset.setup_details`` in the upstream benchmark and
 ``_Source._ensure_open`` in STATE's zarr loader:
 
 * ``ram``  -- whole matrix resident (``X.npy`` if present, else ``X.zarr``); fastest

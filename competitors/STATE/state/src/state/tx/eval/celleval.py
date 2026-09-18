@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any
 
 # Metrics averaged into the checkpoint-selection score. Must stay in lockstep with
-# hooke_tx.eval.evaluation.SELECTION_SCORE_COMPONENTS and PerturbDiff's copy -- changing the
+# the upstream tree.eval.evaluation.SELECTION_SCORE_COMPONENTS and PerturbDiff's copy -- changing the
 # components changes what "best checkpoint" means and silently makes arms non-comparable.
 SELECTION_SCORE_COMPONENTS: tuple[str, ...] = ("pearson_delta", "discrimination_score_l1")
 SELECTION_SCORE_NAME = "selection_score"
@@ -102,7 +102,7 @@ def score_celleval_pair(
     validation pass.
 
     Returns ``{metric: value}`` averaged over cell types, matching
-    ``merge_celltype_celleval_metrics`` on the hooke-tx side.
+    ``merge_celltype_celleval_metrics`` on the the upstream benchmark side.
     """
     import numpy as np
     from cell_eval import MetricsEvaluator

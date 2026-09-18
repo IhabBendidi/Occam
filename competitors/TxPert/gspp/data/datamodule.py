@@ -169,7 +169,7 @@ class PertDataModule(L.LightningDataModule):
         self.xcell_v2_data_path = xcell_v2_data_path
         self._xcell_v2_hepg2_exclude = set()
 
-        # Canonical hooke-tx zarr source (see gspp/data/zarr_loader.py). Shares the xcell_v2
+        # Canonical the upstream benchmark zarr source (see gspp/data/zarr_loader.py). Shares the xcell_v2
         # code paths downstream -- no val split, HepG2 perturbation holdout -- but reads the
         # zarr datasets STATE and PerturbDiff use and keeps their normalization.
         self.zarr = zarr
@@ -575,7 +575,7 @@ class PertDataModule(L.LightningDataModule):
         MARS1<-MARS, RARS1<-RARS, WARS1<-WARS, H2AZ1<-H2AFZ, ...) -- and **9 of those are in the
         380-perturbation HepG2 test set**. ``_process_treatment_data`` drops cells whose
         perturbation is outside the vocabulary, so leaving this alone would score TxPert on 371
-        perturbations while STATE / PerturbDiff / hooke-tx score 380.
+        perturbations while STATE / PerturbDiff / the upstream benchmark score 380.
 
         Appending them keeps the scored set identical across arms. The new nodes enlarge the
         adjacency matrix by ~0.3%; they pick up knowledge-graph edges wherever the current
@@ -625,7 +625,7 @@ class PertDataModule(L.LightningDataModule):
             "This TxPert copy supports Occam's rhj_fewshot benchmark "
             "(datamodule.occam=true), the canonical zarr source (datamodule.zarr=true) or the "
             "pre-merged xcell_v2 h5ad (datamodule.xcell_v2=true). The upstream multi-h5ad "
-            "loading path was removed; see competitors/TxPert/README_HOOKE_TX.md."
+            "loading path was removed; see competitors/TxPert/the upstream release notes."
         )
 
     def _load_occam_data(self) -> sc.AnnData:
@@ -663,7 +663,7 @@ class PertDataModule(L.LightningDataModule):
         return adata
 
     def _load_zarr_data(self) -> sc.AnnData:
-        """Load the hooke-tx canonical zarr datasets named in the manifest TOML.
+        """Load the the upstream benchmark canonical zarr datasets named in the manifest TOML.
 
         Deliberately does NOT normalize: ``X.zarr`` is already ``log1p(target_sum=1e4)`` and
         both ../STATE and ../PerturbDiff train on that scale untouched, so re-normalizing to
@@ -941,7 +941,7 @@ class PertDataModule(L.LightningDataModule):
         logger.info(f"XCellv2 splits: {len(all_perts)} train (global), {len(test_perts)} test (HEPG2 only), val=0")
 
     def _load_zarr_splits(self) -> None:
-        """Install the fold from the hooke-tx split file as gspp condition groups.
+        """Install the fold from the the upstream benchmark split file as gspp condition groups.
 
         Same shape as :meth:`_load_xcell_v2_splits` -- train is every perturbation globally and
         test is the held-out HepG2 set -- but the membership comes from the index-based split file
@@ -952,7 +952,7 @@ class PertDataModule(L.LightningDataModule):
         very same perturbation measured in jurkat / k562 / rpe1 still trains -- that is the
         cross-cell-line generalization the benchmark is testing.
 
-        Validation follows exactly the same rule, and for the same reason: hooke-tx, STATE and
+        Validation follows exactly the same rule, and for the same reason: the upstream benchmark, STATE and
         PerturbDiff all carve their validation set out of the HepG2 rows while leaving those
         perturbations in the other three cell lines, so anything else here would train TxPert on
         a different amount of data than the arms it is compared against. Both held-out groups

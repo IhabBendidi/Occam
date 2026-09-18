@@ -20,7 +20,7 @@
 #
 # TWO DELIBERATE DEVIATIONS, recorded in docs/rhj_competitors.md:
 #   1. `data=occam_h5ad` with `source_format: h5ad` -- it reads OUR h5ads through
-#      competitors/shared/occam_data.py, not a hooke-tx zarr dump. Its h5ad dataset IO already
+#      competitors/shared/occam_data.py, not a the upstream benchmark zarr dump. Its h5ad dataset IO already
 #      exists, and it RAISES on a missing gene rather than zero-filling, which is the behaviour
 #      we want and is kept.
 #   2. Our 6,983-gene axis instead of their 2,000. ⚠️ THREE values must move together:

@@ -1,8 +1,8 @@
-"""Metadata cache for the hooke-tx canonical zarr format.
+"""Metadata cache for the the upstream benchmark canonical zarr format.
 
 The h5ad path reads perturbation / cell-type / batch categoricals out of
 ``obs/<col>/{categories,codes}`` with h5py (:mod:`src.data.metadata_cache`). The
-hooke-tx benchmark instead stores metadata in ``obs.parquet`` next to ``X.zarr``,
+the upstream benchmark benchmark instead stores metadata in ``obs.parquet`` next to ``X.zarr``,
 and does not store a perturbation *string* at all -- it is derived from the
 canonical ``gene_pert`` / ``mol_pert`` / ``negative_control`` columns.
 

@@ -20,7 +20,7 @@
 #
 # TWO DELIBERATE DEVIATIONS, recorded in docs/rhj_competitors.md:
 #   1. `data=occam_h5ad` -- it reads OUR h5ads through competitors/shared/occam_data.py, not a
-#      hooke-tx zarr dump. Its own ZarrPerturbationDataModule already has an `anndata`
+#      the upstream benchmark zarr dump. Its own ZarrPerturbationDataModule already has an `anndata`
 #      source_format, which is the branch this uses. No intermediate format.
 #   2. Our 6,983-gene axis instead of their 2,000 selected Ensembl ids.
 #
@@ -114,7 +114,7 @@ rm -f "$OUTPUT_DIR/$RUN_NAME/celleval_manifest.json"
     model.kwargs.batch_encoder=True \
     model=state \
     wandb.entity="valencelabs" \
-    wandb.project="Hooke-External" \
+    wandb.project="Occam-Competitors" \
     wandb.tags="[rhj_fewshot]" \
     output_dir="$OUTPUT_DIR" \
     name="$RUN_NAME"

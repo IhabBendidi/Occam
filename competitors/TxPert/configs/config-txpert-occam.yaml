@@ -1,7 +1,7 @@
 # TxPert on OCCAM's rhj_fewshot benchmark.
 #
 # Derived from config-txpert-zarr-fewshot.yaml, the OFFICIAL best setup recorded in
-# hooke-tx/reproducibility/txpert__replogle_nadig_fewshot/. Every model, optimiser and
+# the upstream benchmark/reproducibility/txpert__replogle_nadig_fewshot/. Every model, optimiser and
 # adjacency-map setting is carried over unchanged -- the hyperparameters are NOT re-swept.
 #
 # FOUR DELTAS, each deliberate:
@@ -34,7 +34,7 @@ global:
 
 wandb:
   name: txpert-occam-rhj-fewshot
-  project: Hooke-External
+  project: Occam-Competitors
   entity: valencelabs
 
 model:
@@ -119,8 +119,8 @@ datamodule:
   obsm_key: raw
 
 graph:
-  # Shared, read-only. Byte-identical to the graphs hooke-tx's own AdjacencyMapEmbedder reads
-  # (hooke_tx/architecture/embedding.py), so nothing is copied. Needs the D-Valence-R group.
+  # Shared, read-only. Byte-identical to the graphs the upstream benchmark's own AdjacencyMapEmbedder reads
+  # (the upstream tree/architecture/embedding.py), so nothing is copied. Needs the D-Valence-R group.
   cache_dir: /rxrx/data/valence/pathfinder/modules/gspp/graphs
   graph_cfg:
     go:

@@ -1,4 +1,4 @@
-"""Expression IO and gene selection for the hooke-tx canonical zarr format.
+"""Expression IO and gene selection for the the upstream benchmark canonical zarr format.
 
 Zarr counterpart to :mod:`src.data.dataset.dataset_io` (row fetch) and to
 ``dataset_grouping.get_selected_gene_vars`` (gene panel resolution). Both live

@@ -29,7 +29,7 @@ def build_sampling_datamodule(cfg, logger):
             py_logger=logger,
         )
     elif cfg.data.data_name in ["IhabxcellZarrFinetune"]:
-        # hooke-tx canonical zarr benchmark. Uses optimization.micro_batch_size
+        # the upstream benchmark canonical zarr benchmark. Uses optimization.micro_batch_size
         # (not sampling.batch_size) so the cell-set reshape in collate_fn matches
         # what training used.
         datamodule = data_module.ZarrPerturbationDataModule(

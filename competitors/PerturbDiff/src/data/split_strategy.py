@@ -12,7 +12,7 @@ _EMPTY = lambda: np.array([], dtype=np.int64)  # noqa: E731
 
 
 def split_index_json(dm, cache, target_type, key_info, holdout_setname=None, random_setname=None):
-    """Index-based split, as used by the hooke-tx zarr benchmark.
+    """Index-based split, as used by the the upstream benchmark zarr benchmark.
 
     The h5ad strategies below hold out cells by *name* (lists of perturbation or
     batch labels inlined in the Hydra config). The benchmark instead ships a JSON

@@ -19,7 +19,7 @@
 #
 # FOUR DELIBERATE DEVIATIONS, all recorded in docs/rhj_competitors.md:
 #   1. `occam: true` / `zarr: false` -- it reads OUR h5ads through
-#      competitors/shared/occam_data.py, not a hooke-tx zarr dump. No intermediate format.
+#      competitors/shared/occam_data.py, not a the upstream benchmark zarr dump. No intermediate format.
 #   2. `kg_list: [go, string]` -- pxmap-top1 and txmap-top1 REMOVED, so TxPert and Occam see
 #      the same prior knowledge (Occam runs graph_types: [go, string]). ⚠️ Their published
 #      0.50787 was measured with FOUR KGs; this arm is therefore not their number.

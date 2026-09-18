@@ -1,6 +1,6 @@
 # Filesystem paths for Occam's `rhj_fewshot` benchmark.
 #
-# Select with `path=occam_path`. Unlike `hooke_tx_path.yaml`, which points at hooke-tx
+# Select with `path=occam_path`. Unlike `upstream_path.yaml`, which points at the upstream benchmark
 # canonical zarr dumps, this points at the frozen Occam benchmark and at Occam's own run root,
 # so every product of a competitor run lands under `runs/competitors/` and is gitignored.
 

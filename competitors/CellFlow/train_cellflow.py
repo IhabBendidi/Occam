@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Train CellFlow on a Hooke-Tx dump (Phase 2).
+"""Train CellFlow on a Upstream-Tx dump (Phase 2).
 
 Example::
 
@@ -24,24 +24,18 @@ import numpy as np
 import yaml
 
 ROOT = Path(__file__).resolve().parent
-HOOKE_TX_ROOT = ROOT.parents[1]
+REPO_ROOT = ROOT.parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from hooke_bridge.occam import (  # noqa: E402
-    load_occam_sources,
-    load_occam_validation,
-    occam_enabled,
-    occam_pert_tokens,
-)
-from hooke_bridge import (  # noqa: E402
+from occam_bridge import (  # noqa: E402
     apply_cellflow_gene_schema,
     control_row_indices,
     dataset_pert_tokens,
     fit_and_project_pca,
     load_fold,
-    load_hooke_anndata,
-    load_hooke_sources,
+    load_dump_anndata,
+    load_dump_sources,
     save_pca_artifacts,
 )
 
@@ -86,7 +80,7 @@ def _load_config(path: Path) -> dict[str, Any]:
         raise TypeError(f"config must be a mapping, got {type(cfg)}")
     selected = cfg.get("data", {}).get("selected_genes_path")
     if selected and not Path(selected).is_absolute():
-        cfg["data"]["selected_genes_path"] = str(HOOKE_TX_ROOT / selected)
+        cfg["data"]["selected_genes_path"] = str(REPO_ROOT / selected)
     return cfg
 
 
@@ -175,7 +169,7 @@ def _ensure_validation_controls(
 ):
     """CellFlow validation requires control cells as OT sources.
 
-    Hooke/cell-eval folds put *all* controls in ``finetune`` and none in
+    Upstream/cell-eval folds put *all* controls in ``finetune`` and none in
     ``validation``/``test``. Inject train controls (already PCA-projected) into
     the validation AnnData so ``prepare_validation_data`` succeeds.
 
@@ -252,22 +246,11 @@ def run_train(cfg: dict[str, Any], *, config_path: Path | None = None) -> Path:
             "so split indices stay aligned. Use a smaller num_iterations instead."
         )
 
-    # Occam's `rhj_fewshot` carries its own split inside the frozen benchmark, so there is
-    # no `split_path` and no row-index JSON to keep aligned -- `hooke_bridge/occam.py` reads
-    # it live and asserts its invariants. The fold dict is therefore not used on that path.
-    occam = occam_enabled(data_cfg)
+    fold = load_fold(data_cfg["split_path"], fold=int(data_cfg.get("fold", 0)))
     train_key = data_cfg.get("train_key", "finetune")
     valid_key = data_cfg.get("valid_key", "validation")
-    if occam:
-        fold = {}
-        if data_cfg.get("split_path"):
-            raise ValueError(
-                "both data.occam_bench_dir and data.split_path are set. The benchmark owns "
-                "the split; a second split file could only disagree with it silently.")
-    else:
-        fold = load_fold(data_cfg["split_path"], fold=int(data_cfg.get("fold", 0)))
-        if train_key not in fold:
-            raise KeyError(f"train_key={train_key!r} not in fold keys {sorted(fold)}")
+    if train_key not in fold:
+        raise KeyError(f"train_key={train_key!r} not in fold keys {sorted(fold)}")
 
     seed = int(model_cfg.get("seed", 0))
     selected = data_cfg.get("selected_genes_path")
@@ -289,12 +272,7 @@ def run_train(cfg: dict[str, Any], *, config_path: Path | None = None) -> Path:
     #
     # `null` disables it and restores the old train-cells-only behaviour for the other configs.
     vocab_dirs = data_cfg.get("vocabulary_data_dirs", "__unset__")
-    if occam:
-        # Every perturbation symbol in the benchmark, read from its own split lists rather
-        # than from the loaded cells, so the vocabulary is full width even on a smoke run.
-        extra_tokens = occam_pert_tokens(data_cfg)
-        print(f"[vocab] {len(extra_tokens)} perturbation tokens from rhj_fewshot")
-    elif vocab_dirs == "__unset__":
+    if vocab_dirs == "__unset__":
         extra_tokens: list[str] = []
     elif vocab_dirs is None:
         extra_tokens = []
@@ -302,44 +280,9 @@ def run_train(cfg: dict[str, Any], *, config_path: Path | None = None) -> Path:
         extra_tokens = dataset_pert_tokens([str(d) for d in vocab_dirs])
         print(f"[vocab] {len(extra_tokens)} perturbation tokens from {len(vocab_dirs)} dump(s)")
 
-    if occam:
-        adata_train = load_occam_sources(data_cfg, seed=seed)
-        apply_cellflow_gene_schema(
-            adata_train,
-            max_combination_length=int(data_cfg.get("max_combination_length", 1)),
-            sample_covariates=sample_covariates,
-            split_covariates=split_covariates,
-            extra_tokens=extra_tokens,
-        )
-        schema = adata_train.uns["cellflow_schema"]
-        adata = adata_train
-        loaded_rows = np.arange(adata_train.n_obs, dtype=np.int64)
-        for name, n_obs in zip(adata_train.uns["hooke_bridge"]["sources"],
-                               adata_train.uns["hooke_bridge"]["n_obs_per_source"],
-                               strict=True):
-            print(f"[train_cellflow]   source {name}: n_obs={n_obs}")
-
-        adata_valid = load_occam_validation(data_cfg)
-        apply_cellflow_gene_schema(
-            adata_valid,
-            max_combination_length=int(data_cfg.get("max_combination_length", 1)),
-            sample_covariates=sample_covariates,
-            split_covariates=split_covariates,
-            extra_tokens=extra_tokens,
-        )
-        # The gene axis must match the training AnnData exactly, or PCA projection through
-        # the train-fit basis is meaningless rather than merely wrong-looking.
-        if list(adata_valid.var_names) != list(adata_train.var_names):
-            raise ValueError(
-                "validation gene axis differs from training; refusing to project it "
-                "through the train-fit PCA basis"
-            )
-        other["valid"] = adata_valid
-        print(f"[train_cellflow] validation: {adata_valid.n_obs} cells from HEPG2 "
-              f"({adata_valid.obs['occam_target_gene'].nunique()} perturbations)")
-    elif multi_source:
+    if multi_source:
         specs = _build_multi_source_specs(data_cfg, fold, train_key=train_key, seed=seed)
-        adata_train = load_hooke_sources(
+        adata_train = load_dump_sources(
             specs,
             selected_genes=selected,
             feature=data_cfg.get("feature", "auto"),
@@ -358,7 +301,7 @@ def run_train(cfg: dict[str, Any], *, config_path: Path | None = None) -> Path:
         schema = adata_train.uns["cellflow_schema"]
         adata = adata_train
         loaded_rows = np.arange(adata_train.n_obs, dtype=np.int64)
-        for spec, n_obs in zip(specs, adata_train.uns["hooke_bridge"]["n_obs_per_source"], strict=True):
+        for spec, n_obs in zip(specs, adata_train.uns["occam_bridge"]["n_obs_per_source"], strict=True):
             print(f"[train_cellflow]   source {Path(spec['data_dir']).name}: n_obs={n_obs}")
 
         # Validation for the multi-source path. This used to raise NotImplementedError, which
@@ -371,7 +314,7 @@ def run_train(cfg: dict[str, Any], *, config_path: Path | None = None) -> Path:
         # `other`, `_ensure_validation_controls`, `prepare_validation_data` -- is already
         # generic over `adata_valid`, so populating it here is all that is needed.
         if valid_key in fold and fold[valid_key]:
-            adata_valid = load_hooke_anndata(
+            adata_valid = load_dump_anndata(
                 data_cfg["data_dir"],
                 selected_genes=selected,
                 feature=data_cfg.get("feature", "auto"),
@@ -406,7 +349,7 @@ def run_train(cfg: dict[str, Any], *, config_path: Path | None = None) -> Path:
             load_parts.append(fold[valid_key])
         loaded_rows = _union_indices(*load_parts)
 
-        adata = load_hooke_anndata(
+        adata = load_dump_anndata(
             data_cfg["data_dir"],
             selected_genes=selected,
             feature=data_cfg.get("feature", "auto"),
@@ -563,7 +506,7 @@ def run_train(cfg: dict[str, Any], *, config_path: Path | None = None) -> Path:
             output_root=run_dir / "valscore",
             scorer_py=select_cfg["scorer_py"],
             scorer=select_cfg["scorer"],
-            hooke_tx_dir=select_cfg["hooke_tx_dir"],
+            scorer_pythonpath=select_cfg["scorer_pythonpath"],
             profile=select_cfg.get("profile", "full"),
         )
         print(

@@ -16,9 +16,9 @@ from gspp.models.pert_models.simple_adjacency_map import SimpleAdjacencyMapModel
 
 
 # Upstream GSP registers ~10 perturbation models and 4 basal-state models. This copy is
-# trimmed to the adjacency-map arm of the hooke-tx benchmark, so only the two the config
+# trimmed to the adjacency-map arm of the the upstream benchmark benchmark, so only the two the config
 # selects survive; the rest were dropped along with their torch_scatter / torch_sparse /
-# molfeat import chains. See ../README_HOOKE_TX.md.
+# molfeat import chains. See ../the upstream release notes.
 BASAL_STATE_MODEL_DICT = {
     "mlp": BasalMLP,
 }

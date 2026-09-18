@@ -3,7 +3,7 @@ kwargs:
   toml_config_path: null
   # --- native-zarr specifics ---
   source_format: zarr            # "zarr" (X.zarr+obs.parquet+var.parquet) or "anndata" (.h5ad)
-  feature_loading: ram           # "ram" (whole matrix in RAM; fast, like hooke-tx), "npy" (mmap X.npy), or "zarr" (lazy; slow)
+  feature_loading: ram           # "ram" (whole matrix in RAM; fast, like the upstream benchmark), "npy" (mmap X.npy), or "zarr" (lazy; slow)
   selected_ensembl_gene_ids_path: null  # optional gene subset (one Ensembl id per line)
   target_sum: null               # null + log1p=false => no-op (data already normalized)
   log1p: false                   # raw counts: set target_sum=300000, log1p=true

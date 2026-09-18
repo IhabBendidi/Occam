@@ -21,7 +21,7 @@
 # change affects what PCA is fitted ON, not how many components are kept.
 #
 # TWO DELIBERATE DEVIATIONS, recorded in docs/rhj_competitors.md:
-#   1. `hooke_bridge/occam.py` -- a sibling of their `load.py` with the same
+#   1. `occam_bridge/occam.py` -- a sibling of their `load.py` with the same
 #      `-> ad.AnnData` signature, reading OUR h5ads through
 #      competitors/shared/occam_data.py. `apply_cellflow_gene_schema` is untouched.
 #   2. Our 6,983-gene axis instead of their 2,000.

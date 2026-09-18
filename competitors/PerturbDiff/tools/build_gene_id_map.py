@@ -3,7 +3,7 @@
 Why this exists
 ---------------
 PerturbDiff's pretrained perturbation embeddings (`genept`) and its cell-type
-embeddings are keyed by **gene symbol**, while the hooke-tx zarr benchmark
+embeddings are keyed by **gene symbol**, while the the upstream benchmark zarr benchmark
 identifies perturbations by **Ensembl gene id**. Translating between them needs a
 genome-wide table: the datasets' own ``var.parquet`` only covers the 2000
 *measured* genes, which overlap the ~2023 *perturbed* genes by only 20%.

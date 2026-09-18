@@ -96,7 +96,7 @@ def add_arguments_predict(parser: ap.ArgumentParser):
             "Instead, copy the real control expression into adata_pred for every control "
             "row (pert == control_pert), so that adata_pred and adata_real share an "
             "identical real control baseline. Perturbation rows remain model predictions. "
-            "Mirrors the hooke-tx cell-eval convention of injecting real controls."
+            "Mirrors the the upstream benchmark cell-eval convention of injecting real controls."
         ),
     )
 
@@ -192,7 +192,7 @@ def run_tx_predict(args: ap.ArgumentParser):
         into adata_pred for every control row, making the control baseline
         identical and real in both adatas while perturbation rows stay predicted.
 
-        Mirrors the hooke-tx convention of injecting real controls rather than
+        Mirrors the the upstream benchmark convention of injecting real controls rather than
         predicting them. Requires adata_pred and adata_real to be row-aligned
         (same obs order), which holds at every call site here.
 

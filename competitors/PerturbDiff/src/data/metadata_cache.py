@@ -156,7 +156,7 @@ class GlobalH5MetadataCache(metaclass=Singleton):
         batch_col: str = "batch_center",
         control_pert: str = "empty",
     ):
-        """Cache entry for a hooke-tx canonical zarr directory.
+        """Cache entry for a the upstream benchmark canonical zarr directory.
 
         Stored in the same ``_cache`` dict, keyed by directory path, because the
         dataset looks entries up as ``meta_cache._cache[dataset_path_map[ds_name]]``

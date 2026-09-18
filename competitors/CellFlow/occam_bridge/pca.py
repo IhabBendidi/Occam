@@ -87,10 +87,10 @@ def reconstruct_from_pca(
 def write_scorer_pca_state(artifacts: dict, path: Path | str) -> Path:
     """Write CellFlow's PCA basis in the npz layout the shared scorer's decode expects.
 
-    ``hooke_tx/eval/celleval_artifacts.py --reconstruct-pred-controls`` loads
+    ``upstream/eval/celleval_artifacts.py --reconstruct-pred-controls`` loads
     ``mean / components / comp_mean / comp_std`` (``_pca_state_from_npz``) and reconstructs with
     ``z = (X - mean) @ components.T`` then ``z @ components + mean``
-    (``hooke_tx/eval/adapters/celleval.pca_reconstruct``). So its ``components`` is
+    (``upstream/eval/adapters/celleval.pca_reconstruct``). So its ``components`` is
     ``(n_comps, n_genes)`` -- the TRANSPOSE of CellFlow's ``varm["PCs"]``, which this module
     stores as ``(n_genes, n_comps)``.
 

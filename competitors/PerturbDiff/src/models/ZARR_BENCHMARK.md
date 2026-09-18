@@ -70,7 +70,7 @@ vocabulary. Cardinality with all four cell lines is a few hundred — fine.
 
 ### Covariate configs
 
-`configs/cov_encoding/hooke_tx_zarr.yaml` defaults to all-one-hot, which needs no external pickle:
+`configs/cov_encoding/upstream_zarr.yaml` defaults to all-one-hot, which needs no external pickle:
 
 ```
 cov_encoding.pert_encoding=onehot        cov_encoding.celltype_encoding=onehot

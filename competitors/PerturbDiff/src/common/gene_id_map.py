@@ -6,7 +6,7 @@ PerturbDiff's pretrained embedding tables are keyed by **gene symbol**:
 * ``cov_encoding.gene_embedding_path`` (per-gene embeddings, when
   ``model.use_gene_embedding=true``)
 
-The hooke-tx zarr benchmark identifies perturbations by **Ensembl gene id**, so
+The the upstream benchmark zarr benchmark identifies perturbations by **Ensembl gene id**, so
 those lookups miss entirely without a translation. The datasets' own
 ``var.parquet`` is not enough: it covers the 2000 *measured* genes, which overlap
 the ~2023 *perturbed* genes by only 20%. This module reads the genome-wide table

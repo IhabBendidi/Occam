@@ -2,7 +2,7 @@
 
 WHY THIS MODULE EXISTS
 ----------------------
-The four competitor arms were built against a "hooke-tx zarr" dump on a 2,000-gene panel over
+The four competitor arms were built against a "the upstream benchmark zarr" dump on a 2,000-gene panel over
 380 test perturbations and 4 cell lines. We benchmark on `rhj_fewshot`: 6,983 genes, 611 test
 perturbations, 3 cell lines. Rather than convert our data into their format -- which would
 mean a second 18 GB copy on disk and a format to keep in sync -- their dataloaders are
@@ -24,7 +24,7 @@ actually contains. Measured on that panel: `expm1(X).sum(axis=1)` has median **1
 Two consequences:
 
 1. **`target_sum` defaults to 10,000, not our 2,000.** Their pipelines assume pre-normalised
-   input -- every arm passes `target_sum=null, log1p=false`, because the hooke-tx data
+   input -- every arm passes `target_sum=null, log1p=false`, because the the upstream benchmark data
    arrived already `log1p(1e4)`. Our h5ads are raw integer counts, so we do it for them, at
    the value their recipes expect.
 2. **The map back to our evaluation space is then EXACT**, because the per-cell denominator

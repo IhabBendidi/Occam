@@ -1,4 +1,4 @@
-"""Map Hooke obs into CellFlow control / gene-covariate columns."""
+"""Map Upstream obs into CellFlow control / gene-covariate columns."""
 
 from __future__ import annotations
 

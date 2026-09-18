@@ -25,7 +25,7 @@ from gspp.metrics import log_metrics, compute_metrics
 import gspp.constants as cs
 
 # Upstream also registers mean / experimental / graph-neighbor baselines. Those live in
-# hooke-tx's own baseline code (hooke_tx/eval/baselines/) for this benchmark, so the
+# the upstream benchmark's own baseline code (the upstream tree/eval/baselines/) for this benchmark, so the
 # competitor arm keeps only the trained model.
 MODEL_DICT = {
     "gears_derivate": GSPP,

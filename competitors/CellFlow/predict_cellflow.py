@@ -28,15 +28,15 @@ import pandas as pd
 import yaml
 
 ROOT = Path(__file__).resolve().parent
-HOOKE_TX_ROOT = ROOT.parents[1]
+REPO_ROOT = ROOT.parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from hooke_bridge import (  # noqa: E402
+from occam_bridge import (  # noqa: E402
     apply_cellflow_gene_schema,
     control_row_indices,
     load_fold,
-    load_hooke_anndata,
+    load_dump_anndata,
     load_pca_artifacts,
     read_obs_columns,
     reconstruct_from_pca,
@@ -53,7 +53,7 @@ def _load_config(path: Path) -> dict[str, Any]:
         raise TypeError(f"config must be a mapping, got {type(cfg)}")
     selected = cfg.get("data", {}).get("selected_genes_path")
     if selected and not Path(selected).is_absolute():
-        cfg["data"]["selected_genes_path"] = str(HOOKE_TX_ROOT / selected)
+        cfg["data"]["selected_genes_path"] = str(REPO_ROOT / selected)
     return cfg
 
 
@@ -267,7 +267,7 @@ def run_predict(
         )
 
     # Ground-truth dump for eval split (+ injected controls when needed), fold rows only.
-    adata_loaded = load_hooke_anndata(
+    adata_loaded = load_dump_anndata(
         data_cfg["data_dir"],
         selected_genes=genes,
         feature=data_cfg.get("feature", "auto"),
@@ -468,7 +468,7 @@ def main(argv: list[str] | None = None) -> int:
         type=Path,
         default=None,
         help="also write adata_pred.h5ad / adata_real.h5ad / pca_state.npz here, for the shared "
-             "scorer (hooke_tx/eval/celleval_artifacts.py). Required for a two-convention report.",
+             "scorer (the upstream tree/eval/celleval_artifacts.py). Required for a two-convention report.",
     )
     parser.add_argument(
         "--max-control-cells",

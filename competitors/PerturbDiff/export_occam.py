@@ -182,11 +182,19 @@ def main(argv=None) -> int:
             f"pert_dict, e.g. {missing[:5]}. The frozen 611-perturbation cohort is not "
             f"negotiable; a partial arm would be scored on a different panel.")
 
-    ds_name = args.cell_type
-    if ds_name not in dm.dataset_name_list:
-        raise SystemExit(f"{ds_name!r} is not one of {dm.dataset_name_list}")
+    # ⚠️ The dataset name is NOT the cell line. `occam_setup` names datasets
+    # `replogle_nadig_<line>`, because `get_short_dsname` must recognise a family or the loss
+    # asserts (see the note there). Resolve by suffix rather than hardcoding either form.
+    matches = [n for n in dm.dataset_name_list if n.endswith(args.cell_type)]
+    if len(matches) != 1:
+        raise SystemExit(
+            f"cell line {args.cell_type!r} matches {matches} of {dm.dataset_name_list}; "
+            f"expected exactly one")
+    ds_name = matches[0]
+    print(f"[{ARM}] dataset {ds_name!r} for cell line {args.cell_type!r}")
     # Any batch label the checkpoint knows; the panel is not one of them, so the first HepG2
     # batch is used. Namespaced exactly as occam_setup builds batch_dict.
+    # batch_dict keys are namespaced `f"{dataset_name}_{batch}"` by occam_setup.
     batch_keys = sorted(b for b in dm.batch_dict if b.startswith(f"{ds_name}_"))
     if not batch_keys:
         raise SystemExit(f"no batch label for {ds_name!r} in batch_dict")

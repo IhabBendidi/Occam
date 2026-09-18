@@ -1,7 +1,7 @@
 """Read Occam's `rhj_fewshot` benchmark as a STATE `_Source`, one cell line at a time.
 
 The sibling of the `zarr` and `anndata` branches in `zarr_perturbation.py::_Source`. Same
-output contract, different origin: instead of a hooke-tx zarr dump on a 2,000-gene panel, this
+output contract, different origin: instead of a the upstream benchmark zarr dump on a 2,000-gene panel, this
 reads **Occam's own h5ads** through `competitors/shared/occam_data.py` -- our three source
 files, our frozen 6,983-gene axis, our splits, in place. Nothing is converted and no second
 copy exists on disk.

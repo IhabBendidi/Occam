@@ -32,7 +32,7 @@ def build_datamodule(cfg, logger):
             py_logger=logger,
         )
     elif cfg.data.data_name in ["IhabxcellZarrFinetune"]:
-        # hooke-tx canonical zarr benchmark; see configs/data/ihabxcell_zarr.yaml
+        # the upstream benchmark canonical zarr benchmark; see configs/data/ihabxcell_zarr.yaml
         datamodule = data_module.ZarrPerturbationDataModule(
             seed=cfg.optimization.seed,
             micro_batch_size=cfg.optimization.micro_batch_size,

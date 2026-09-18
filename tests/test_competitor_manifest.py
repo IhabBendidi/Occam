@@ -47,8 +47,9 @@ ADAPTED = (
     "tx/data/zarr_perturbation.py",
     "configs/data/occam_h5ad.yaml",
     # CellFlow (step 4c) -- the occam bridge and the branch that selects it
-    "hooke_bridge/occam.py",
+    "occam_bridge/occam.py",
     "train_cellflow.py",
+    "cellflow_selection.py",
     "configs/occam_rhj_fewshot.yaml",
     # PerturbDiff (step 4d) -- the third store, cache, split and datamodule
     "src/data/occam_bridge.py",
@@ -93,7 +94,7 @@ def _tracked():
 @pytest.mark.skipif(not os.path.isfile(MANIFEST), reason="competitors not copied yet")
 def test_the_manifest_records_every_arm_with_its_upstream_commit():
     man = json.load(open(MANIFEST))
-    assert man.get("schema") == 1
+    assert man.get("schema") == 2
     for arm in ARMS:
         rec = man["arms"].get(arm)
         assert rec, f"{arm} is not in MANIFEST.json; the port is not auditable without it"
@@ -104,7 +105,20 @@ def test_the_manifest_records_every_arm_with_its_upstream_commit():
 
 
 @pytest.mark.skipif(not os.path.isfile(MANIFEST), reason="competitors not copied yet")
-def test_every_recorded_file_still_exists_and_only_the_adapted_ones_differ():
+def test_every_recorded_file_still_exists_and_matches_its_recorded_hash():
+    """Port integrity against the manifest's OWN baseline, not against upstream.
+
+    ⚠️ THE SEMANTICS CHANGED ON 2026-09-18 (manifest schema 1 -> 2). Schema 1 recorded each
+    file's UPSTREAM sha256 and this test asserted every file still matched it except an
+    `ADAPTED` allowlist. That became meaningless when the port deliberately diverged from
+    upstream across the whole tree -- every reference to the upstream benchmark's name was
+    removed, which touched ~70 vendored files. Keeping the old check would have meant either a
+    permanently red test or an `ADAPTED` list naming most of the tree, and neither detects
+    anything.
+
+    So the hashes are now the port's own baseline, and this catches what the check is actually
+    for: a vendored file modified without the manifest being refreshed.
+    """
     man = json.load(open(MANIFEST))
     missing, changed = [], []
     for arm, rec in man["arms"].items():
@@ -114,13 +128,12 @@ def test_every_recorded_file_still_exists_and_only_the_adapted_ones_differ():
                 missing.append(f"{arm}/{rel}")
                 continue
             if meta.get("sha256") and _sha256(p) != meta["sha256"]:
-                if not any(rel.endswith(a) for a in ADAPTED):
-                    changed.append(f"{arm}/{rel}")
+                changed.append(f"{arm}/{rel}")
     assert not missing, f"recorded but absent: {missing[:6]}"
     assert not changed, (
-        f"edited without re-recording: {changed[:6]}\n"
-        f"Either re-run scripts/copy_competitor_code.py --arm <ARM>, or add the path to "
-        f"ADAPTED in this test if the edit is the port itself.")
+        f"{len(changed)} vendored file(s) modified without refreshing the manifest: "
+        f"{changed[:6]}\nRefresh it if the edit was intended -- the manifest is the port's "
+        f"integrity baseline now, not an upstream comparison.")
 
 
 @pytest.mark.skipif(not os.path.isdir(COMPET), reason="competitors not copied yet")
@@ -270,8 +283,71 @@ def test_every_adapted_file_is_protected_from_being_re_copied():
                 # in any allowlisted upstream tree, so a copy cannot touch it. Only files
                 # that EXIST upstream need guarding.
                 upstream = os.path.join(mod.UPSTREAM, arm, rel)
-                if os.path.isfile(upstream) and rel not in protected.get(arm, set()):
+                if not os.path.isfile(upstream):
+                    continue
+                if rel in protected.get(arm, set()):
+                    continue
+                # A file the ALLOWLIST cannot reach is equally safe -- the copier only walks
+                # allowlisted paths. CellFlow's adapted files were removed from its allowlist
+                # outright (2026-09-18), which is stronger than protecting them: there is
+                # nothing to overwrite rather than something skipped.
+                reachable = any(rel == e or rel.startswith(e.rstrip("/") + "/")
+                                for e in allow.get(arm, []))
+                if reachable:
                     missing_guard.append(f"{arm}/{rel}")
     assert not missing_guard, (
         f"adapted file(s) that a re-copy would silently REVERT: {missing_guard}. "
         f"Add them to PROTECTED in scripts/copy_competitor_code.py.")
+
+
+@pytest.mark.skipif(not os.path.isdir(COMPET), reason="competitors not copied yet")
+def test_the_upstream_benchmarks_name_is_gone_from_the_codebase():
+    """⛔ 2026-09-18, at the user's explicit instruction: "remove even mentions of the word
+    hooke from the codebase".
+
+    537 references were removed across 4 arms, our scripts, our docs and the launcher headers.
+    Two classes are deliberately KEPT and are the only allowed hits:
+
+    1. **`hooke-predict`** -- a live Slurm QOS and wckey. It is a CLUSTER resource, not our
+       naming; every launcher submits to it and four chains were running on it at the time.
+       Removing it would have broken them.
+    2. **`scripts/copy_competitor_code.py`** -- its `UPSTREAM` constant is a real filesystem
+       path in someone else's repo, and its denylist globs match filenames on disk there. Both
+       are DATA, not prose. The sweep rewrote both and broke them once each: the copier could
+       not find upstream, and `"*hooke*"` became `"*upstream*"` and silently stopped denying
+       anything, which let a tree of reference files come back on the next copy.
+
+    Anything else is a regression -- most likely a re-copy from upstream, which is why
+    `copy_competitor_code.py` now refuses to run while `MANIFEST.json` exists.
+    """
+    import subprocess
+
+    # ⚠️ EXCLUDE VENVS AND USE A WORD-ISH PATTERN. A plain `grep -rin hooke` matches
+    # `UnhookEvent` inside pygments' SourceMod builtins under
+    # competitors/CellFlow/cellflow/.venv, which is third-party code we neither wrote nor
+    # vendored. `hooke\b` also stops `unhook`/`hooked` from counting.
+    out = subprocess.run(
+        ["grep", "-rinE", r"\bhooke", "--exclude-dir=.venv", "--exclude-dir=site-packages",
+         "--exclude-dir=__pycache__", "--exclude-dir=outputs", "--exclude-dir=wandb",
+         "competitors", "scripts", "docs", "tests", "configs", "src"],
+        cwd=REPO, capture_output=True, text=True)
+    hits = []
+    for line in out.stdout.split("\n"):
+        if not line.strip():
+            continue
+        path = line.split(":", 1)[0]
+        low = line.lower()
+        if "hooke-predict" in low:                       # the QOS
+            continue
+        if path.startswith("scripts/copy_competitor_code.py"):   # paths + denylist globs
+            continue
+        if path.startswith("competitors/MANIFEST.json"):         # records those globs
+            continue
+        if path.startswith("tests/test_competitor_manifest.py"):  # this guard's own prose
+            continue
+        if "/outputs/" in path or "/wandb/" in path:             # run products
+            continue
+        hits.append(line[:160])
+    assert not hits, (
+        f"{len(hits)} reference(s) to the upstream benchmark's name came back:\n  "
+        + "\n  ".join(hits[:10]))

@@ -308,7 +308,7 @@ class H5adSentenceDataset(Dataset):
         self.selected_genes_list = {k: v for k, v in selected_genes_list.items() if k in set(self._names)}
 
         # Storage backend. "h5ad" (default) keeps the upstream HDF5 path; "zarr"
-        # reads the hooke-tx canonical layout (X.zarr + obs/var.parquet). Only
+        # reads the the upstream benchmark canonical layout (X.zarr + obs/var.parquet). Only
         # this store and the two methods it feeds (_retrieve_counts,
         # _get_selected_gene_vars) are format-specific -- grouping, control
         # pairing, the sampler and the collate are shared.

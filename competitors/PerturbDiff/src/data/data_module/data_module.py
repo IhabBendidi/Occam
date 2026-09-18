@@ -248,7 +248,7 @@ class PBMCPerturbationDataModule(PretrainingDataModule):
 
     
 class ZarrPerturbationDataModule(PBMCPerturbationDataModule):
-    """DataModule for the hooke-tx canonical zarr benchmark.
+    """DataModule for the the upstream benchmark canonical zarr benchmark.
 
     Inherits ``__init__``, ``train_dataloader`` and ``val_dataloader`` from the
     PBMC/Pretraining hierarchy, and replaces only the two h5py-bound phases:

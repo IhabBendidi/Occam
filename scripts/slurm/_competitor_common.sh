@@ -53,7 +53,7 @@ competitor_venv_python() {
 OCCAM_PY=/mnt/ps/home/CORP/ihab.bendidi/.pyenv/versions/scmae/bin/python  # noqa: legacy-name
 
 # ⚠️ uv's default cache is on NFS while the venvs are on GPFS; unpacking torch across that
-# boundary takes hours instead of a minute. Upstream README_HOOKE_TX.md records this.
+# boundary takes hours instead of a minute. Upstream the upstream release notes records this.
 export UV_CACHE_DIR="${UV_CACHE_DIR:-/rxrx/scratch/sandbox/$USER/.uv-cache}"
 export UV_PYTHON_INSTALL_DIR="${UV_PYTHON_INSTALL_DIR:-/rxrx/scratch/sandbox/$USER/.uv-python}"
 
