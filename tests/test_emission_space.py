@@ -114,7 +114,7 @@ def test_the_10k_to_2k_map_is_bit_exact_on_real_rows():
 
     assert back.dtype == np.float32
     assert np.abs(back - X).max() == 0.0, np.abs(back - X).max()
-    assert m.assert_same_space(back, X)["verdict"] == "same space"
+    m.assert_representable(back, target=X)     # representable, and that is all it claims
 
 
 # ---------------------------------------------------------------------------
@@ -133,38 +133,91 @@ def test_library_normed_linear_is_refused_although_cell_eval_accepts_it():
     assert "log1p" in msg and "exceeds" in msg
 
     with pytest.raises(m.EmissionSpaceError):
-        m.assert_same_space(linear, X)
+        m.assert_representable(linear, target=X)
 
 
 def test_log1p_at_the_wrong_target_sum_is_refused():
-    """Handing back the 10k matrix unconverted. Scale-invariant metrics would hide it."""
+    """Handing back the 10k matrix unconverted -- 5x. Scale-invariant metrics would hide it.
+
+    ⚠️ This is the ONE library-size comparison that survives as a hard check, and it survives
+    because a FACTOR error is not a quality judgement. A +/-10% threshold would conflate
+    "mis-normalised" with "predicts poorly" and would exclude the weak arms this benchmark
+    exists to measure; 5x has no benign explanation. Ours sits at 0.94, TxPert's at 0.87.
+    """
     m = _mod()
     X = _synthetic()
     x10k = np.log1p(np.expm1(X.astype(np.float64)) * 5.0)
 
     with pytest.raises(m.EmissionSpaceError) as exc:
-        m.assert_same_space(x10k, X)
-    assert "library size" in str(exc.value)
-    # and the reason it matters is stated, not just the number
-    assert "scale-invariant" in str(exc.value)
+        m.assert_representable(x10k, target=X)
+    msg = str(exc.value)
+    assert "library size" in msg and "factor band" in msg
+    # and it says why it is not a quality check, so nobody tightens it later
+    assert "ORDER-OF-MAGNITUDE" in msg
 
 
-def test_integer_re_emission_is_refused():
-    """The repo measured this exact transform costing 0.034 pearson_delta."""
+def test_a_weak_arm_is_NOT_refused_for_looking_weak():
+    """⛔ THE REGRESSION THIS FILE EXISTS TO PREVENT.
+
+    An earlier design refused a prediction whose median library differed from the target's by
+    >10% or whose zero fraction differed by >0.05. MEASURED 2026-09-18: our own best arm --
+    s313, which scores 0.3415 -- has zero fraction 0.0000 against a target 0.5170 and a
+    library ratio of 0.94. It FAILED that check by a 0.517 margin, worse than the competitor
+    it rejected.
+
+    Refusing on these excludes exactly the arms that score badly, biasing the table toward
+    whichever competitors happen to be well calibrated. They are DIAGNOSTICS.
+    """
+    m = _mod()
+    X = _synthetic()
+
+    # dense, like every conditional-mean regressor: no exact zeros at all
+    dense = np.maximum(X, 1e-4)
+    m.assert_representable(dense, target=X)
+
+    # a 25% library deficit -- a weak arm, not a broken space
+    weak = np.log1p(np.expm1(X.astype(np.float64)) * 0.75)
+    m.assert_representable(weak, target=X)
+
+    # and the diagnostics REPORT both without raising
+    d = m.space_diagnostics(dense, X)
+    assert d["zero_fraction_pred"] < 0.01 < d["zero_fraction_target"]
+    assert "diagnostic only" in d["note"]
+
+
+def test_integer_re_emission_is_REPORTED_not_refused():
+    """The repo measured this transform costing 0.034 pearson_delta -- so it is worth SEEING.
+
+    ⚠️ But it is no longer a refusal, and the reason is structural: integer re-emission is
+    something WE do to OUR OWN output downstream (a decoder emitting counts). A competitor's
+    forward pass never re-emits integers, and every adapter passes the raw emission straight
+    through. The check had no target in this pipeline and could only ever have fired on a
+    legitimate sparse prediction.
+    """
     m = _mod()
     X = _synthetic()
     ints = np.log1p(np.round(np.expm1(X.astype(np.float64))))
 
-    with pytest.raises(m.EmissionSpaceError):
-        m.assert_same_space(ints, X)
+    m.assert_representable(ints, target=X)           # representable: it can be scored
+    d = m.space_diagnostics(ints, X)
+    assert d["zero_fraction_pred"] > d["zero_fraction_target"]   # visible in the record
 
 
-def test_a_constant_prediction_is_refused():
-    """A dead emission head. 83.6% of genes constant is a real defect this repo has hit."""
+def test_a_constant_prediction_is_REPORTED_not_refused():
+    """A dead emission head -- 83.6% of genes constant is a real defect this repo has hit.
+
+    ⚠️ Still not a refusal, because a near-constant prediction is a legitimate if terrible
+    MODEL: `meanpert` is essentially that, and it is a BASELINE we score at 0.1324. Refusing
+    it would refuse one of our own anchors. `gene_mean_corr` comes out NaN or near zero and
+    that is what the record should say.
+    """
     m = _mod()
     X = _synthetic()
-    with pytest.raises(m.EmissionSpaceError):
-        m.assert_same_space(np.full_like(X, 0.3), X)
+    flat = np.full_like(X, 0.3)
+
+    m.assert_representable(flat, target=X)
+    d = m.space_diagnostics(flat, X)
+    assert np.isnan(d["gene_mean_corr"]) or d["gene_mean_corr"] < 0.5
 
 
 def test_negatives_and_nonfinite_are_refused():
@@ -188,9 +241,9 @@ def test_gene_order_is_part_of_the_contract():
     X = _synthetic(g=50)
     syms = [f"GENE{i}" for i in range(X.shape[1])]
 
-    assert m.assert_same_space(X, X, pred_var=syms, target_var=syms)["verdict"] == "same space"
+    m.assert_representable(X, target=X, var=syms, expect_var=syms)
     with pytest.raises(m.EmissionSpaceError) as exc:
-        m.assert_same_space(X, X, pred_var=syms[::-1], target_var=syms)
+        m.assert_representable(X, target=X, var=syms[::-1], expect_var=syms)
     assert "ORDER" in str(exc.value) or "order" in str(exc.value)
 
 
@@ -198,8 +251,8 @@ def test_a_width_mismatch_is_refused_before_anything_else():
     m = _mod()
     X = _synthetic(g=60)
     with pytest.raises(m.EmissionSpaceError) as exc:
-        m.assert_same_space(X[:, :50], X)
-    assert "6,983" in str(exc.value) or "width" in str(exc.value)
+        m.assert_representable(X[:, :50], n_genes=X.shape[1])
+    assert "genes wide" in str(exc.value)
 
 
 # ---------------------------------------------------------------------------
@@ -220,7 +273,7 @@ def test_to_eval_space_handles_a_linear_emitter():
     linear_10k = np.expm1(X.astype(np.float64)) * 5.0          # linear at 10k
     out = m.to_eval_space(linear_10k, from_target_sum=m.TRAIN_TARGET_SUM, from_log1p=False)
     assert np.abs(out - X).max() < 1e-5
-    assert m.assert_same_space(out, X)["verdict"] == "same space"
+    m.assert_representable(out, target=X)
 
 
 def test_to_eval_space_refuses_negative_linear_input():

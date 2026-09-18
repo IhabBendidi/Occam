@@ -43,7 +43,8 @@ EMISSION SPACE
 --------------
 `output_space: gene`, so STATE emits gene space in the space it was trained on:
 `log1p(counts / rowsum_FULL_PANEL * 10_000)`. Declared to `export_split` as
-`from_target_sum=10_000, from_log1p=True`; `assert_same_space` REFUSES rather than warns.
+`from_target_sum=10_000, from_log1p=True`; `assert_representable` refuses only what cannot be SCORED; library size and density are
+recorded as diagnostics, because refusing on them would exclude weak arms.
 
 ⚠️ UNEXERCISED UNTIL A CHECKPOINT EXISTS. Per the plan's own rule, run ONE arm, ONE seed, ONE
 split end to end before any 4x5 sweep: the last two 135-task launches died on code that had

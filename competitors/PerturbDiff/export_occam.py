@@ -54,7 +54,9 @@ EMISSION SPACE
 --------------
 `output_fn: relu`, so PerturbDiff emits non-negative gene space in the space it was trained on:
 `log1p(counts / rowsum_FULL_PANEL * 10_000)`. Declared to `export_split` as
-`from_target_sum=10_000, from_log1p=True`; `assert_same_space` REFUSES rather than warns. A
+`from_target_sum=10_000, from_log1p=True`; `assert_representable` refuses only what cannot be SCORED (negatives, non-finite, wrong
+axis, impossible range); library size and density are recorded as diagnostics because they
+are confounded with model quality. A
 relu head is NOT a guarantee of log1p shape, which is exactly why the declaration is explicit
 and checked rather than inferred.
 

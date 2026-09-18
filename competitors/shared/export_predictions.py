@@ -54,7 +54,7 @@ if _HERE not in sys.path:
 
 from emission_space import (  # noqa: E402
     EVAL_TARGET_SUM, TRAIN_TARGET_SUM, EmissionSpaceError,
-    assert_same_space, describe_space, to_eval_space,
+    assert_representable, describe_space, space_diagnostics, to_eval_space,
 )
 
 __all__ = ["PanelSplit", "load_panel_split", "export_split", "CONTROL"]
@@ -73,7 +73,7 @@ class PanelSplit:
         The perturbation for each row, in the order `run_split` will re-check.
     target : (18575, 6983) float32
         The half-A perturbed cells, in OUR evaluation space. Used only by
-        `assert_same_space`; never shown to the model.
+        `space_diagnostics`; never shown to the model.
     """
 
     def __init__(self, index, ctrl, labels, target, ctrl_b_rows, cohort, manifest):
@@ -177,12 +177,22 @@ def export_split(predict: Callable[[np.ndarray, Sequence[str]], np.ndarray],
     pred = to_eval_space(raw, from_target_sum=from_target_sum, from_log1p=from_log1p)
     print(f"[export]   eval space   : {describe_space(pred).summary()}")
 
-    # ⛔ the gate. Refuses rather than warns.
-    report = assert_same_space(pred, split.target, pred_name=f"{arm} prediction",
-                               target_name="panel target")
-    print(f"[export]   assert_same_space -> {report['verdict']} "
-          f"(rowsum ratio {report['rowsum_ratio']:.4f}, "
-          f"gene-mean corr {report['gene_mean_corr']:.4f})")
+    # ⛔ HARD: can this be scored at all? Model-agnostic -- a terrible arm passes.
+    assert_representable(pred, n_genes=split.target.shape[1],
+                         name=f"{arm} prediction", target_sum=EVAL_TARGET_SUM,
+                         target=split.target)
+
+    # DIAGNOSTIC: never a refusal. Library size, density and mean correlation are all
+    # confounded with model quality, and refusing on them would exclude exactly the weak
+    # arms this benchmark exists to measure. Recorded in the manifest, read beside the score.
+    diag = space_diagnostics(pred, split.target, pred_name=f"{arm} prediction",
+                             target_name="panel target")
+    print(f"[export]   representable ✓   diagnostics: rowsum ratio "
+          f"{diag['rowsum_ratio']:.4f} · gene-mean corr {diag['gene_mean_corr']:.4f} · "
+          f"zero {diag['zero_fraction_pred']:.4f} (target "
+          f"{diag['zero_fraction_target']:.4f})")
+    print(f"[export]   for reference, OUR OWN arm: rowsum ratio 0.9399 · "
+          f"gene-mean corr 0.9998 · zero 0.0000")
 
     np.save(os.path.join(out_dir, "pred.npy"), pred)
     with open(os.path.join(out_dir, "labels.json"), "w") as fh:
@@ -202,7 +212,8 @@ def export_split(predict: Callable[[np.ndarray, Sequence[str]], np.ndarray],
             "map": ("log1p(expm1(x) * to/from)" if from_log1p
                     else "log1p(x * to/from)"),
         },
-        "space_check": report,
+        "representable": True,
+        "space_diagnostics": diag,
     }
     if extra_manifest:
         manifest.update(extra_manifest)

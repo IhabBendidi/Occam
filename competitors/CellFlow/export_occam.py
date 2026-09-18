@@ -40,7 +40,8 @@ EMISSION SPACE
 --------------
 `reconstruct_from_pca` returns gene space in the space the model was trained on:
 `log1p(counts / rowsum_FULL_PANEL * 10_000)`, clipped at 0 below. Declared to `export_split` as
-`from_target_sum=10_000, from_log1p=True`; `assert_same_space` REFUSES rather than warns.
+`from_target_sum=10_000, from_log1p=True`; `assert_representable` refuses only what cannot be SCORED; library size and density are
+recorded as diagnostics, because refusing on them would exclude weak arms.
 
 ⚠️ `clip_max` IS LEFT UNSET ON PURPOSE. Their own scorer clips to `[0, 14]`
 (`CELL_EVAL_GENE_MAX`) before scoring, which is part of their pipeline, not ours; our arms are

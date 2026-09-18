@@ -120,7 +120,7 @@ def main(argv=None) -> int:
     ap.add_argument("--num-threads", type=int, default=16)
     ap.add_argument("--de-batch-size", type=int, default=2000)
     ap.add_argument("--skip-space-check", action="store_true",
-                    help="NOT recommended. Phase A already ran assert_same_space; this "
+                    help="NOT recommended. Phase A already ran assert_representable; this "
                          "re-runs it here because the two phases can drift.")
     args = ap.parse_args(argv)
 
@@ -159,13 +159,17 @@ def main(argv=None) -> int:
             f"{args.split}")
 
     if not args.skip_space_check:
-        from emission_space import assert_same_space
-        rep = assert_same_space(pred, base.real_X_model[a_rows],
+        from emission_space import assert_representable, space_diagnostics
+        assert_representable(pred, n_genes=base.n_keep,
+                             name=f"{args.arm} pred.npy")
+        rep = space_diagnostics(pred, base.real_X_model[a_rows],
                                 pred_name=f"{args.arm} pred.npy",
                                 target_name="panel half-A")
-        print(f"[compet] space check -> {rep['verdict']} "
-              f"(rowsum ratio {rep['rowsum_ratio']:.4f}, "
-              f"gene-mean corr {rep['gene_mean_corr']:.4f})")
+        print(f"[compet] representable ✓   rowsum ratio {rep['rowsum_ratio']:.4f} · "
+              f"gene-mean corr {rep['gene_mean_corr']:.4f} · "
+              f"zero {rep['zero_fraction_pred']:.4f}")
+        print(f"[compet] ⚠️ diagnostics only -- library size and density are confounded "
+              f"with model quality; OUR OWN arm is 0.9399 / 0.9998 / 0.0000")
 
     cursor = {"i": 0}
 

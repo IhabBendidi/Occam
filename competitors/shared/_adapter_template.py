@@ -22,7 +22,8 @@ the interface is ours in both directions.
 DECLARE THE EMISSION SPACE. DO NOT LET IT BE GUESSED.
 -----------------------------------------------------
 `export_split(..., from_target_sum=..., from_log1p=...)` is a DECLARATION about what the arm
-returns, and `assert_same_space` checks it. Get it wrong and you get a plausible number from a
+returns. `assert_representable` then refuses anything that cannot be scored. Get the
+DECLARATION wrong and you get a plausible number from a
 meaningless comparison: cell-eval cannot tell, because `guess_is_lognorm` reads 500 UNSEEDED
 cells and asks only whether the row sums have fractional parts.
 

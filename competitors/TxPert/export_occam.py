@@ -34,7 +34,8 @@ EMISSION SPACE
 --------------
 TxPert emits gene space directly, in the space it was trained on:
 `log1p(counts / rowsum_FULL_PANEL * 10_000)`. Declared to `export_split` as
-`from_target_sum=10_000, from_log1p=True`, and `assert_same_space` REFUSES rather than warns.
+`from_target_sum=10_000, from_log1p=True`, and `assert_representable` refuses only what cannot be SCORED; library size and density are
+recorded as diagnostics, because refusing on them would exclude weak arms.
 Never let cell-eval decide: `guess_is_lognorm` reads 500 UNSEEDED cells and asks only whether
 the row sums have fractional parts.
 

@@ -12,7 +12,7 @@ A competitor's score is only interpretable if the pipe it travels through is ine
 Varied: nothing. Held fixed: everything. The "model" is the IDENTITY function on the drawn
 half-B control cells, so the exported matrix IS the `ctrlcell` baseline -- routed the long way
 round, through `load_panel_split` -> the arm's training space -> `to_eval_space` ->
-`assert_same_space` -> `pred.npy`, then `scripts/eval_competitor.py` -> `protocol.run_split`.
+`assert_representable` -> `pred.npy`, then `scripts/eval_competitor.py` -> `protocol.run_split`.
 
 WHAT EACH OUTCOME MEANS
   * scoring `pred.npy` reproduces the directly-measured `ctrlcell` row -> the bridge is inert

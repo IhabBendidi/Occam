@@ -42,7 +42,7 @@ MEASURED on real panel rows, two ways -- and the distinction matters:
 
 So the map is exact in exact arithmetic, and agrees to a single ULP when each matrix carries
 its own float32 rounding -- which is the real situation, since competitors are handed a
-10k matrix computed independently of the 2k panel. `assert_same_space` passes on it. One ULP
+10k matrix computed independently of the 2k panel. `assert_representable` passes on it. One ULP
 is ~7 orders of magnitude below the +/-10% library-size tolerance and cannot move a metric.
 
 That exactness holds ONLY because both sides use the same full-panel denominator. Normalising
@@ -105,7 +105,8 @@ import numpy as np
 __all__ = [
     "EVAL_TARGET_SUM", "TRAIN_TARGET_SUM", "AXIS_UMI_SHARE",
     "EmissionSpaceError", "SpaceReport",
-    "to_eval_space", "describe_space", "assert_is_log1p", "assert_same_space",
+    "to_eval_space", "describe_space", "assert_is_log1p", "assert_representable",
+    "space_diagnostics",
 ]
 
 # Occam's evaluation space. Do not change without rebuilding every baseline.
@@ -238,126 +239,181 @@ def assert_is_log1p(x: np.ndarray, *, name: str = "matrix",
             + f"\n  measured: {r.summary()}")
     return r
 
+# ---------------------------------------------------------------------------
+# The adapter's contract: representability is enforced, quality is measured.
+# ---------------------------------------------------------------------------
+#
+# ⛔ WHY THERE IS NO STATISTICAL COMPARISON AGAINST THE TARGET HERE ANY MORE.
+#
+# An earlier version of this module refused a prediction whose median library size differed
+# from the target's by >10%, or whose zero fraction differed by >0.05. Both are SPACE
+# properties AND MODEL-QUALITY properties, and conflating them fails in the worst possible
+# direction: it silently EXCLUDES the arms that make poor predictions, biasing the comparison
+# toward whichever competitors happen to be well calibrated. A benchmark exists to MEASURE bad
+# predictions, not to refuse them.
+#
+# Measured 2026-09-18, which is what settled it:
+#
+#     the real target             zero 0.5170   median library 1,729.9
+#     OUR OWN s313 prediction     zero 0.0000   median library 1,626.0   scores 0.3415
+#     TxPert epoch-20             zero 0.0001   median library 1,505.1
+#
+# Our own best arm failed the enforced check by a 0.517 margin against a 0.05 tolerance --
+# worse than the competitor it rejected -- because a conditional-mean regressor essentially
+# never emits an exact zero while the target is sparse single-cell counts. Our arms never meet
+# this module (they go straight through `protocol.run_split`), so the asymmetry was invisible
+# until a competitor hit it.
+#
+# ⭐ AND THE CONVERSION DOES NOT NEED STATISTICAL VALIDATION, because it is already proven:
+#
+#   * it is ANALYTIC -- `log1p(expm1(x) * to/from)`, exact because the per-cell denominator
+#     cancels (C1), and exact only because `occam_data` normalises on the FULL panel row sum;
+#   * the GATE proves it end to end -- `ctrlcell` pushed through eval -> 10,000 -> eval
+#     reproduced its directly-measured score to four decimals, `mae` included, and `mae` is
+#     the one metric that is NOT scale-invariant (C7);
+#   * `tests/test_occam_data_reader.py` pins the reader bit-identically to `panel.npz`.
+#
+# So correctness is established ONCE, by construction and by the gate. What remains per-run is
+# only whether the matrix can be REPRESENTED in the evaluation space at all.
 
-# How far BELOW the target's library size a prediction may sit. Measured: our own arm -6.0%,
-# TxPert -13.0%. A conditional mean shrinks toward the centre, so under-shooting is expected;
-# 25% leaves room for a weaker arm without admitting an actual normalisation error.
-UNDERSHOOT_TOL = 0.25
+
+# An ORDER-OF-MAGNITUDE band on the library ratio, not a quality threshold.
+#
+# ⚠️ The distinction is the whole point. A +/-10% threshold conflates "the bridge
+# mis-normalised" with "this arm predicts poorly", and refusing on it would exclude the weak
+# arms the benchmark exists to measure. But a FACTOR error is unambiguous: handing back the
+# unconverted 10,000 matrix is exactly 5x, and log1p-vs-linear is orders of magnitude. No
+# model is 4x off on total expression unless the space is wrong.
+#
+# Calibration: our own s313 is at 0.94, TxPert epoch-20 at 0.87. Both far inside.
+ROWSUM_FACTOR_BAND = (0.25, 4.0)
 
 
-def assert_same_space(pred: np.ndarray, target: np.ndarray, *,
+def assert_representable(x: np.ndarray, *, n_genes: Optional[int] = None,
+                         name: str = "prediction",
+                         target_sum: float = EVAL_TARGET_SUM,
+                         target: Optional[np.ndarray] = None,
+                         var: Optional[Sequence[str]] = None,
+                         expect_var: Optional[Sequence[str]] = None) -> SpaceReport:
+    """Hard checks only: can this matrix be scored in the evaluation space at all?
+
+    Every one of these is model-agnostic -- a terrible model passes them, which is the point.
+    A matrix that fails cannot be scored, or would be scored as something other than what it
+    is.
+
+      * finite, and float
+      * NON-NEGATIVE -- cell-eval refuses negative input outright ("Invalid scale: min value
+        is negative"), so this is representability, not taste
+      * the right width, and the gene axis identical AND IN ORDER (the bridge is positional,
+        and `discrimination_score_l1` excludes each perturbation's own gene BY SYMBOL)
+      * inside `log1p(target_sum)` -- a value above it is arithmetically impossible in this
+        space and means the matrix is linear, or normalised to a different target_sum
+
+    Raises `EmissionSpaceError`. Returns the `SpaceReport` so the caller can record it.
+    """
+    a = np.asarray(x)
+    if a.ndim != 2:
+        raise EmissionSpaceError(f"{name} has {a.ndim} dimensions, expected 2")
+    if n_genes is not None and a.shape[1] != n_genes:
+        raise EmissionSpaceError(
+            f"{name} is {a.shape[1]} genes wide, expected {n_genes}")
+    if not np.issubdtype(a.dtype, np.floating):
+        raise EmissionSpaceError(f"{name} has dtype {a.dtype}, expected floating point")
+    if not np.isfinite(a).all():
+        n_bad = int((~np.isfinite(a)).sum())
+        raise EmissionSpaceError(
+            f"{name} has {n_bad:,} non-finite value(s). cell-eval cannot score them, and a "
+            f"NaN would propagate silently into a group mean.")
+    mn = float(a.min())
+    if mn < 0.0:
+        raise EmissionSpaceError(
+            f"{name} has negative values (min {mn:.4f}). cell-eval refuses negative input, "
+            f"and a library-normalised matrix cannot be negative. If the arm's head is "
+            f"unconstrained, clip at 0 IN THAT ARM'S ADAPTER and record how much was clipped "
+            f"-- do not loosen this check.")
+    ceiling = float(np.log1p(target_sum))
+    mx = float(a.max())
+    if mx > ceiling:
+        raise EmissionSpaceError(
+            f"{name} has a maximum of {mx:.4f}, above log1p({target_sum:g}) = "
+            f"{ceiling:.4f}. That is arithmetically impossible in this space: the matrix is "
+            f"linear, or normalised to a different target_sum.")
+
+    # The one comparison against the target that is NOT a quality judgement.
+    if target is not None:
+        rp = describe_space(a, target_sum=target_sum)
+        rt = describe_space(np.asarray(target), target_sum=target_sum)
+        if rt.median_rowsum_expm1 > 0:
+            ratio = rp.median_rowsum_expm1 / rt.median_rowsum_expm1
+            lo, hi = ROWSUM_FACTOR_BAND
+            if not (lo <= ratio <= hi):
+                raise EmissionSpaceError(
+                    f"{name}'s median library size is {ratio:.2f}x the target's "
+                    f"({rp.median_rowsum_expm1:,.1f} vs {rt.median_rowsum_expm1:,.1f}), "
+                    f"outside the factor band [{lo}, {hi}]. This is an ORDER-OF-MAGNITUDE "
+                    f"check, not a quality one: 5x is the 10,000-vs-2,000 normalisation "
+                    f"mistake, and no model is {lo:g}-{hi:g}x off unless the space is wrong. "
+                    f"A merely weak arm lands well inside -- ours is 0.94, TxPert's 0.87.")
+
+    if var is not None and expect_var is not None:
+        pv = [str(g) for g in var]
+        tv = [str(g) for g in expect_var]
+        if pv != tv:
+            if set(pv) == set(tv):
+                raise EmissionSpaceError(
+                    f"{name} has the right {len(tv)} genes in the WRONG ORDER. The bridge is "
+                    f"positional, so this silently relabels every gene.")
+            raise EmissionSpaceError(
+                f"{name}'s gene axis is not the frozen one: {len(pv)} vs {len(tv)} genes "
+                f"(missing {sorted(set(tv) - set(pv))[:3]}, "
+                f"extra {sorted(set(pv) - set(tv))[:3]})")
+
+    return describe_space(a, target_sum=target_sum)
+
+
+def space_diagnostics(pred: np.ndarray, target: np.ndarray, *,
                       pred_name: str = "prediction", target_name: str = "target",
                       target_sum: float = EVAL_TARGET_SUM,
-                      rowsum_tol: float = 0.10,
-                      gene_mean_corr_min: float = 0.95,
-                      zero_fraction_tol: float = 0.05,
-                      pred_var: Optional[Sequence[str]] = None,
-                      target_var: Optional[Sequence[str]] = None,
-                      ) -> Dict[str, object]:
-    """Refuse to score a prediction that is not in the target's space.
+                      reference: Optional[Dict[str, float]] = None) -> Dict[str, object]:
+    """Numbers to read BESIDE the score. Never raises.
 
-    Run this before EVERY cell-eval call, for competitors and for Occam alike. The tolerances
-    are the diagnostics that caught this repo's own emission problems: a `rectified_sigmoid`
-    head that left 83.6% of genes constant across cells, and integer re-emission that drove
-    the zero fraction to 0.907 against a target's 0.606.
+    ⚠️ NONE OF THESE IS A PASS/FAIL. Each is confounded with model quality:
+
+      * `rowsum_ratio` -- a conditional mean shrinks toward the centre, so predictions
+        under-shoot total expression. Ours is 0.94; TxPert's 0.87. Also what a miscalibrated
+        arm would show, which is why it is reported and not enforced.
+      * `zero_fraction` -- a regressor never emits exact zeros (ours: 0.0000 against a target
+        0.5170); a collapsing arm emits many. Both are results.
+      * `gene_mean_corr` -- ours is 0.9998. A LOW value is interesting, but a weak model still
+        tracks the mean profile because it is conditioned on control cells.
+
+    `reference` is OUR OWN arm's diagnostics, which is the apples-to-apples comparison: the
+    question is never "does this look like the real data" -- no prediction does -- but "does
+    this sit where our own predictions sit".
     """
-    pred = np.asarray(pred)
-    target = np.asarray(target)
-    if pred.shape[1] != target.shape[1]:
-        raise EmissionSpaceError(
-            f"gene-axis width differs: {pred_name} {pred.shape[1]} vs {target_name} "
-            f"{target.shape[1]}. Both must be the frozen 6,983-gene axis.")
-
-    if pred_var is not None and target_var is not None:
-        pv, tv = list(map(str, pred_var)), list(map(str, target_var))
-        if pv != tv:
-            first = next((i for i, (a, b) in enumerate(zip(pv, tv)) if a != b), None)
-            raise EmissionSpaceError(
-                f"var index differs between {pred_name} and {target_name} "
-                f"(first mismatch at position {first}: {pv[first]!r} vs {tv[first]!r}). "
-                f"Gene ORDER is part of the contract, and cell-eval's "
-                f"discrimination_score_l1 excludes each perturbation's own gene BY SYMBOL.")
-
-    rp = assert_is_log1p(pred, name=pred_name, target_sum=target_sum)
-    rt = assert_is_log1p(target, name=target_name, target_sum=target_sum)
-
-    problems: List[str] = []
-
-    # ⚠️ THE LIBRARY-SIZE TOLERANCE IS ASYMMETRIC AND DELIBERATELY LOOSE BELOW 1.0.
-    # Predictions systematically under-shoot total expression -- our own arm by -6.0%, TxPert
-    # by -13.0% -- because a conditional mean shrinks toward the centre. That is a model
-    # property `mae` should MEASURE, not a space error to refuse. An over-shoot, by contrast,
-    # has no benign explanation at this magnitude and stays tight.
-    ratio = (rp.median_rowsum_expm1 / rt.median_rowsum_expm1
-             if rt.median_rowsum_expm1 else float("inf"))
-    lo = 1.0 - max(rowsum_tol, UNDERSHOOT_TOL)
-    hi = 1.0 + rowsum_tol
-    if not (lo <= ratio <= hi):
-        problems.append(
-            f"median library size differs by {(ratio - 1) * 100:+.1f}% "
-            f"({rp.median_rowsum_expm1:,.1f} vs {rt.median_rowsum_expm1:,.1f}); "
-            f"allowed band is {(lo - 1) * 100:+.0f}%..{(hi - 1) * 100:+.0f}%. mae and the DE calls are NOT "
-            f"scale-invariant, so this would corrupt them while leaving pearson_delta "
-            f"looking fine.")
+    rp = describe_space(np.asarray(pred), target_sum=target_sum)
+    rt = describe_space(np.asarray(target), target_sum=target_sum)
 
     gp = np.asarray(pred, np.float64).mean(axis=0)
     gt = np.asarray(target, np.float64).mean(axis=0)
-    corr = float("nan")
-    if gp.std() > 0 and gt.std() > 0:
-        corr = float(np.corrcoef(gp, gt)[0, 1])
-        if corr < gene_mean_corr_min:
-            problems.append(
-                f"per-gene mean correlation is {corr:.4f} < {gene_mean_corr_min}; the two "
-                f"matrices do not describe the same genes in the same units")
-    else:
-        problems.append(f"a per-gene mean vector is constant "
-                        f"(pred std {gp.std():.3g}, target std {gt.std():.3g})")
+    corr = (float(np.corrcoef(gp, gt)[0, 1])
+            if gp.std() > 0 and gt.std() > 0 else float("nan"))
+    ratio = (rp.median_rowsum_expm1 / rt.median_rowsum_expm1
+             if rt.median_rowsum_expm1 else float("nan"))
 
-    # ⚠️ ZERO FRACTION IS REPORTED, NOT ENFORCED, WHEN COMPARING A PREDICTION TO A TARGET.
-    #
-    # MEASURED 2026-09-18 and it overturned the original design. A conditional-mean regressor
-    # essentially never emits an exact zero, while the target is sparse single-cell counts:
-    #
-    #     the real target            zero 0.5170   median library 1,729.9
-    #     OUR OWN s313 prediction    zero 0.0000   median library 1,626.0  (-6.0%)
-    #     TxPert epoch-20            zero 0.0001   median library 1,505.1  (-13.0%)
-    #
-    # So the enforced version would have REFUSED our own best arm -- the one scoring 0.3415 --
-    # by a 0.517 margin against a 0.05 tolerance. Our arms never meet this function (they go
-    # straight through `protocol.run_split`), so enforcing it on competitors alone is an
-    # asymmetry that rejects them for a property our own model has more extremely.
-    #
-    # The check it was built for -- integer re-emission driving the zero fraction to 0.907
-    # against a target 0.606 -- is still visible in the report, and it is the WRONG DIRECTION
-    # from this: too many zeros, not too few. That asymmetry is what `zero_fraction_note`
-    # records.
-    dz = abs(rp.zero_fraction - rt.zero_fraction)
-    zero_note = "within tolerance"
-    if dz > zero_fraction_tol:
-        if rp.zero_fraction > rt.zero_fraction:
-            # MORE zeros than the target: the integer-re-emission signature. Still fatal.
-            problems.append(
-                f"zero fraction is {rp.zero_fraction:.4f} against a target "
-                f"{rt.zero_fraction:.4f} -- the prediction is SPARSER than the real data, "
-                f"which is the signature of integer re-emission or a thresholded head. "
-                f"(A dense prediction is expected and is not an error; an artificially "
-                f"sparse one is.)")
-        else:
-            zero_note = (
-                f"prediction is DENSER than the target ({rp.zero_fraction:.4f} vs "
-                f"{rt.zero_fraction:.4f}, delta {dz:.4f}); expected for a conditional-mean "
-                f"regressor and NOT enforced -- our own arm is at 0.0000")
-
-    if problems:
-        raise EmissionSpaceError(
-            f"{pred_name} and {target_name} are not in the same space:\n  - "
-            + "\n  - ".join(problems)
-            + f"\n  {pred_name}: {rp.summary()}\n  {target_name}: {rt.summary()}")
-
-    return {
+    out: Dict[str, object] = {
+        "pred_name": pred_name, "target_name": target_name,
         "pred": rp.__dict__, "target": rt.__dict__,
         "rowsum_ratio": ratio, "gene_mean_corr": corr,
-        "zero_fraction_delta": dz, "zero_fraction_note": zero_note,
-        "target_sum": target_sum,
-        "verdict": "same space",
+        "zero_fraction_pred": rp.zero_fraction,
+        "zero_fraction_target": rt.zero_fraction,
+        "note": ("diagnostic only -- library size, density and mean correlation are all "
+                 "confounded with model quality; refusing on them would exclude weak arms "
+                 "and bias the comparison"),
     }
+    if reference:
+        out["vs_our_own_arm"] = {
+            k: (float(out[k]) - float(reference[k]))          # type: ignore[arg-type]
+            for k in ("rowsum_ratio", "gene_mean_corr") if k in reference
+        }
+    return out
