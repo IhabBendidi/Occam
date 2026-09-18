@@ -860,6 +860,160 @@ Both training, finite gradients (total norm 12.40 / 6.15), **0.145 s/step** → 
 **3.2 h** plus five validation cell-eval passes. The two differ in the expected place:
 genept trains `class_embedding.emb.weight`, onehot `class_embedding.null_emb.weight`.
 
+## ⭐⭐ C25 — THE REAL ROOT CAUSES, found by reading the eval path instead of patching it
+
+**Objective.** Unchanged: best model on SEEN perturbations in an UNSEEN context (HepG2
+`rhj_fewshot`), headline metric cell-eval `pearson_delta` on the 611-perturbation test cohort.
+Anchors: floor −0.0018 · `meanpert` 0.1324 · `transfer` 0.2323 · `experimental` 0.3722 ·
+ours 0.3415 · TxPert 0.3077.
+
+**Question this answers.** PerturbDiff and CellFlow had each failed validation repeatedly, and
+each failure had been met with one more branch in one more function. What is actually wrong?
+
+**What is varied / held fixed.** Nothing varied. This was a read of both evaluation paths end
+to end, then a fix where the design is wrong rather than where the exception surfaced.
+
+**What each outcome means.** One coherent defect per arm → fixable once, verifiable before
+spending a GPU. A pile of independent defects → the ports are unsound and we say so.
+
+Both turned out to be **one design defect each**, and neither was where the traceback pointed.
+
+---
+
+### PerturbDiff: the occam path was wired into the wrong half of a two-design function
+
+`generate_samples` has **two** designs for "get the control baseline, build the obs frame":
+
+| `source_format` | controls | obs | dispatches on a dataset-family string? |
+|---|---|---|---|
+| `"zarr"` | `build_zarr_controls` | `build_obs_data_zarr` | **no** — a purpose-built pair |
+| anything else | `load_ctrl_adata` → `build_x_ctrl` | `build_obs_data` | **yes** — `replogle`/`pbmc`/`tahoe` substrings of `cfg.data.data_name` |
+
+Our data was routed into the **second**. Every function in that chain therefore had to be
+taught about a fourth family separately, and each omission surfaced as a crash ~45 min into a
+run, one function further along than the last:
+
+| # | crashed in | how found |
+|---|---|---|
+| 1 | `load_ctrl_adata` | died at the first validation |
+| 2 | `build_obs_data` | died at the first validation, again |
+| 3 | the `len(np_mask) > 2000` HVG-restriction block | **never reached** — it reads `ctrl_adata.var.highly_variable`, a column only upstream's control h5ads carry, and `len(np_mask)` is 6,983 on our axis, so it would have entered and raised |
+
+**The fix is the zarr pattern, not a third branch.** `build_occam_controls` +
+`build_obs_data_occam` are now siblings of the zarr pair, selected once at the top of
+`generate_samples` in a three-way branch. The occam branches previously bolted into
+`load_ctrl_adata` and `build_obs_data` are **deleted**: two definitions of where our controls
+come from can drift, and the unreachable one is the one nobody checks. The HVG block is now
+scoped to upstream's families, with the assumption it rested on asserted rather than assumed
+(`np_mask.all()`).
+
+Verified through the real chain — `load_selected_genes` → `build_occam_controls` →
+`build_obs_data_occam` → AnnData → `run_cell_eval` → `read_agg_metrics`, the exact sequence
+the callback runs:
+
+```
+X_ctrl (4976, 6983)   obs keys ['batch','celltype','pert']   ctrl labels ['empty']
+np_mask: len 6983  all True: True          <- crash #3 confirmed latent
+obs cols ['target_gene','cell_type','batch_center']   controls carry 'empty': OK
+selection_score = mean(pearson_delta, discrimination_score_l1) = 0.25718   PUBLISHABLE
+```
+
+⚠️ That 0.257 is a stand-in matrix, not a model. The point is only that a score EXISTS.
+
+---
+
+### CellFlow: the selection wrote a control label its own scorer does not recognise
+
+The run did **all** its work — trained, fit the PCA basis, predicted, saved `CellFlow.pkl` —
+then reported `cell-eval returned no ['pearson_delta','discrimination_score_l1'] ... Got []`.
+Three layers had to be peeled:
+
+1. **A red herring, ruled out.** `adata_pred.h5ad` is written by anndata **0.13.3**; my first
+   reproduction read it with the `scmae` interpreter's anndata **0.9.2**, which raised on
+   `obs/_index` (a `nullable-string-array` group). **That is not the live failure** — cell-eval
+   actually runs under the `jupyter` interpreter (anndata 0.11.4), which reads the file fine.
+   Fixing what my own reproduction showed would have fixed a non-problem.
+2. **The diagnostic was being discarded.** `run_cell_eval` prints cell-eval's stderr tail to
+   its own stdout and **returns `{}` rather than raising**, so the child exits **0** with an
+   empty metrics file. `_score_with_occam_celleval` surfaced the child's output only on a
+   non-zero exit. **That one condition cost three wrong diagnoses.**
+3. **The actual cause**, once the child was run by hand:
+
+```
+ValueError: Control perturbation (non-targeting) not found in real AnnData:
+ ['ALG11+HEPG2' 'ANAPC1+HEPG2' ... 'ZW10+HEPG2' 'empty']
+```
+
+Two defects visible in that one line:
+
+| | was | should be | why |
+|---|---|---|---|
+| control label | `empty` | **`non-targeting`** | `occam.vcell.panel.celleval_v1` hardcodes `CONTROL = "non-targeting"` and takes no override. Every other emitter — `export_predictions.py`, `panel_io`, `splithalf`, `predict`, `calibrate` — relabels at this same boundary. Only the selection did not. |
+| perturbation label | `ALG11+HEPG2` | **`ALG11`** | `_condition_label` joined CellFlow's `(pert, cell_type)` condition tuple with `+`. Nothing else uses that format, and the object is single-cell-type by construction, so the suffix carried no information. |
+
+**A third defect in the same function:** the predicted block had 4,976 cells per condition and
+the real block ~50 — one predicted cell per OT *source* cell, the source being the whole
+injected control pool. That emitted **303,536 predicted rows against 9,056 real ones, an
+8.5 GB h5ad per validation pass**, at a per-condition `n` different from the TEST protocol's
+(where each perturbation gets one predicted cell per *drawn* control cell, matched to the
+target's own count). **Selection must optimise the quantity that is reported**, so counts are
+now matched per condition by a deterministic draw — estimator-variance symmetry, not
+manufactured signal, since the predicted cells are exchangeable draws from one predictive
+distribution.
+
+**A fourth:** `run_meta.json` indexed `data_cfg["data_dir"]` and `["split_path"]`
+unconditionally; neither exists on the occam path (the benchmark dir is both). The run
+finished all its work and then died describing itself.
+
+### CellFlow verification, on the real artifacts of a real run
+
+The saved 8.5 GB pair was relabelled exactly as the fixed code does, then scored through our
+own scorer:
+
+```
+as written: pred (303536, 6983)  real (9056, 6983)
+after fix : pred (  9056, 6983)  real (9056, 6983)   perts 61   controls 4976/4976
+            labels ['ALG11','ANAPC1','ASCC3', ...]
+cell-eval done: 28 metrics parsed
+  pearson_delta 0.2595 · discrimination_score_l1 0.4997 · mae 0.0331 · overlap_at_N 0.8942
+  selection_score = 0.37959
+```
+
+⚠️ **A 20-ITERATION model on a 61-condition subsample. NOT a result.** It says the machinery
+works and nothing about CellFlow's quality.
+
+---
+
+### ⚠️ SEPARATE FINDING — the arms do not all validate with the SAME cell-eval
+
+Found while tracing the above.
+
+| environment | python | cell-eval | pdex | anndata |
+|---|---|---|---|---|
+| **`jupyter` — every REPORTED number** | 3.10 | **0.6.0** | **0.1.24** | 0.11.4 |
+| CellFlow *validation* (shells out to ours) | 3.13 | **0.6.0** | 0.1.24 | 0.13.3 |
+| STATE *validation* (its own venv) | 3.11 | **0.7.2** | 0.2.2 | 0.12.16 |
+| PerturbDiff *validation* (its own venv) | 3.11 | **0.7.2** | 0.3.0 | 0.12.19 |
+
+**Test scoring is uniform at 0.6.0 for every arm** — that goes through
+`scripts/eval_competitor.py` and is unaffected, which is why TxPert's 0.3077 stands. But STATE
+and PerturbDiff *select* checkpoints with **0.7.2 / pdex 0.2.2–0.3.0**, a different scorer from
+the one their reported number comes from. CellFlow does not — it shells out to ours, which is
+the reason that path is two-phase at all.
+
+**What it costs.** Selection is a *ranking* signal, so a version difference matters only if it
+reorders checkpoints; it is not a validity problem for any reported number. It IS a deviation
+from the requirement that the competitors use our cell-eval throughout, and 2 of 4 arms
+currently violate it.
+
+**Options, with costs — not decided here:**
+
+| option | cost | what it buys |
+|---|---|---|
+| leave it | none | nothing; the deviation stands, recorded here |
+| make STATE/PerturbDiff shell out to ours, as CellFlow does | one adapter each, plus a subprocess per validation (~2–4 min) | all four arms selected by the scorer they are reported by |
+| pin 0.6.0 into their venvs | dependency-conflict risk on py3.11 | same, without the subprocess |
+
 ## ⭐ C24 — STATE trains and validates correctly. PerturbDiff died on the FOURTH sibling of one bug.
 
 **Objective.** Unchanged: best model on SEEN perturbations in an UNSEEN context, HepG2
