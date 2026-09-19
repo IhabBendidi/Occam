@@ -177,37 +177,73 @@ def main(argv=None) -> int:
     S = int(args.sentence_len)
 
     def predict(ctrl: np.ndarray, pert_names: Sequence[str]) -> np.ndarray:
-        X = torch.from_numpy(np.asarray(ctrl, dtype=np.float32))
+        """One predicted cell per control row, in PURE cell sentences.
+
+        ⚠️ STATE DOES NOT PREDICT PER CELL. It predicts per SENTENCE of `cell_set_len`
+        cells, and its backbone is a `LlamaBidirectionalModel` -- bidirectional attention
+        across the whole sentence -- so every cell's prediction depends on its companions.
+        `SentenceBatchSampler._create_sentences` groups training sentences by
+        `(cell_type, perturbation)`, i.e. **one perturbation per sentence, always**.
+
+        This function used to pad the whole matrix to a multiple of S and reshape
+        sequentially. On split 0 that produced only 39 PURE sentences out of 290: the median
+        sentence mixed 3 perturbations and some mixed 6, so for ~87% of the panel STATE was
+        predicting each cell while attending over cells of two to five OTHER perturbations --
+        a regime absent from training. The result collapsed to the `meanpert` baseline
+        (`pearson_delta` 0.1306 vs 0.1324) while the same checkpoint scored 0.2049 on its own
+        validation pass, which uses the sampler and therefore pure sentences. See C27.
+
+        Grouping happens inside this function rather than over the whole split because
+        `export_split` calls it on chunks. A perturbation whose cells straddle a chunk
+        boundary simply yields two pure sentences instead of one -- exactly what training
+        does for any perturbation with more than `cell_set_len` cells.
+        """
+        X = np.asarray(ctrl, dtype=np.float32)
         n, g = X.shape
-        names = [str(p) for p in pert_names]
-        pert = torch.stack([dm.pert_onehot_map[p] for p in names])
+        names = np.asarray([str(p) for p in pert_names], dtype=object)
+        onehot = torch.stack([dm.pert_onehot_map[p] for p in names])
 
-        # pad to a whole number of sentences with repeats of the LAST row; the padding is
-        # discarded below. Wrapping to the front would make the first cells' predictions
-        # depend on the split's length.
-        pad = (-n) % S
-        if pad:
-            X = torch.cat([X, X[-1:].expand(pad, g)], 0)
-            pert = torch.cat([pert, pert[-1:].expand(pad, pert.shape[1])], 0)
-            names = names + [names[-1]] * pad
-        n_sent = X.shape[0] // S
+        # PURE sentences: partition rows by perturbation, then chunk each group into S.
+        # `np.resize` tiles a short sentence with THAT perturbation's own cells and keeps the
+        # originals first, so `sent` maps to the leading rows of its padded block. The
+        # sampler pads by `rng.choice(sentence, replace=True)` from the same population;
+        # tiling is the deterministic equivalent, and the padded rows are discarded anyway --
+        # they matter only through attention.
+        plan: list[tuple[np.ndarray, np.ndarray]] = []
+        # first-appearance order, without pulling in pandas: np.unique sorts, so recover the
+        # original order from the returned first indices. Order only affects sentence
+        # locality, never correctness -- but a stable order keeps two runs byte-comparable.
+        _, _first = np.unique(names, return_index=True)
+        for lbl in names[np.sort(_first)]:
+            idx = np.flatnonzero(names == lbl)
+            for i in range(0, len(idx), S):
+                sent = idx[i:i + S]
+                plan.append((sent, sent if len(sent) == S else np.resize(sent, S)))
 
-        out = np.empty((X.shape[0], g), dtype=np.float32)
+        covered = np.concatenate([sent for sent, _ in plan])
+        if len(covered) != n or len(np.unique(covered)) != n:
+            raise RuntimeError(
+                f"the sentence plan covers {len(np.unique(covered))} of {n} rows "
+                f"({len(covered)} slots). Every row must be predicted exactly once or the "
+                f"output matrix is silently part-stale.")
+
+        out = np.full((n, g), np.nan, dtype=np.float32)
         B = int(args.sentences_per_batch)
         with torch.no_grad():
-            for s0 in range(0, n_sent, B):
-                s1 = min(s0 + B, n_sent)
-                sl = slice(s0 * S, s1 * S)
-                b = s1 - s0
-                ctrl_b = X[sl].reshape(b, S, g).to(args.device)
-                pert_b = pert[sl].reshape(b, S, -1).to(args.device)
+            for s0 in range(0, len(plan), B):
+                chunk = plan[s0:s0 + B]
+                b = len(chunk)
+                rows = np.concatenate([padded for _, padded in chunk])
+                ctrl_b = torch.from_numpy(X[rows]).reshape(b, S, g).to(args.device)
+                pert_b = onehot[rows].reshape(b, S, -1).to(args.device)
+                row_names = [str(v) for v in names[rows]]
                 batch = {
                     # ⚠️ pert_cell_emb is the TARGET, ignored at predict time. Filled with
                     # the control cells so the tensor has the right shape.
                     "pert_cell_emb": ctrl_b,
                     "ctrl_cell_emb": ctrl_b,
                     "pert_emb": pert_b,
-                    "pert_name": [names[i] for i in range(sl.start, sl.stop)],
+                    "pert_name": row_names,
                     "cell_type": [args.cell_type] * (b * S),
                     "cell_type_onehot": ct_onehot.unsqueeze(0).expand(b * S, -1).to(
                         args.device),
@@ -222,8 +258,14 @@ def main(argv=None) -> int:
                     raise RuntimeError(
                         f"predict_step returned {p.shape[0]} rows for {b * S} input cells; "
                         f"a positional prediction matrix would then be misaligned")
-                out[sl] = p
-        return out[:n]
+                for k, (sent, _) in enumerate(chunk):
+                    out[sent] = p[k * S: k * S + len(sent)]
+
+        if np.isnan(out).any():
+            raise RuntimeError(
+                f"{int(np.isnan(out).any(1).sum())} row(s) were never written by any "
+                f"sentence; refusing to emit a partly-NaN prediction.")
+        return out
 
     export_split(predict, split, args.out_dir, arm=ARM,
                  from_target_sum=TRAIN_TARGET_SUM, from_log1p=True,
@@ -235,8 +277,11 @@ def main(argv=None) -> int:
                      "batch_covariate": batch_label,
                      "control_pairing": "one drawn half-B control cell per predicted row; "
                                         "OUR protocol, not their (cell_type, batch) pool",
-                     "padding": "last sentence padded with repeats of its final row, "
-                                "discarded after prediction",
+                     "sentences": "PURE -- one perturbation per sentence, matching "
+                                  "SentenceBatchSampler._create_sentences. See C27: mixed "
+                                  "sentences collapsed this arm to the meanpert baseline.",
+                     "padding": "a short sentence is tiled from that perturbation's OWN "
+                                "cells; padding rows are discarded after prediction",
                  })
     return 0
 
