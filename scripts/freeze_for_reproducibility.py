@@ -140,9 +140,13 @@ def main(argv=None) -> int:
     print(f"[freeze] selected {ck.name}; NOT freezing {others} (never evaluated)")
 
     # ---- the run's own condition-space artifacts + resolved config
+    # ⚠️ EXCLUDE the selected checkpoint. The `*.pkl` / `*.pt` globs below are meant to catch
+    # small condition-space objects (one-hot maps, var dims), but for an arm whose checkpoint
+    # IS a .pkl -- CellFlow's `CellFlow.pkl` -- the glob also matched the checkpoint and froze
+    # a second 18 GB copy beside the one in checkpoints/. Same bytes, same sha256, twice.
     for pat in ("*.torch", "*.pt", "*.pkl", "config.yaml", "*.txt"):
         for f in sorted(run.glob(pat)):
-            if f.is_file():
+            if f.is_file() and f.resolve() != ck.resolve():
                 files[f"artifacts/{f.name}"] = copy_in(f, out / "artifacts" / f.name)
     for csv in sorted(run.glob("version_*/metrics.csv")):
         files[f"artifacts/{csv.parent.name}_metrics.csv"] = copy_in(

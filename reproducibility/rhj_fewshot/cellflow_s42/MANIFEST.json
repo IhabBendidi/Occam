@@ -1,0 +1,178 @@
+{
+  "anchors_for_reading": {
+    "ctrlcell": -0.0018,
+    "ctrlmean": 0.0016,
+    "experimental": 0.3722,
+    "meanpert": 0.1324,
+    "occam_best": 0.3415,
+    "transfer": 0.2323
+  },
+  "arm": "cellflow",
+  "benchmark": "rhj_fewshot",
+  "checkpoints_not_frozen": {
+    "names": [],
+    "why": "written by the same run but NEVER evaluated -- 'best' under a different criterion, plus last/final. Excluded so no one can score one later and report it as this arm's result."
+  },
+  "deliberate_deviations": [
+    "Retrained from scratch on OUR data: 6,983-gene frozen axis, our 611-perturbation cohort, our 5 splits. Does NOT reproduce CellFlow's published 0.44015 (2,000 genes / 380 perturbations / 4 cell lines).",
+    "C3 CORRECTION, and it is load-bearing: the selection metric originally decoded BOTH the prediction and the ground truth through the rank-256 PCA basis, which removes everything the basis cannot express and inflated every component. It reported pearson_delta 0.4027 / overlap_at_N 0.908. Scored against untouched gene-space targets the same model gets 0.2449 validation / 0.2154 test -- the inflated figure was ~0.19 too high and would have ranked CellFlow first on the panel. The checkpoint frozen here was selected under the CORRECTED metric.",
+    "C4: n_conditions_on_log_iteration raised from 60 to the full 103 validation perturbations. ValidationSampler draws a fresh rng.choice each pass, so with 60 the successive selection scores were not comparable to each other.",
+    "C1/C2 export fixes: predict() requires adata.obs[control_key].all() to be True (we had set is_control all False, which raised); and the prediction block carried no uns, so rep_dict['gene_embeddings'] raised KeyError. Before these the export had never emitted a single row.",
+    "PCA basis is fit on TRAINING DATA ONLY (verified: centered_pca on adata_train alone, everything else projected through it, export uses the saved artifacts). \u26a0\ufe0f It uses scanpy's random_state=0, so it does NOT vary with model.seed -- all seeds would share one representation.",
+    "C5/C6 hygiene: the one-hot condition vocabulary was built twice at different widths and only worked because control injection overwrote the validation uns with the training one; and a PYTHONHASHSEED-randomised abs(hash(...)) was replaced with a stable sha256.",
+    "\u26a0\ufe0f PROVENANCE GAP: the official recipe is not in this checkout. n_comps=256 is not a library default (50 is), and pooling, cond_output_dropout, time_encoder_dims, probability_path, linear_projection_before_concatenation and valid_freq all differ from library defaults with no traceable source. Two disclosed edits to the vendored package forward the seed."
+  ],
+  "files": {
+    "artifacts/config.yaml": {
+      "bytes": 1546,
+      "sha256": "dea335a9476562f860a7c758075ff08b089bcc826837200f923d113258bd03bb"
+    },
+    "artifacts/genes.txt": {
+      "bytes": 111728,
+      "sha256": "b6701ede1cbcee167bf95430fcea2c989e6260f25ebf436a0ee957f6eab665b8"
+    },
+    "celleval/split_0/agg_results.csv": {
+      "bytes": 3663,
+      "sha256": "bfa4774f2a6f669a42aeee1535825520c35653eaa4af6c6611c2a63aeac3bc67"
+    },
+    "celleval/split_0/metrics.json": {
+      "bytes": 13669,
+      "sha256": "15aa29905dfa4ad38dbdb27cc5302462faf787157330bf430fa18cc87d7e88b4"
+    },
+    "celleval/split_0/results.csv": {
+      "bytes": 244687,
+      "sha256": "f4fc7c8fc3f9563557808005f19dfdf28109bea8ea28195050bd4283b543f601"
+    },
+    "celleval/split_1/agg_results.csv": {
+      "bytes": 3677,
+      "sha256": "c9d35112ffe74ff5df8c1492f94a1001711fc7ee7a8a1de27f38509140d2c8b8"
+    },
+    "celleval/split_1/metrics.json": {
+      "bytes": 13667,
+      "sha256": "487163b1ee4fd6a3dc30a8bd39cbc56b8aefe23140e7b20440f25fc1573fe3cc"
+    },
+    "celleval/split_1/results.csv": {
+      "bytes": 243913,
+      "sha256": "b98a17a9b7d7462430723c73150763b079eecd6ee117b9c1a9adbabb14ed47b3"
+    },
+    "celleval/split_2/agg_results.csv": {
+      "bytes": 3739,
+      "sha256": "866f4d91ba364b276c4b41d6c19e1416d1b4ee3e828b3dde12d50a4012ea4b32"
+    },
+    "celleval/split_2/metrics.json": {
+      "bytes": 13682,
+      "sha256": "68a5e6227d4b96003177a3f7bc4672d4249709ea4725a13dec853406db11600b"
+    },
+    "celleval/split_2/results.csv": {
+      "bytes": 244340,
+      "sha256": "baf333f0537142b8c4aa29d44ca5ea5be213fca3ec5facf2dcd6db2e8be52ed9"
+    },
+    "celleval/split_3/agg_results.csv": {
+      "bytes": 3680,
+      "sha256": "e72b80d6ead9fc1b28998c98846d685f1b19ef918b27f3daca6f1d1ea5288e09"
+    },
+    "celleval/split_3/metrics.json": {
+      "bytes": 13672,
+      "sha256": "c578f0788cd8b63216f0bf219f5a8479eb203bdf2310d6bce96f977334ff1a1e"
+    },
+    "celleval/split_3/results.csv": {
+      "bytes": 243652,
+      "sha256": "f86eb7095028d1194bfa1bd95a8ec4475063509ebcdbdfdefba10b71f31f6567"
+    },
+    "celleval/split_4/agg_results.csv": {
+      "bytes": 3665,
+      "sha256": "6fb118f31aa6f5194b5cfae8ad1346a6d7085c260cbcd7e0fffa66aecc783a4f"
+    },
+    "celleval/split_4/metrics.json": {
+      "bytes": 13639,
+      "sha256": "b48f1feb4da0e908fc3d8d3f9e4f17a5f9f5a0e453015013898b0a0c644eb48d"
+    },
+    "celleval/split_4/results.csv": {
+      "bytes": 245553,
+      "sha256": "5761406c1a352acd34e0e5183549f85b456ebe926933d0a0c003b46e84a54b73"
+    },
+    "checkpoints/CellFlow.pkl": {
+      "bytes": 18936497131,
+      "sha256": "c8618c801de3bcbee5c0bfe3977090cc2ee9d0268284c0864fa2f8e09975809e"
+    },
+    "predictions/split_0/h1_model_nocal_pred_injctrl.h5ad": {
+      "bytes": 589537730,
+      "sha256": "a14c3bf3e88b190b19ceb9d3cd05c86e754bb2406a1efda1e7a6a2a7f7932a8a"
+    },
+    "predictions/split_1/h1_model_nocal_pred_injctrl.h5ad": {
+      "bytes": 589537730,
+      "sha256": "5d116fad38b76e151fd6d3f0421147a09c768b1a01e64d4241a529ed25320a4b"
+    },
+    "predictions/split_2/h1_model_nocal_pred_injctrl.h5ad": {
+      "bytes": 589537730,
+      "sha256": "18528132872a5e3fba811fa942d5b9d9044250170967737e11754e2d00ec9acb"
+    },
+    "predictions/split_3/h1_model_nocal_pred_injctrl.h5ad": {
+      "bytes": 589537730,
+      "sha256": "8f522c40dca24ed84534aec3d19a33436d560246cb1c437dd16daeddae54b774"
+    },
+    "predictions/split_4/h1_model_nocal_pred_injctrl.h5ad": {
+      "bytes": 589537730,
+      "sha256": "6204b211dff79187b9e323ee510520c9f8dd29171393d2e64e688aac67c62386"
+    }
+  },
+  "freeze_note": "artifacts/CellFlow.pkl was a duplicate of checkpoints/CellFlow.pkl (same bytes) caused by the artifacts *.pkl glob also matching the selected checkpoint. Removed; the script now excludes it.",
+  "git_commit": "2aca85d080251ebce75054d4987ab114d9c79ec0",
+  "n_splits_scored": 5,
+  "not_copied": {
+    "pred_de.csv": "~95 MB per split, fully derivable from the prediction h5ad",
+    "target_h5ad": "a deterministic function of the frozen panel and the split seed; reproducible, and it would double the footprint"
+  },
+  "note": "CellFlow on the rhj_fewshot split-half panel. OT flow-matching in a rank-256 PCA latent, jax.vmap per-cell inference. Selected state 'call03' by mean(pearson_delta, discrimination_score_l1) on the 103 HepG2 validation perturbations.",
+  "scored_by": "cell-eval 0.6.0 / pdex 0.1.24, uncalibrated (model_nocal), one drawn half-B control cell per predicted row",
+  "seed": 42,
+  "selected_checkpoint": "CellFlow.pkl",
+  "source_run_dir": "runs/competitors/cellflow/occam_s42",
+  "source_scored_dir": "runs/rhj_splithalf/compet_cellflow_s42",
+  "test_scores_model_nocal": {
+    "mean": {
+      "discrimination_score_l1": 0.5435820647646395,
+      "mae": 0.025100095822199957,
+      "overlap_at_N": 0.03145332383410241,
+      "pearson_delta": 0.21541185440601018
+    },
+    "per_split": {
+      "0": {
+        "discrimination_score_l1": 0.5457260641646198,
+        "mae": 0.025033046585948203,
+        "overlap_at_N": 0.03149439987356175,
+        "pearson_delta": 0.21635988544419282
+      },
+      "1": {
+        "discrimination_score_l1": 0.5406982194947512,
+        "mae": 0.02521309217227754,
+        "overlap_at_N": 0.03140903528861151,
+        "pearson_delta": 0.22138492983131963
+      },
+      "2": {
+        "discrimination_score_l1": 0.5455278433305386,
+        "mae": 0.025062536243074945,
+        "overlap_at_N": 0.0324020716648373,
+        "pearson_delta": 0.21204868774599672
+      },
+      "3": {
+        "discrimination_score_l1": 0.5460153594359813,
+        "mae": 0.02506059396603494,
+        "overlap_at_N": 0.03050442182050259,
+        "pearson_delta": 0.21544952557885882
+      },
+      "4": {
+        "discrimination_score_l1": 0.5399428373973069,
+        "mae": 0.025131210143664172,
+        "overlap_at_N": 0.03145669052299889,
+        "pearson_delta": 0.21181624342968286
+      }
+    },
+    "sd": {
+      "discrimination_score_l1": 0.002994338407061271,
+      "mae": 7.280624086832681e-05,
+      "overlap_at_N": 0.0006716021010634654,
+      "pearson_delta": 0.003899266606657229
+    }
+  }
+}

@@ -55,6 +55,70 @@ identity floor and the score alone would not distinguish that from a genuinely w
 ⚠️ Step 3 is the pre-registration: **the diagnostic decides whether the sweep is worth running**,
 rather than the sweep being run and the diagnostic quoted afterwards.
 
+## ⭐⭐ F-comp1 — CellFlow completes the panel at **0.2154**, the ONLY competitor BELOW `transfer`, and it discriminates at near-chance
+
+**Objective.** Predict a perturbation's effect in a cellular context where that perturbation was
+never measured, from a single control cell. Headline: split-half paired `pearson_delta` on
+`rhj_fewshot`, cell-eval 0.6.0, uncalibrated.
+
+**Question this answers.** Where does the fourth and last competitor port sit, on the same
+instrument as the other three and as our own arms — and does it clear the `transfer` bar that
+says a model is earning its parameters?
+
+**Varied:** the model. **Held fixed:** the 611-perturbation cohort, the 6,983-gene axis, the
+seeded per-split half-B control draw, the emission space, the scoring path.
+
+**Anchors:** `ctrlcell` −0.0018 · `ctrlmean` 0.0016 · `meanpert` 0.1324 · **`transfer` 0.2323** ·
+`experimental` 0.3722. `disc_l1` chance = **0.5**.
+
+### Measured — 5/5 splits, uncalibrated
+
+| split | `pearson_delta` | `mae` ↓ | `overlap_at_N` | `disc_l1` |
+|---|---|---|---|---|
+| 0 | 0.2164 | 0.0250 | 0.0315 | 0.5457 |
+| 1 | 0.2214 | 0.0252 | 0.0314 | 0.5407 |
+| 2 | 0.2120 | 0.0251 | 0.0324 | 0.5455 |
+| 3 | 0.2154 | 0.0251 | 0.0305 | 0.5460 |
+| 4 | 0.2118 | 0.0251 | 0.0315 | 0.5399 |
+| **mean** | **0.2154 ± 0.0039** | **0.0251** | **0.0315** | **0.5436** |
+
+### The full competitor panel, uncalibrated, all 5/5 splits
+
+| arm | `pearson_delta` | vs `transfer` | `mae` ↓ | `overlap_at_N` | `disc_l1` |
+|---|---|---|---|---|---|
+| TxPert (single-cell controls) | **0.3463 ± 0.0035** | +0.1140 | 0.0227 | 0.0582 | 0.6704 |
+| PerturbDiff (genept) | 0.2449 ± 0.0038 | +0.0126 | 0.0287 | 0.0734 | 0.6650 |
+| STATE | 0.2362 ± 0.0019 | +0.0039 | 0.0291 | **0.0849** | 0.6639 |
+| **CellFlow** | **0.2154 ± 0.0039** | **−0.0169** | **0.0251** | 0.0315 | **0.5436** |
+
+### Reading
+
+1. **CellFlow is the only competitor that fails the `transfer` bar**, by −0.0169. `transfer` is
+   the same perturbation measured in a *different cell line* — a model below it is not earning
+   its parameters on this task.
+2. **Its `disc_l1` is 0.5436 against a chance floor of 0.5.** The other three sit at 0.66–0.67.
+   `disc_l1` asks whether a prediction can be matched back to WHICH perturbation produced it, so
+   CellFlow is close to not distinguishing perturbations at all — while still scoring 0.2154 on
+   `pearson_delta`, well above `meanpert` 0.1324. That combination is the signature `meanpert`
+   exists to expose, and CellFlow is the first arm in this campaign to show it strongly.
+3. **`mae` 0.0251 is the best of any competitor** and better than every DCOS arm of ours. A model
+   that predicts something close to a shared average profile will do well on a magnitude error
+   and badly on discrimination — consistent with (2). ⚠️ This is why `mae` must never be read
+   alone.
+4. **Val → test gap −0.029** (validation 0.2449 gene-space after the C3 fix → test 0.2154), the
+   same direction and size as the other arms, so the selection metric behaved normally. The
+   number is low because the model is, not because selection failed.
+
+⚠️ **The C3 correction is what makes this readable at all.** Before it, CellFlow's selection
+metric scored the prediction against a **PCA-reconstructed** ground truth and reported
+`pearson_delta` 0.4027 with `overlap_at_N` 0.908. Scored against untouched targets it is 0.2449
+validation / 0.2154 test. The inflated number was ~0.19 too high and would have made CellFlow
+look like the best arm on the panel.
+
+⚠️ Deliberate deviations are recorded per arm in `docs/rhj_competitors_results.md`; none of
+these numbers reproduces the method's published figure, and CellFlow's PCA basis uses scanpy's
+`random_state=0`, so all seeds share one representation.
+
 ## ⭐⭐⭐ F-loss5 — DCOS is ~100× LARGER than smooth_l1, so `delta_cos_weight` 0.5 means **98% direction, 2% magnitude** — and the model over-shoots the effect by **5.6×**
 
 **Objective.** Best model on SEEN perturbations in an UNSEEN cell line; headline is split-half
