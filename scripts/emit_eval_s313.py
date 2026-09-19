@@ -66,6 +66,52 @@ def estimate_theta(ctrl_log1p: np.ndarray, floor: float = 0.05,
     return np.clip(theta, floor, cap)
 
 
+def theta_from_checkpoint(ckpt_path: str, panel_genes) -> np.ndarray:
+    """Per-gene NB dispersion from a MODEL-LEARNED `log_theta`, aligned to the panel axis.
+
+    ⚠️ THIS IS THE PRINCIPLED SOURCE, and it exists for the smooth_l1 arms too. The released
+    encoder+decoder checkpoint carries `log_theta` over the full 44,728-gene encoder axis,
+    trained during decoder pretraining -- which is exactly what `vc_load_dispersion: true`
+    warm-starts for the NB virtual-cell arms. `exp(log_theta)` has median ~1.9 (strongly
+    over-dispersed), against the 10,000 CAP that method-of-moments on library-NORMALISED data
+    returned for every gene, which silently degenerated NB into Poisson (F-emit4).
+
+    Aligned BY GENE NAME, never positionally: the checkpoint's axis is 44,728 and the panel's
+    is 6,983, so a positional read would be gibberish that still has the right shape.
+    """
+    import torch
+
+    ck = torch.load(ckpt_path, map_location="cpu", weights_only=False)
+    lt = None
+    for key in ("dispersion", "loss_state_dict"):
+        blk = ck.get(key)
+        if isinstance(blk, dict) and "log_theta" in blk:
+            lt = blk["log_theta"]
+            break
+    if lt is None:
+        raise SystemExit(
+            f"{ckpt_path} carries no log_theta under 'dispersion' or 'loss_state_dict'. "
+            f"A smooth_l1 VC checkpoint does not have one; use the RELEASED "
+            f"encoder+decoder checkpoint, which does.")
+    theta_full = np.exp(np.asarray(lt, dtype=np.float64).reshape(-1))
+    names = [str(g) for g in ck.get("gene_names", [])]
+    if len(names) != theta_full.size:
+        raise SystemExit(
+            f"gene_names has {len(names)} entries for {theta_full.size} theta values")
+    idx = {g: i for i, g in enumerate(names)}
+    missing = [g for g in panel_genes if g not in idx]
+    if missing:
+        raise SystemExit(
+            f"{len(missing)} panel genes are absent from the checkpoint axis, e.g. "
+            f"{missing[:5]}. Refusing to fill them with a default: a wrong dispersion on a "
+            f"real gene is invisible in the output.")
+    theta = theta_full[[idx[g] for g in panel_genes]]
+    print(f"[emit] model-learned theta from {os.path.basename(ckpt_path)}: "
+          f"{theta.size} genes on the panel axis, median {np.median(theta):.3f} "
+          f"p10 {np.percentile(theta, 10):.3f} p90 {np.percentile(theta, 90):.3f}")
+    return theta
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -75,6 +121,16 @@ def main(argv=None) -> int:
     ap.add_argument("--lib", type=float, default=EVAL_TARGET_SUM)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--num-threads", type=int, default=16)
+    ap.add_argument("--panel-npz",
+                    default="data/benchmarks/rhj_fewshot/splithalf/panel.npz",
+                    help="carries axis_ensembl/axis_symbols in the same order -- needed "
+                         "because the checkpoint's theta is on the ENSEMBL axis")
+    ap.add_argument("--theta-ckpt", default="",
+                    help="checkpoint carrying a MODEL-LEARNED log_theta. Empty = estimate "
+                         "from the model-visible controls, which on library-normalised data "
+                         "collapses to Poisson (F-emit4) -- prefer a checkpoint.")
+    ap.add_argument("--arms", default="nb,nb_xcolsum",
+                    help="comma list from: nb, nb_xcolsum, cal (calibration only)")
     a = ap.parse_args(argv)
 
     import anndata as ad
@@ -97,13 +153,32 @@ def main(argv=None) -> int:
         is_ctrl = lab == CONTROL
         X = np.asarray(P.X.todense() if hasattr(P.X, "todense") else P.X, dtype=np.float32)
 
-        # theta from the MODEL-VISIBLE half-B controls, never the target's half-A ones
-        theta = estimate_theta(X[is_ctrl])
-        print(f"[emit] split {s}: {int(is_ctrl.sum())} model-visible controls -> theta "
-              f"median {np.median(theta):.3f} p10 {np.percentile(theta,10):.3f} "
-              f"p90 {np.percentile(theta,90):.3f}")
+        if a.theta_ckpt:
+            # ⚠️ ALIGN ON ENSEMBL, NOT SYMBOLS. The prediction h5ad's var index is SYMBOLS
+            # (cell-eval needs those -- it excludes each perturbation's own target gene by
+            # symbol), but the released checkpoint's axis is ENSEMBL: 44,560 ENSG ids plus
+            # 168 unmapped symbol-like leftovers. Matching by symbol found 2 of 6,983 genes.
+            # The panel carries both axes in the same order, so the ensembl one is the key.
+            zz = np.load(a.panel_npz, allow_pickle=True)
+            ens = [str(g) for g in zz["axis_ensembl"]]
+            sym = [str(g) for g in zz["axis_symbols"]]
+            if sym != [str(g) for g in P.var.index]:
+                raise SystemExit(
+                    "the prediction h5ad's gene order does not match the panel's symbol "
+                    "axis; the ensembl alignment would silently be off by position.")
+            theta = theta_from_checkpoint(a.theta_ckpt, ens)
+        else:
+            # theta from the MODEL-VISIBLE half-B controls, never the target's half-A ones.
+            # ⚠️ On library-normalised data this collapses to the cap -- see F-emit4.
+            theta = estimate_theta(X[is_ctrl])
+            print(f"[emit] split {s}: {int(is_ctrl.sum())} model-visible controls -> theta "
+                  f"median {np.median(theta):.3f} p10 {np.percentile(theta,10):.3f} "
+                  f"p90 {np.percentile(theta,90):.3f}")
 
-        for tag, xc in (("nb", False), ("nb_xcolsum", True)):
+        want = [t.strip() for t in a.arms.split(",") if t.strip()]
+        for tag, xc in [("nb", False), ("nb_xcolsum", True)]:
+            if tag not in want:
+                continue
             out_dir = os.path.join(a.out_root, f"split_{s:02d}", tag)
             os.makedirs(out_dir, exist_ok=True)
             # emit the PERTURBED rows only; the control block is real data
