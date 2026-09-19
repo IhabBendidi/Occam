@@ -55,6 +55,72 @@ identity floor and the score alone would not distinguish that from a genuinely w
 ⚠️ Step 3 is the pre-registration: **the diagnostic decides whether the sweep is worth running**,
 rather than the sweep being run and the diagnostic quoted afterwards.
 
+## ⭐⭐⭐ F-loss4 — DCOS CONFIRMED ON TEST: **+0.0246 `pearson_delta`, 5/5 splits**, but it COSTS `mae` and `overlap_at_N`
+
+**Objective.** Best model on SEEN perturbations in an UNSEEN cell line; headline is split-half
+paired `pearson_delta` on `rhj_fewshot`. Anchors (test, 5 splits): `ctrlcell` −0.0018 ·
+`ctrlmean` 0.0016 · `meanpert` 0.1324 · **`transfer` 0.2323** · **previous best 0.3415** ·
+best competitor (TxPert) 0.3463 · `experimental` 0.3722.
+
+**Question this answers.** F-loss2 measured +0.028…+0.034 for DCOS on *validation*
+`best_metric`. Validation and cell-eval have ranked models OPPOSITELY in this project before.
+Does the gain survive to the test metric the 0.3415 headline is quoted on?
+
+**What is varied:** the delta-cosine term, live vs inert. **Held fixed: everything else, exactly.**
+`D02` and `L11` have the **same `_provenance.stage_hashes.vcell`** (`8e4af0d2…`) — byte-identical
+configs, both `delta_cos_weight: 0.25`. The only difference is `git_sha`: `L11` ran before the
+F-loss1 group-mean gate fix with the term silently ZERO, `D02` after it with the term live. Same
+cohort, same axis, same seeded per-split control draw, so the comparison is **paired per split**.
+
+**What each outcome means (pre-registered in F-loss2).** Positive ⇒ DCOS is a real lever and the
+weight is adoptable. Null ⇒ `best_metric` and cell-eval disagree again and DCOS is a
+validation-metric artefact.
+
+### Measured — uncalibrated (`model_nocal`), paired per split, job `18181379`
+
+`mae` is an ERROR: **lower is better.** `pearson_delta` and `overlap_at_N`: higher is better.
+
+| split | `pearson_delta` L11 → D02 | Δ | `mae` ↓ L11 → D02 | `overlap_at_N` L11 → D02 |
+|---|---|---|---|---|
+| 0 | 0.3411 → **0.3656** | **+0.0245** | 0.0210 → 0.0277 | 0.0646 → 0.0567 |
+| 1 | 0.3464 → **0.3691** | **+0.0227** | 0.0210 → 0.0277 | 0.0655 → 0.0577 |
+| 2 | 0.3407 → **0.3674** | **+0.0267** | 0.0210 → 0.0277 | 0.0640 → 0.0572 |
+| 3 | 0.3378 → **0.3652** | **+0.0274** | 0.0210 → 0.0277 | 0.0628 → 0.0562 |
+| 4 | 0.3414 → **0.3631** | **+0.0217** | 0.0210 → 0.0278 | 0.0642 → 0.0563 |
+| **mean** | **0.3415 → 0.3661** | **+0.0246** | 0.0210 → 0.0277 (**+32%, worse**) | 0.0642 → 0.0568 (**−12%, worse**) |
+
+### Reading
+
+1. **DCOS survives to test. 5/5 splits positive**, range +0.0217…+0.0274 — the whole range sits
+   ~7× outside the across-split sd of ~0.003. The validation signal (+0.033 at this weight) and
+   the test signal (+0.0246) agree in sign and are close in size, so this is not a
+   validation-metric artefact.
+2. **0.3661 is a new best.** It clears the previous 0.3415 headline and also clears the best
+   competitor, TxPert at 0.3463 (+0.0198). It sits 0.0061 below `experimental` 0.3722.
+3. **⚠️ It is a TRADE, not a free win.** `mae` degrades 32% (0.0210 → 0.0277) and
+   `overlap_at_N` degrades 12% (0.0642 → 0.0568), consistently on all 5 splits. That is the
+   expected signature of a term that supervises delta DIRECTION with magnitude divided out:
+   direction improves, calibrated magnitude gets worse. **Anyone quoting 0.3661 must quote the
+   `mae` and `overlap_at_N` cost beside it.** Which arm is preferable depends on the metric the
+   submission is scored on; that is a decision, not a measurement.
+4. The `disc_l1` column and `D03` (`delta_cos_weight` 0.5, the validation optimum at 0.4108, vs
+   0.25's 0.4100) are still scoring — `D03`'s control `L12` currently has 1/5 uncalibrated
+   splits, so that pair is **not yet comparable**.
+
+⚠️ **n = 1 seed (42), 1 weight confirmed.** The per-split pairing is tight, but nothing here
+separates "DCOS helps" from "DCOS helps at seed 42". No seed replicate has been run.
+
+⚠️ **Prior launch defect, corrected:** job `18181054` scored these arms with the launcher's
+default `CALIBRATE=quantile`, which emits `model_cal` ONLY. Calibration costs 0.068
+`pearson_delta` (F-loss3), so that job could not answer this question. Cancelled and relaunched
+as `18181379` with `CALIBRATE=both`. The one salvageable number from it agrees:
+D02 split 0 calibrated 0.3009 vs L11 calibrated 0.2732, **+0.0277**.
+
+**Config that produced it:** `rhj_fewshot_D02__smooth_l1_nbw0_nbs1.0_dcos0.25_s42`, checkpoint
+epoch 21 `best_metric` 0.4100, git `e7c3a78`, `configs/rhj_fewshot.yaml` +
+`--set stages.vcell.loss.delta_cos_weight=0.25`. Scored by `configs/rhj_dcos_eval.tsv` through
+`scripts/slurm/rhj_splithalf_models.sbatch` with `CALIBRATE=both`.
+
 ## ⭐⭐ F-emit6 — the 4-way emission/calibration comparison on s313, **split 00 only**: doing NOTHING wins `pearson_delta`; emission buys `overlap_at_N`
 
 **Objective.** Best model on SEEN perturbations in an UNSEEN cell line; headline is split-half
