@@ -4,6 +4,68 @@
 read, partial results labelled partial, superseded numbers kept with the correction beside
 them.
 
+## ⭐⭐ F-emit4 — MEASURED on s313: emission HURTS. `exact_colsum` helps a lot, but only within emission.
+
+**Question.** Does NB count emission raise `overlap_at_N`, and does `exact_colsum` on top of it
+help? Split 0 of our best arm (`s313`), post-hoc on the saved predictions, so the mean-only row
+is byte-identical to the published number.
+
+| arm | `pearson_delta` ↑ | `mae` ↓ | **`overlap_at_N` ↑** | `disc_l1` ↑ |
+|---|---|---|---|---|
+| **mean-only (published)** | **0.3415** | **0.0210** | **0.0642** | 0.6534 |
+| emission only | 0.1611 | 0.0490 | **0.0079** | **0.6700** |
+| emission + `exact_colsum` | 0.2478 | 0.0295 | 0.0314 | 0.6511 |
+
+### The answer to the question that motivated this: NO
+
+`overlap_at_N` was the target, and it **fell 8x** with emission (0.0642 → 0.0079) and is still
+**halved** with `exact_colsum` (0.0314). `pearson_delta` and `mae` fall too. **The
+pre-registered expectation held**: VCC measured colsum at `jac` −0.002…−0.004, `overlap_at_N`
+is in the same Wilcoxon family, and the mechanism predicted little or nothing there. It is
+worse than nothing.
+
+### `exact_colsum` is strongly confirmed — *within* emission
+
+| | emission | + `exact_colsum` | gain |
+|---|---|---|---|
+| `pearson_delta` | 0.1611 | 0.2478 | **+0.0867** |
+| `mae` | 0.0490 | 0.0295 | **−40%** |
+| `overlap_at_N` | 0.0079 | 0.0314 | **4x** |
+
+That is exactly the F-emit2 prediction: it removes the scatter the sampler introduced, so it
+recovers most — **but not all** — of what emission cost. Net against the published arm it is
+still **−0.094 `pearson_delta`**. The two operations are a pair, and the pair loses.
+
+### ⚠️ THIS TESTED POISSON EMISSION, NOT NB — the theta estimate collapsed
+
+```
+[emit] split 0: 2488 model-visible controls -> theta median 10000.000 p10 10000.000 p90 10000.000
+```
+
+10,000 is the estimator's **cap**, returned when `Var - mu <= 0` i.e. no evidence of
+over-dispersion. It was returned for essentially every gene, so `NB(mu, theta→∞)` degenerated
+to Poisson and the run tested Poisson emission.
+
+The cause is a space error in the estimator, and it is mine: the control rows are **library-
+normalised** (log1p at 2000), and method-of-moments on `expm1` of normalised data does not
+recover a count dispersion — normalisation to a fixed library size compresses the variance and
+drives `Var` below `mu`. The emitted zero fraction confirms the regime is off: **0.8767 against
+the target's 0.5170.**
+
+**So the honest status of the headline result:** emission as tested is Poisson at the wrong
+dispersion, and it hurts. A fair NB test needs a real per-gene dispersion, and there are two
+sources:
+1. a model-learned `log_theta` from an NB-trained checkpoint — the principled one, and L01-L09
+   are training now (note L01, clean NB, validates at 0.2614 against smooth_l1's 0.3558, so it
+   is not a strong checkpoint to borrow from);
+2. method of moments on **raw counts**, before library normalisation — which the frozen panel
+   does not carry, so it would have to come from the source h5ads.
+
+⚠️ Either way, the `overlap_at_N` result is unlikely to reverse: the gap is 8x, the mechanism
+argues against it, and a better theta changes the dispersion, not the fact that a Wilcoxon test
+on emitted counts sees a different distribution than one on a mean profile. **Recommend against
+pursuing emission for `overlap_at_N` unless a model-learned theta is available cheaply.**
+
 ## ⛔ F-loss1 — DCOS ran INERT: I added the consumer without the gate that loads its inputs
 
 **Caught by the data, not by reading the code.** Three DCOS arms at `delta_cos_weight`
