@@ -4,6 +4,65 @@
 read, partial results labelled partial, superseded numbers kept with the correction beside
 them.
 
+## ⭐⭐ F-emit5 — CORRECTION: with a fair theta and the right depth, emission RAISES `overlap_at_N` by 50%
+
+⚠️ **THIS OVERTURNS F-emit4's RECOMMENDATION, WHICH WAS MINE AND WAS WRONG.** F-emit4 concluded
+"recommend against pursuing emission for `overlap_at_N`". That conclusion was drawn from a run
+with **two broken settings**, both mine, and it does not survive fixing them.
+
+### What was broken in F-emit4
+
+| | F-emit4 (broken) | F-emit5 (fair) |
+|---|---|---|
+| theta | method-of-moments on **library-normalised** data -> collapsed to the 10,000 CAP for every gene, i.e. **Poisson** | model-learned `log_theta` from the released decoder checkpoint, aligned on the **ENSEMBL** axis (symbol matching found 2 of 6,983), panel median **80.7** |
+| emitted depth | `lib=2000` -> **0.29 counts/gene** over 6,983 genes -> zero-fraction **0.8767** | `lib=17500`, calibrated so the zero-fraction matches the reference's own **0.5153** |
+| resulting zero-fraction | 0.8767 (target 0.5153) | **0.5053 / 0.5076** |
+
+### The corrected numbers — `s313`, split 0, `model_nocal` base
+
+| arm | `pearson_delta` ↑ | `mae` ↓ | **`overlap_at_N` ↑** | `disc_l1` ↑ |
+|---|---|---|---|---|
+| **mean-only (published)** | **0.3415** | **0.0210** | 0.0642 | **0.6534** |
+| NB emission (fair) | 0.1775 | 0.0331 | 0.0614 | 0.6475 |
+| **NB emission + `exact_colsum`** | 0.2027 | 0.0276 | **0.0961** | 0.6393 |
+
+**`overlap_at_N` rises 0.0642 -> 0.0961, +50%.** That is the metric the exercise was for, and it
+is the OPPOSITE of what F-emit4 measured (0.0079, an 8x fall) and of what I predicted from the
+VCC `jac` evidence. The prediction was reasonable and it was wrong; the mechanism I reasoned
+from does not dominate once the emitted distribution actually resembles the data.
+
+⚠️ **And `exact_colsum` is doing the work, not emission alone.** Emission by itself is
+essentially neutral on `overlap_at_N` (0.0614 vs 0.0642). The +50% appears only with the column
+sum pinned — consistent with F-emit2/F-emit3: the pin removes the sampling scatter, leaving the
+dispersion that the Wilcoxon test needs without the noise that dilutes the ranking.
+
+### ⚠️ It is a TRADE-OFF, not a free win
+
+| metric | change vs mean-only | direction |
+|---|---|---|
+| `overlap_at_N` | **+0.0319 (+50%)** | ✅ better |
+| `pearson_delta` | **−0.1388** | ⛔ much worse |
+| `mae` | +0.0066 | ⛔ worse |
+| `disc_l1` | −0.0141 | ⛔ slightly worse |
+
+`pearson_delta` is our headline metric and it falls by more than the entire `meanpert`→
+`transfer` gap. **So this is not an adopt-by-default change.** It is a per-metric emission
+choice: if `overlap_at_N` is the target, emission + `exact_colsum` buys 50%; if
+`pearson_delta` is, it costs 0.14.
+
+⚠️ **n=1 split.** The other four splits are needed before this is quoted as a result, and the
+depth `lib=17500` was tuned to match the reference's zero fraction — legitimate under the
+project's "match the reference's own statistics" rule, but it IS a fitted quantity and should
+be stated as one.
+
+### The lesson
+
+Two configuration errors — an ID-space mismatch and a depth 8.7x too shallow — produced a
+confident, wrong, and *plausible* negative result, which I then converted into a
+recommendation. The zero-fraction diagnostic (0.8767 vs a target of 0.5153) was visible in the
+F-emit4 log and I read past it. **A sanity statistic that disagrees with the reference by 70%
+is not a detail to note; it invalidates the run.**
+
 ## ⭐⭐ F-emit4 — MEASURED on s313: emission HURTS. `exact_colsum` helps a lot, but only within emission.
 
 **Question.** Does NB count emission raise `overlap_at_N`, and does `exact_colsum` on top of it
