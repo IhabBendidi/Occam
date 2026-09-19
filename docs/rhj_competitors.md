@@ -860,6 +860,47 @@ Both training, finite gradients (total norm 12.40 / 6.15), **0.145 s/step** → 
 **3.2 h** plus five validation cell-eval passes. The two differ in the expected place:
 genept trains `class_embedding.emb.weight`, onehot `class_embedding.null_emb.weight`.
 
+## ⭐ C31 — TxPert control-regime A/B: mean leads on VALIDATION, but that comparison is confounded
+
+**Question.** TxPert's published config trains on the `(cell_type, batch)` MEAN control while
+our benchmark scores every arm from ONE drawn half-B control cell. Does training on the mean or
+on single cells produce the better model *for our protocol*?
+
+**What is varied / held fixed.** One axis: `datamodule.match_cntr/avg_cntr`. Everything else
+identical, including `omit_cntr: true` on both. Both arms are **inferenced on single cells**.
+
+### Validation curves (5 passes, 103 HepG2 perturbations)
+
+| pass | single-cell controls | mean controls |
+|---|---|---|
+| 1 | 0.3416 | 0.3375 |
+| 2 | 0.3644 | 0.3859 |
+| 3 | 0.3744 | 0.3913 |
+| 4 | 0.3781 | 0.3900 |
+| 5 (final, selected) | **0.3844** | **0.3988** |
+
+Mean-control leads by **+0.0144**, and both rise monotonically to their final pass.
+
+### ⚠️ THIS DOES NOT YET ANSWER THE QUESTION, and must not be quoted as if it does
+
+**The validation runs under each arm's OWN training regime.** `match_cntr`/`avg_cntr` are handed
+to every dataset the datamodule builds (`datamodule.py:1029-1030` train, `1073-1074` val), so
+the mean arm is validated on **mean controls** — a denoised input the single arm never sees, and
+one our test protocol never provides. The mean arm is being marked on an easier paper.
+
+So the +0.0144 is the sum of two things that this comparison cannot separate: whether
+mean-control training produces a better model, and whether mean-control *validation* is simply
+an easier measurement.
+
+**The decisive comparison is the TEST panel**, where both arms are exported identically — one
+drawn half-B control cell per predicted row. If the ordering reverses there, the validation gap
+was the measurement; if it survives, mean-control training genuinely helps even when the model
+is later asked to work from a single cell.
+
+⚠️ And the standing fairness constraint still applies regardless of which wins: the panel gives
+every arm a single control cell, so **whichever trains better, inference stays single-cell**.
+Adopting mean-control *inference* would hand TxPert a denoised basal no other arm receives.
+
 ## ⭐⭐ C30 — PerturbDiff 0.2449, and CellFlow's PCA-truth inflation MEASURED at ~0.15
 
 ### PerturbDiff (genept) — FINAL, 5/5 splits, `model_nocal`
