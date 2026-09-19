@@ -1687,6 +1687,22 @@ class VirtualCellTrainer:
             or float(getattr(config, "delta_cos_weight", 0.0)) > 0
         )
         if _needs_group_means:
+            # ⚠️ REFUSE, DO NOT DEGRADE. A weight that is set and has no effect is worse than
+            # a crash: three DCOS arms burned a GPU each producing bit-identical curves
+            # because the term was silently zero (F-loss1). If a term's inputs cannot be
+            # loaded, the run must not start.
+            _mean_dir = str(getattr(config, "pert_mean_dir", "cache/pert_means"))
+            if not (Path(_mean_dir).is_dir() and any(Path(_mean_dir).glob("*.npz"))):
+                _asked = [n for n, v in (
+                    ("target_pb_k", getattr(config, "target_pb_k", 1) != 1),
+                    ("delta_mag_weight", float(getattr(config, "delta_mag_weight", 0.0)) > 0),
+                    ("delta_cos_weight", float(getattr(config, "delta_cos_weight", 0.0)) > 0),
+                ) if v]
+                raise FileNotFoundError(
+                    f"{_asked} require the per-(cell line, perturbation) mean table, but "
+                    f"{_mean_dir} has no *.npz. Build it first "
+                    f"(scripts/pert_group_means.py). Refusing to train: these terms would "
+                    f"be SILENTLY ZERO and the run would look successful.")
             from occam.vcell.stream_v2 import load_group_means
             from occam.vcell.stream_v2 import source_name_of as _srcname
             _gm_idx, _gmeans, _cmeans, _gline = load_group_means(
