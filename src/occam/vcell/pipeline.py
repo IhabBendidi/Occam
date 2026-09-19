@@ -654,6 +654,15 @@ class VirtualCellTrainer:
             self._poisson_fn = PoissonCountLoss()
             self._smooth_l1_fn = nn.SmoothL1Loss(beta=config.smooth_l1_beta)
             self._poisson_weight = config.poisson_weight
+        elif config.loss_type == "nb_smooth_l1":
+            # ⚠️ THE TWO TERMS ARE ON DIFFERENT SCALES -- see config.nb_weight. Kept as two
+            # functions and combined in `_recon_loss`, because NB needs the gene dim intact
+            # (per-gene log_theta) while SmoothL1 uses the 1D masked flatten.
+            self.recon_loss_fn = None
+            self._nb_fn = NBDecoderLoss(num_genes=self.num_genes, reduction="none").to(self.device)
+            self._sl1_fn = nn.SmoothL1Loss(beta=config.smooth_l1_beta)
+            self._nb_weight = float(config.nb_weight)
+            self._nb_scale = float(config.nb_scale)
         elif config.loss_type == "nb":
             # reduction='none' — per-gene dispersion needs the gene dim intact; masking/mean
             # is handled in _recon_loss (NOT via the 1D gene_mask flatten the others use).
@@ -915,6 +924,14 @@ class VirtualCellTrainer:
             trainer._poisson_fn = PoissonCountLoss()
             trainer._smooth_l1_fn = nn.SmoothL1Loss(beta=smooth_l1_beta)
             trainer._poisson_weight = tc.get("poisson_weight", 0.5)
+        elif config.loss_type == "nb_smooth_l1":
+            # the reload path must know this loss too, or a nb_smooth_l1 checkpoint falls
+            # through to the `else: raise` below and cannot be resumed or evaluated.
+            trainer.recon_loss_fn = None
+            trainer._nb_fn = NBDecoderLoss(num_genes=trainer.num_genes, reduction="none").to(trainer.device)
+            trainer._sl1_fn = nn.SmoothL1Loss(beta=smooth_l1_beta)
+            trainer._nb_weight = float(tc.get("nb_weight", 0.5))
+            trainer._nb_scale = float(tc.get("nb_scale", 1.0))
         elif config.loss_type == "nb":
             trainer.recon_loss_fn = NBDecoderLoss(num_genes=trainer.num_genes, reduction="none").to(trainer.device)
         elif config.loss_type == "zinb":
@@ -1959,7 +1976,7 @@ class VirtualCellTrainer:
                             beta=self.config.smooth_l1_beta, reduction="none",
                         )
                         per_elem = self._poisson_weight * p_elem + (1 - self._poisson_weight) * s_elem
-                    elif self.config.loss_type in ("nb", "zinb"):
+                    elif self.config.loss_type in ("nb", "zinb", "nb_smooth_l1"):
                         raise ValueError(
                             "nb/zinb not supported with expression_loss_mode=importance_weighted "
                             "(per-gene dispersion needs the 2D gene dim; use expression_loss_mode=full)"
@@ -1979,9 +1996,9 @@ class VirtualCellTrainer:
                     # 2.5 % of the gradient. Two independent corrections:
                     #   loss_norm=per_cell -> mean over each cell's own masked genes, then over cells
                     #   source_weight      -> per-sample weight so each SOURCE contributes equally
-                    if self.config.loss_type in ("nb", "zinb"):
+                    if self.config.loss_type in ("nb", "zinb", "nb_smooth_l1"):
                         raise ValueError("loss_norm/source_weight are implemented for the "
-                                         "elementwise losses only, not nb/zinb")
+                                         "elementwise losses only, not nb/zinb/nb_smooth_l1")
                     per_elem = self._recon_elem(prediction, target)      # (B, G), no reduction
                     gmf = gene_mask.float()
                     w = None
@@ -2034,6 +2051,33 @@ class VirtualCellTrainer:
                         ratio = pred_n / true_n.clamp(min=1e-6)
                         mag_loss = ((ratio - 1.0) ** 2)[has].mean()
                         del gm, cm, gmf, true_n, pred_n, ratio
+
+                # ─── DCOS: the DIRECTION of the effect ───────────────────────────────────
+                # ⚠️ NOT `cosine_loss_weight`. That one is cos(prediction, target) on the
+                # PROFILE (see above), and a profile is dominated by baseline expression that
+                # is identical across perturbations -- two predictions that disagree entirely
+                # about the effect can still score ~0.99 there. This scores
+                #     1 - cos(pred - ctrl_mean, group_mean - ctrl_mean)
+                # i.e. the direction of the perturbation effect itself.
+                #
+                # Both references are precomputed means already in `_stream_v2_state`, so no
+                # extra forward pass, and the single cell's noise -- 3-70x the effect size --
+                # never enters the target. Ported from the research tree's `delta_cos_weight`
+                # (virtual_cell/pipeline.py:3397).
+                dcos_loss = torch.tensor(0.0, device=self.device)
+                _wc = float(getattr(self.config, "delta_cos_weight", 0.0))
+                if _wc > 0 and getattr(self, "_last_group_id", None) is not None:
+                    st = self._stream_v2_state
+                    gid = self._last_group_id
+                    has = gid >= 0
+                    if bool(has.any()) and st.get("gmeans") is not None:
+                        g = gid.clamp(min=0)
+                        cm2 = st["cmeans"][st["gline"][g]]
+                        gmf2 = gene_mask.float()
+                        dp = (prediction - cm2) * gmf2          # predicted delta
+                        dt = (st["gmeans"][g] - cm2) * gmf2     # true group delta
+                        dcos_loss = (1 - F.cosine_similarity(dp[has], dt[has], dim=-1)).mean()
+                        del cm2, gmf2, dp, dt
                 hurdle_loss = torch.tensor(0.0, device=self.device)
                 if self.config.hurdle_loss_weight > 0 and "logit_pi" in model_output:
                     is_sc = batch.is_sc
@@ -2103,6 +2147,8 @@ class VirtualCellTrainer:
                 loss = expr_loss + self.latent_loss_weight * latent_loss + delta_reg
                 if _mw > 0:
                     loss = loss + _mw * mag_loss
+                if _wc > 0:
+                    loss = loss + _wc * dcos_loss
                 if self.gpl_fn is not None:
                     loss = loss + self.gpl_weight * gpl_loss
                 if self.config.ranking_loss_weight > 0:
@@ -2595,6 +2641,17 @@ class VirtualCellTrainer:
         intact (their log_theta/logit_pi are per-gene), so compute on the full (B,G) tensors
         and apply gmask as a multiplicative mask; for the others, keep the original 1D
         gene_mask flatten behaviour."""
+        if self.config.loss_type == "nb_smooth_l1":
+            # NB half: gene dim intact, masked with `where` and NOT multiplication -- F148,
+            # `per_elem * gm` evaluates inf*0 = NaN for an absent gene whose loss overflowed.
+            per_elem = self._nb_fn(full_pred, full_target)
+            gm = gmask.bool()
+            n_on = gm.sum().clamp(min=1)
+            nb_term = torch.where(gm, per_elem, torch.zeros_like(per_elem)).sum() / n_on
+            # SmoothL1 half: the original 1D masked flatten.
+            sl1_term = self._sl1_fn(full_pred[gmask], full_target[gmask])
+            w = self._nb_weight
+            return (1.0 - w) * sl1_term + w * (nb_term / max(self._nb_scale, 1e-8))
         if self.config.loss_type in ("nb", "zinb"):
             per_elem = self.recon_loss_fn(full_pred, full_target)  # (B, G), reduction='none'
             gm = gmask.bool()

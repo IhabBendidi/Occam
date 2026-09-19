@@ -86,6 +86,23 @@ class VirtualCellConfig:
     cosine_loss_weight: float = 0.5  # weight of cosine loss (0 = recon only, 1 = cosine only)
     recon_loss_scale: float = 1.0  # divide recon_loss by this before combining (>1 shrinks Poisson to match smooth_l1 scale)
     poisson_weight: float = 0.5  # blend weight for poisson_smooth_l1: pw*poisson + (1-pw)*smooth_l1
+
+    # --- nb_smooth_l1: the two recon terms, explicitly weighted -----------------------------
+    # ⚠️ WHY A SEPARATE WEIGHT AND NOT A BLEND. NB NLL and SmoothL1 are on DIFFERENT SCALES --
+    # they differ by about an order of magnitude in log1p space. F6 compared `nb` against
+    # `smooth_l1` at a fixed `cosine_loss_weight` of 0.5 and recorded the consequence in its own
+    # text: the smooth_l1 arms were genuinely half-cosine while the NB arms were effectively
+    # PURE NB, because the NB term swamped the cosine one. F6 therefore measured a loss
+    # *configuration*, not a likelihood comparison, and its 12/12 verdict cannot be read as
+    # "NB is worse".
+    #
+    # `nb_weight` makes the trade-off explicit and sweepable:
+    #     recon = (1 - nb_weight) * smooth_l1 + nb_weight * nb / nb_scale
+    # `nb_scale` divides the NB term first, so `nb_weight` sweeps over a comparable range
+    # instead of over one order of magnitude of the NB term's own size.
+    nb_weight: float = 0.5   # 0 = pure smooth_l1, 1 = pure nb (after nb_scale)
+    nb_scale: float = 1.0    # divide the NB term by this before weighting (scale matching)
+
     warmup_epochs: int = 0
 
     # --- Hurdle-Gamma loss (SC samples in mixed mode) ---
@@ -130,6 +147,20 @@ class VirtualCellConfig:
     target_pb_k: int = 1        # 1 = single-cell target (default); k>1 = k-cell mean; <=0 = exact group mean
     ctrl_avg_k: int = 1         # >1 = average k control EMBEDDINGS as the model input (train + eval must match)
     delta_mag_weight: float = 0.0   # weight of (‖pred-ctrl_mean‖/‖group_mean-ctrl_mean‖ - 1)^2
+
+    # --- DCOS: delta cosine ------------------------------------------------------------------
+    # ⚠️ NOT THE SAME AS `cosine_loss_weight`. That one is on the PROFILE --
+    # `cos(prediction, target)` (pipeline.py:2009) -- and a profile is dominated by the cell's
+    # baseline expression, which is identical across perturbations. Two predictions that
+    # disagree completely about the EFFECT can still have profile cosine ~0.99.
+    #
+    # DCOS scores the direction of the effect instead:
+    #     1 - cos(pred - ctrl_mean, group_mean - ctrl_mean)
+    # Both references are precomputed means already carried in `_stream_v2_state`
+    # (`gmeans`/`cmeans`/`gline`), so this costs no extra forward pass, and the single cell's
+    # noise -- 3-70x the effect size -- never enters the target. Ported from the research
+    # tree's `delta_cos_weight` (virtual_cell/pipeline.py:3397).
+    delta_cos_weight: float = 0.0   # weight of 1 - cos(pred-ctrl_mean, group_mean-ctrl_mean)
     pert_mean_dir: str = "cache/pert_means"   # table from scripts/pert_group_means.py
     loss_norm: str = "pooled"       # "per_cell": mean over each cell's own masked genes, then over cells (F174)
     source_weight: str = "none"     # "balanced"|"sqrt": per-sample weight equalising source share (F174)
