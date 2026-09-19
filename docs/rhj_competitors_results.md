@@ -10,7 +10,7 @@
 
 Metrics: `pearson_delta`, `mae` ↓, `overlap_at_N`, `discrimination_score_l1` (**l1**, not l2; chance 0.5). Uncalibrated (`model_nocal`) throughout — on our own model calibration cost 0.047 `pearson_delta` and quadrupled `mae` (F12).
 
-1/20 declared (arm, seed) runs complete, 0 partial, 18 never ran.
+3/20 declared (arm, seed) runs complete, 0 partial, 17 never ran.
 
 ## Baselines, all 5 splits
 
@@ -26,7 +26,7 @@ Metrics: `pearson_delta`, `mae` ↓, `overlap_at_N`, `discrimination_score_l1` (
 
 | arm | seed | status | splits | `pearson_delta` | `mae` ↓ | `overlap_at_N` | `disc_l1` |
 |---|---|---|---|---|---|---|---|
-| `txpert` | 42 | ⛔ **WITHDRAWN** | 5 | ~~0.3077 ± 0.0032~~ | ~~0.0228~~ | ~~0.0522~~ | ~~0.6458~~ |
+| `txpert` | 42 | complete | 5 | 0.3463 ± 0.0035 | 0.0227 | 0.0582 | 0.6704 |
 | `txpert` | 43 | MISSING | 0 | — | — | — | — |
 | `txpert` | 44 | MISSING | 0 | — | — | — | — |
 | `txpert` | 45 | MISSING | 0 | — | — | — | — |
@@ -41,17 +41,23 @@ Metrics: `pearson_delta`, `mae` ↓, `overlap_at_N`, `discrimination_score_l1` (
 | `cellflow` | 44 | MISSING | 0 | — | — | — | — |
 | `cellflow` | 45 | MISSING | 0 | — | — | — | — |
 | `cellflow` | 46 | MISSING | 0 | — | — | — | — |
-| `perturbdiff` | 42 | MISSING | 0 | — | — | — | — |
+| `perturbdiff` | 42 | complete | 5 | 0.2449 ± 0.0038 | 0.0287 | 0.0734 | 0.6650 |
 | `perturbdiff` | 43 | MISSING | 0 | — | — | — | — |
 | `perturbdiff` | 44 | MISSING | 0 | — | — | — | — |
 | `perturbdiff` | 45 | MISSING | 0 | — | — | — | — |
 | `perturbdiff` | 46 | MISSING | 0 | — | — | — | — |
 
-### ⛔ Withdrawn results
+## Diagnostic A/B arms — seed 42, NOT headline numbers
 
-These numbers were reported and are **no longer valid**. They are struck through rather than deleted, and excluded from the completion tally.
+Each isolates ONE deviation, so the headline can be *attributed* rather than merely reported. Read every row against `txpert` = **0.3463** above.
 
-- **`txpert` seed 42** (was 0.3077): C28: exported rows omitted the `-1` perturbation token the model was trained with (`omit_cntr: false`), the basal input was a single control cell while the checkpoint was trained and selected on the (cell_type, batch) MEAN control, and the frozen manifest recorded `kg_list: []`. Retraining on single-cell controls with `omit_cntr: true`, plus an A/B against the mean-control regime.
+| arm | splits | `pearson_delta` | `mae` ↓ | `overlap_at_N` | `disc_l1` | what it isolates |
+|---|---|---|---|---|---|---|
+| `txpert_mean` | 5 | 0.3343 ± 0.0044 | 0.0231 | 0.0589 | 0.6584 | TxPert trained+inferenced on (cell_type, batch) MEAN controls — the upstream `match_cntr/avg_cntr: true` regime. Measures what the fairness decision (single-cell controls, to match every other arm) costs or buys. |
+| `txpert_ep20` | 5 | 0.3038 ± 0.0037 | 0.0231 | 0.0486 | 0.6450 | TxPert single-cell regime, epoch-20 checkpoint instead of the selected one. Measures checkpoint-selection sensitivity. |
+| ~~`txpert`~~ ⛔ | 5 | 0.3077 ± 0.0032 | 0.0228 | 0.0522 | 0.6458 | ⛔ WITHDRAWN original: mean-control training, single-cell inference, and the missing `-1` token. Kept so the retracted 0.3077 stays visible. |
+
+**Why `txpert` 0.3077 was withdrawn.** C28: exported rows omitted the `-1` perturbation token the model was trained with (`omit_cntr: false`), the basal input was a single control cell while the checkpoint was trained and selected on the (cell_type, batch) MEAN control, and the frozen manifest recorded `kg_list: []`. Retraining on single-cell controls with `omit_cntr: true`, plus an A/B against the mean-control regime.
 
 ## Ours, for comparison
 

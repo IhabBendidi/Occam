@@ -55,6 +55,112 @@ identity floor and the score alone would not distinguish that from a genuinely w
 ⚠️ Step 3 is the pre-registration: **the diagnostic decides whether the sweep is worth running**,
 rather than the sweep being run and the diagnostic quoted afterwards.
 
+## ⭐⭐ F-loss2 — DCOS, once actually live, adds **+0.028…+0.034 validation** at every weight tested (5/5)
+
+**Objective.** Best model on SEEN perturbations in an UNSEEN cell line; headline is split-half
+paired `pearson_delta` on `rhj_fewshot`. Anchors: `meanpert` 0.1324 · `transfer` 0.2323 ·
+**ours 0.3415** · `experimental` 0.3722.
+
+**Question this answers.** Does a delta-cosine term — cosine between the predicted and true
+perturbation *delta*, i.e. direction with magnitude divided out — improve the model, and at what
+weight? Phrased so both outcomes are meaningful: a null says the smooth-L1 objective already
+captures delta direction and the term is redundant; a positive says magnitude error was
+dominating the gradient and direction was under-supervised.
+
+**What is varied:** `stages.vcell.loss.delta_cos_weight` ∈ {0.1, 0.25, 0.5, 1.0, 2.0}, plus one
+arm combining it with NB. **Held fixed:** everything else — lr 1e-3, decoder_lr 1e-3, cos 0.5,
+`fmode-mult`, `fh256`, `fmf1`, `smooth_l1`, seed 42, adjacency-map pert model. Judged on
+**validation `best_metric` only** (test cell-eval not yet run on these arms).
+
+**Why the control is exact, not approximate.** `D01` and `L10` have the **same
+`_provenance.stage_hashes.vcell`** (`07e9bfc6…`), as do `D02` and `L11` (`8e4af0d2…`). The
+configs are byte-identical. The ONLY difference is `git_sha`: L10/L11 ran before the F-loss1 fix
+with the term INERT, D01/D02 ran after it with the term LIVE. This is a clean code-level A/B.
+
+### Measured — validation `best_metric`, seed 42
+
+| arm | `delta_cos_weight` | loss | epoch | **val `best_metric`** | Δ vs inert 0.3769 |
+|---|---|---|---|---|---|
+| `L10` / `L11` / `s313` (INERT — the baseline) | 0.1 / 0.25 / — | smooth_l1 | 25 | **0.3769** | — |
+| `D01` | 0.1 | smooth_l1 | 25 | 0.4049 | **+0.0280** |
+| `D02` | 0.25 | smooth_l1 | 21 | 0.4100 | **+0.0331** |
+| **`D03`** | **0.5** | smooth_l1 | 13 | **0.4108** | **+0.0339** ← best |
+| `D04` | 1.0 | smooth_l1 | 17 | 0.4038 | +0.0269 |
+| `D05` | 2.0 | smooth_l1 | 17 | 0.4077 | +0.0308 |
+| `D06` | 0.25 | nb_smooth_l1, `nb_weight` 0.1 | 23 | 0.4070 | +0.0301 |
+
+**Reading: 5/5 weights beat the baseline, and the optimum is interior and flat.** The spread
+across a 20× range of weights (0.1 → 2.0) is 0.0070, smaller than the 0.0280 gap to baseline —
+so the gain comes from *having* the term, not from tuning it. `0.5` is the best single value.
+⚠️ The optimum being interior (not at 0.1 or 2.0) is what makes this a real optimum rather than
+an endpoint artefact.
+
+Adding NB on top (`D06`, `nb_weight` 0.1) does **not** help: 0.4070 vs `D02`'s 0.4100 at the same
+`dcos` 0.25. Consistent with every other NB arm in the L-series sitting below plain smooth_l1.
+
+**The best arms converge EARLIER** — `D03` peaks at epoch 13 vs the baseline's 25. Direction
+supervision reaches its best state in about half the epochs.
+
+⚠️ **This is validation only.** `best_metric` is not the split-half test `pearson_delta` that
+0.3415 refers to, and the two have diverged before. The result is not comparable to the anchors
+above until the test cell-eval is run on `D03`.
+
+**Config that produced it:** `rhj_fewshot_D03__smooth_l1_nbw0_nbs1.0_dcos0.5_s42`, job
+`18179643`, git `e7c3a78`, `configs/rhj_fewshot.yaml` + `--set stages.vcell.loss.delta_cos_weight=0.5`.
+
+## ⭐ F-latent1 — the latent is NOT collapsed: `delta_z_ratio` 0.160, and 98% of the move is perturbation-SPECIFIC
+
+**Objective.** Best model on SEEN perturbations in an UNSEEN cell line; headline is split-half
+paired `pearson_delta` on the `rhj_fewshot` panel. Anchors: `ctrlcell` −0.0018 · `ctrlmean`
+0.0016 · **`meanpert` 0.1324** · `transfer` 0.2323 · **ours 0.3415** · `experimental` 0.3722.
+
+**Question this answers.** Is the perturbation head degenerate — i.e. does the model score where
+it scores because `delta_z → 0` (it reproduces its control input, the identity floor), or because
+it emits a single shared shift for every perturbation? Both failure modes are invisible in
+`pearson_delta`, which a near-identity model can still pass at the `meanpert` anchor.
+
+**What is varied, what is held fixed.** Nothing is varied — this is a diagnostic read on ONE
+trained checkpoint. Inputs are the REAL HepG2 control mean from `cache/pert_means/hepg2.npz`
+(model input space, encoder axis, 44,728 genes), held fixed across all 256 rows, so the ONLY
+thing differing between rows is the perturbation id. 256 real HepG2 perturbations, all present
+in `pert2id`.
+
+**What each outcome means (pre-registered).**
+- `delta_z_ratio ≈ 0` ⇒ COLLAPSED to identity; the pert head is dead weight and the score is the
+  identity floor. Loss weighting / latent loss becomes the priority.
+- pert-specific share ≈ 0 ⇒ one shared shift for every perturbation; the model has learned
+  "something happened", not "which". `meanpert` is then the ceiling.
+- Both healthy ⇒ the head works; the loss is not the bottleneck, and the remaining gap to
+  `experimental` 0.3722 is a decoder/magnitude problem, not a collapse problem.
+
+### Measured — checkpoint `s313` (`rhj_fewshot_s313__lr1e-3_dlr1e-3_cos0.5_dpo0_fmode-mult_fh256_fmf1_s42`, `best_model.pth`, epoch 25, `best_metric` 0.3769, pert model `adjacency_map`, 18,216 nodes)
+
+| quantity | value | reads as |
+|---|---|---|
+| `‖delta_z‖` mean | 8.574 | — |
+| `‖z_ctrl‖` mean | 53.593 | — |
+| **`delta_z_ratio` mean** | **0.1600** | **NOT collapsed** (0 = identity) |
+| `delta_z_ratio` median | 0.1359 | |
+| `delta_z_ratio` p10 / p90 | 0.0808 / 0.2542 | 3.1× spread across perturbations |
+| **pert-specific share** `‖dz − mean(dz)‖ / ‖dz‖` | **0.9824** | **NOT a shared shift** — 98% of the move is specific |
+
+**Reading: both pre-registered failure modes are ruled out.** The perturbation moves the latent
+by 16% of the control-state norm, and only 1.8% of that move is a bias common to all 256
+perturbations. The `p10 → p90` spread (0.081 → 0.254) says the model also assigns *different
+magnitudes* to different perturbations rather than one fixed step length.
+
+⇒ The remaining gap to `experimental` 0.3722 is not a latent-collapse problem, and the latent
+loss (never swept — 0 runs, see below) is not an obvious lever. Nothing here says the head is
+*correct*, only that it is neither dead nor constant.
+
+**Caveat that changes what happens next:** this is a single checkpoint and a single cell line's
+control mean. A *real* control CELL (not the group mean) has more input variance; `delta_z_ratio`
+measured against single cells could differ. Not measured.
+
+**Reproduce:** `scripts/probe_latent.py <checkpoint>` (probe kept in the scratchpad as written;
+the diagnostics themselves are now printed to stdout every eval epoch by
+`src/occam/vcell/pipeline.py`, so future runs need no probe).
+
 ## ⭐⭐ F-emit5 — CORRECTION: with a fair theta and the right depth, emission RAISES `overlap_at_N` by 50%
 
 ⚠️ **THIS OVERTURNS F-emit4's RECOMMENDATION, WHICH WAS MINE AND WAS WRONG.** F-emit4 concluded

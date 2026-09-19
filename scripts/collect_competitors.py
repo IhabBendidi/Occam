@@ -44,6 +44,31 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ARMS = ("txpert", "state", "cellflow", "perturbdiff")
 SEEDS = (42, 43, 44, 45, 46)
 
+# ─── ARM -> EVAL DIRECTORY ──────────────────────────────────────────────────────────────────
+# An arm's canonical NAME and the directory its FAITHFUL export landed in are not the same
+# string, because each re-export after an audit fix got its own tag rather than overwriting the
+# number it replaced. This map names the one export that IS the arm's result; everything else
+# is a diagnostic (see AB_ARMS). Without it the collector reports `MISSING` for arms that ran.
+ARM_DIR = {
+    "txpert": "txpert_single",        # C28/T2: retrained AND inferenced on single-cell controls
+    "state": "state",                 # C27/S1+S2+S3 re-export
+    "perturbdiff": "perturbdiff_genept",
+    "cellflow": "cellflow",
+}
+
+# ─── DIAGNOSTIC A/B ARMS ────────────────────────────────────────────────────────────────────
+# Seed 42 only, and NOT the arm's headline number. These exist to measure one deviation each,
+# so the headline can be attributed rather than merely reported.
+AB_ARMS = {
+    "txpert_mean": "TxPert trained+inferenced on (cell_type, batch) MEAN controls — the "
+                   "upstream `match_cntr/avg_cntr: true` regime. Measures what the fairness "
+                   "decision (single-cell controls, to match every other arm) costs or buys.",
+    "txpert_ep20": "TxPert single-cell regime, epoch-20 checkpoint instead of the selected "
+                   "one. Measures checkpoint-selection sensitivity.",
+    "txpert":      "⛔ WITHDRAWN original: mean-control training, single-cell inference, and "
+                   "the missing `-1` token. Kept so the retracted 0.3077 stays visible.",
+}
+
 # ─── WITHDRAWN RESULTS ──────────────────────────────────────────────────────────────────────
 # (arm, seed) -> why. A withdrawn number is marked in the table and EXCLUDED from the
 # "complete" tally, but its value is still printed, struck through, because the history of
@@ -53,7 +78,7 @@ SEEDS = (42, 43, 44, 45, 46)
 # otherwise keep appearing in this table as a clean `complete` row -- and this table is what
 # gets quoted. Deleting the row instead would hide that the arm was ever reported.
 WITHDRAWN = {
-    ("txpert", 42): (
+    ("txpert_orig", 42): (
         "C28: exported rows omitted the `-1` perturbation token the model was trained with "
         "(`omit_cntr: false`), the basal input was a single control cell while the checkpoint "
         "was trained and selected on the (cell_type, batch) MEAN control, and the frozen "
@@ -104,7 +129,7 @@ def collect(eval_root: str, arms=ARMS, seeds=SEEDS) -> List[Dict[str, object]]:
     out: List[Dict[str, object]] = []
     for arm in arms:
         for seed in seeds:
-            d = os.path.join(eval_root, f"compet_{arm}_s{seed}")
+            d = os.path.join(eval_root, f"compet_{ARM_DIR.get(arm, arm)}_s{seed}")
             per_split: Dict[int, Dict[str, float]] = {}
             for k in range(N_SPLITS):
                 f = os.path.join(d, f"split_{k:02d}", "celleval_model_nocal",
@@ -158,6 +183,35 @@ def _occam_best(eval_root: str) -> Optional[Dict[str, object]]:
     return best
 
 
+def collect_ab(eval_root: str) -> List[Dict[str, object]]:
+    """The diagnostic A/B arms, seed 42 only. Each isolates ONE deviation from the headline.
+
+    `txpert` here is the WITHDRAWN original, kept visible on purpose: a retracted number that
+    vanishes from the table looks like it was never claimed.
+    """
+    from occam.vcell.panel.celleval_v1 import _read_agg
+
+    out: List[Dict[str, object]] = []
+    for arm, why in AB_ARMS.items():
+        d = os.path.join(eval_root, f"compet_{arm}_s42")
+        per: Dict[int, Dict[str, float]] = {}
+        for k in range(N_SPLITS):
+            f = os.path.join(d, f"split_{k:02d}", "celleval_model_nocal", "agg_results.csv")
+            if os.path.isfile(f):
+                m = _read_agg(f)
+                if m:
+                    per[k] = m
+        rec: Dict[str, object] = {"arm": arm, "why": why, "n_splits": len(per),
+                                  "withdrawn": arm == "txpert"}
+        for key in COMPARISON:
+            vals = [m[key] for m in per.values()
+                    if isinstance(m.get(key), (int, float)) and m[key] == m[key]]
+            rec[key] = _mean(vals) if vals else None
+            rec[f"{key}_std"] = _std1(vals) if len(vals) > 1 else None
+        out.append(rec)
+    return out
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -185,6 +239,16 @@ def main(argv=None) -> int:
     print(f"\n{len(done)}/{len(recs)} complete · {len(part)} partial · {len(miss)} missing")
     if miss:
         print(f"  never ran: {[(r['arm'], r['seed']) for r in miss][:8]}")
+
+    ab = collect_ab(args.eval_root)
+    if any(r["n_splits"] for r in ab):
+        print("\nDIAGNOSTIC A/B ARMS (seed 42; NOT headline numbers):")
+        for r in ab:
+            mark = " ⛔WITHDRAWN" if r["withdrawn"] else ""
+            print(f"  {r['arm']:16s} sp={r['n_splits']}  "
+                  f"pearson_d {_fmt(r['pearson_delta']):>8s}  "
+                  f"mae {_fmt(r['mae']):>7s}  ovl@N {_fmt(r['overlap_at_N']):>7s}  "
+                  f"disc_l1 {_fmt(r['discrimination_score_l1']):>7s}{mark}")
 
     print("\nBASELINES, all 5 splits (pearson_d / mae / ovl@N / disc_l1):")
     for n, b in BASELINES.items():
@@ -258,6 +322,22 @@ def main(argv=None) -> int:
         W("")
 
     if occam:
+        W("## Diagnostic A/B arms — seed 42, NOT headline numbers\n")
+        W("Each isolates ONE deviation, so the headline can be *attributed* rather than "
+          "merely reported. Read every row against `txpert` = **0.3463** above.\n")
+        W("| arm | splits | `pearson_delta` | `mae` ↓ | `overlap_at_N` | `disc_l1` | what it isolates |")
+        W("|---|---|---|---|---|---|---|")
+        for r in ab:
+            nm = f"~~`{r['arm']}`~~ ⛔" if r["withdrawn"] else f"`{r['arm']}`"
+            sd = r.get("pearson_delta_std")
+            pdv = (f"{_fmt(r['pearson_delta'])} ± {_fmt(sd)}" if sd and sd == sd
+                   else _fmt(r["pearson_delta"]))
+            W(f"| {nm} | {r['n_splits']} | {pdv} | {_fmt(r['mae'])} | "
+              f"{_fmt(r['overlap_at_N'])} | {_fmt(r['discrimination_score_l1'])} | {r['why']} |")
+        W("")
+        wd = WITHDRAWN.get(("txpert_orig", 42))
+        if wd:
+            W(f"**Why `txpert` 0.3077 was withdrawn.** {wd}\n")
         W("## Ours, for comparison\n")
         W(f"`{occam['arm']}` — `pearson_delta` **{occam['pearson_delta']:.4f}** over "
           f"{occam['n_splits']} split(s).\n")

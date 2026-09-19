@@ -4061,6 +4061,26 @@ class VirtualCellTrainer:
                     ]:
                         if key in metrics:
                             train_log[f"train/{key}"] = metrics[key]
+
+                    # ⚠️ ALSO TO STDOUT. These went ONLY to wandb, so in practice they were
+                    # never read: grepping every run log in this repo for `delta_z_ratio`
+                    # returns zero hits, and the arms have no local wandb directories. The
+                    # two failure modes they exist to catch -- collapse to the identity
+                    # (`delta_z_ratio` -> 0) and off-manifold prediction
+                    # (`offmanifold_ratio` >> 1) -- both read as "a weak model" in the score
+                    # alone, so a silent diagnostic is the same as no diagnostic. See
+                    # F-latent1. wandb is `offline` for competitor runs anyway.
+                    _diag = {k: metrics[k] for k in
+                             ("delta_z_ratio", "offmanifold_ratio",
+                              "delta_z_cosine_w_target", "gate_active_dims")
+                             if k in metrics}
+                    if _diag:
+                        print("  [latent] " + "  ".join(
+                            f"{k}={v:.4f}" if isinstance(v, float) else f"{k}={v}"
+                            for k, v in _diag.items())
+                            + "   (delta_z_ratio ~0 = COLLAPSED to identity; "
+                              "offmanifold_ratio ~1 = healthy, >>1 = decoder extrapolation)",
+                            flush=True)
                     # Decoder warmup LR
                     if (
                         self.decoder_lr_warmup_epochs > 0

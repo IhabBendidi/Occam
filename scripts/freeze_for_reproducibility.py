@@ -101,7 +101,17 @@ def main(argv=None) -> int:
     ap.add_argument("--selected", default="",
                     help="basename of the checkpoint the reported number came from")
     ap.add_argument("--note", default="", help="one line for the manifest")
+    ap.add_argument("--deviation", action="append", default=[], metavar="TEXT",
+                    help="one deliberate deviation from the method's published pipeline; "
+                         "repeat per deviation. REQUIRED -- a manifest whose "
+                         "`deliberate_deviations` is a placeholder is exactly the folklore "
+                         "this script exists to prevent, so the freeze refuses without it.")
     a = ap.parse_args(argv)
+    if not a.deviation:
+        print("REFUSED: pass at least one --deviation. Every arm here was retrained on OUR "
+              "data, OUR gene axis and OUR splits, so none of these numbers reproduces the "
+              "method's published figure -- the manifest has to say so.", file=sys.stderr)
+        return 2
 
     run = Path(a.run_dir)
     if not run.is_dir():
@@ -191,7 +201,7 @@ def main(argv=None) -> int:
                            "reproducible, and it would double the footprint",
             "pred_de.csv": "~95 MB per split, fully derivable from the prediction h5ad",
         },
-        "deliberate_deviations": ["FILL THIS IN -- see the module docstring"],
+        "deliberate_deviations": list(a.deviation),
         "files": files,
         "git_commit": subprocess.run(["git", "rev-parse", "HEAD"], cwd=REPO,
                                      capture_output=True, text=True).stdout.strip(),
@@ -203,7 +213,7 @@ def main(argv=None) -> int:
     print(f"[freeze]   {len(files)} file(s), {total / 2**30:.2f} GiB")
     print(f"[freeze]   {len(per_split)}/{N_SPLITS} splits scored"
           + (f" · pearson_delta {agg['pearson_delta']:.4f}" if agg else ""))
-    print(f"[freeze]   ⚠️  fill in `deliberate_deviations` in MANIFEST.json")
+    print(f"[freeze]   {len(a.deviation)} deliberate deviation(s) recorded")
     return 0
 
 

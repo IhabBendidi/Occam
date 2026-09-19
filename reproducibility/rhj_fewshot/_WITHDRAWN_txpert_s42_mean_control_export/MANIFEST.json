@@ -1,0 +1,104 @@
+{
+  "anchors_for_reading": {
+    "ctrlcell": -0.0018,
+    "ctrlmean": 0.0016,
+    "experimental": 0.3722,
+    "meanpert": 0.1324,
+    "occam_s313": 0.3415,
+    "transfer": 0.2323
+  },
+  "arm": "txpert",
+  "benchmark": "rhj_fewshot",
+  "checkpoint": {
+    "bytes": 102901694,
+    "file": "best-ep49.ckpt",
+    "selected_on": "val/celleval/selection_score = mean(pearson_delta, discrimination_score_l1), mode=max, save_top_k=1",
+    "sha256": "4a57d7d97e1f35ecaa6781d6a9221a114dcb3886bd2b81a39a75a11d2fa4cf9f"
+  },
+  "config": "config-txpert-occam.yaml (in this folder)",
+  "deliberate_deviations": [
+    "kg_list = [go, string] ONLY, matching Occam's graph_types. Their published 0.50787 used four KGs (go, string, pxmap-top1, txmap-top1), so this checkpoint is NOT comparable to that number.",
+    "hvg_number 6983 (our axis) instead of their 2000.",
+    "Data normalised to log1p(counts / rowsum_FULL_PANEL * 10_000) by competitors/shared/occam_data.py; their zarr arrived pre-normalised.",
+    "Perturbation vocabulary self-extended by 20 symbols absent from gears_gene_set.csv (9854 -> 9874)."
+  ],
+  "git_commit": "fb8cdea352de7d992be413e083c7926a66d4efe8",
+  "scored_by": "cell-eval 0.6.0 / pdex 0.1.24 via scripts/eval_competitor.py, uncalibrated (model_nocal), one drawn half-B control cell per predicted row",
+  "seed": 42,
+  "test_scores_5_splits_uncalibrated": {
+    "mean": {
+      "discrimination_score_l1": 0.6457799052290121,
+      "mae": 0.022751277892159853,
+      "overlap_at_N": 0.0521688021633533,
+      "pearson_delta": 0.3076940700422623
+    },
+    "n_splits": 5,
+    "per_split": {
+      "0": {
+        "discrimination_score_l1": 0.6469740518213548,
+        "mae": 0.022733788347441806,
+        "overlap_at_N": 0.052636908129868314,
+        "pearson_delta": 0.30565424251785095
+      },
+      "1": {
+        "discrimination_score_l1": 0.6462133124040705,
+        "mae": 0.022792341661641034,
+        "overlap_at_N": 0.05218855401752848,
+        "pearson_delta": 0.3125395628424694
+      },
+      "2": {
+        "discrimination_score_l1": 0.6456347218613473,
+        "mae": 0.022763604426271785,
+        "overlap_at_N": 0.05241203216276388,
+        "pearson_delta": 0.3062888767507529
+      },
+      "3": {
+        "discrimination_score_l1": 0.645061488638464,
+        "mae": 0.022701732568906195,
+        "overlap_at_N": 0.05183707496332924,
+        "pearson_delta": 0.30937895268783927
+      },
+      "4": {
+        "discrimination_score_l1": 0.6450159514198237,
+        "mae": 0.022764922456538425,
+        "overlap_at_N": 0.05176944154327659,
+        "pearson_delta": 0.30460871541239887
+      }
+    }
+  },
+  "training": {
+    "epochs": 50,
+    "lr": 0.0003,
+    "slurm_job": "18067027",
+    "validations": "every 10 epochs on the 103 HepG2 validation perturbations",
+    "wall_clock": "3h53m"
+  },
+  "validation_curve": {
+    "10": {
+      "discrimination_score_l1": 0.6887548308040341,
+      "pearson_delta": 0.3317038919355596,
+      "selection_score": 0.5102293613697968
+    },
+    "20": {
+      "discrimination_score_l1": 0.7077952681685357,
+      "pearson_delta": 0.3787388686407292,
+      "selection_score": 0.5432670684046325
+    },
+    "30": {
+      "discrimination_score_l1": 0.699500424168159,
+      "pearson_delta": 0.3838614554945628,
+      "selection_score": 0.5416809398313609
+    },
+    "40": {
+      "discrimination_score_l1": 0.6982750494862852,
+      "pearson_delta": 0.382287948221039,
+      "selection_score": 0.5402814988536621
+    },
+    "50": {
+      "discrimination_score_l1": 0.7018569139409931,
+      "pearson_delta": 0.38670090313652283,
+      "selection_score": 0.544278908538758
+    }
+  },
+  "what": "TxPert trained on Occam's rhj_fewshot benchmark: our three h5ads, our frozen 6,983-gene axis, our splits, our exclusions. NOT their published setup."
+}

@@ -30,19 +30,34 @@ few-shot-in-a-new-context, not never-seen-at-all.
 
 ## Entries
 
-| entry | `pearson_delta` (5 splits) | status |
-|---|---|---|
-| [`state_s42`](state_s42/) | **0.2362 ± 0.0019** | ✅ current. Clears `transfer`. |
-| [`txpert_s42`](txpert_s42/) | ~~0.3077 ± 0.0032~~ | ⛔ **WITHDRAWN** — see below |
+**One checkpoint per model per benchmark.** Every entry is the single checkpoint whose
+predictions produced the number in its row — nothing else is frozen.
 
-### ⛔ `txpert_s42` is withdrawn
+| entry | `pearson_delta` (5 splits) | vs `transfer` 0.2323 | status |
+|---|---|---|---|
+| [`txpert_s42`](txpert_s42/) | **0.3463 ± 0.0035** | +0.1140 | ✅ current. **Best competitor, and above Occam's 0.3415.** |
+| [`perturbdiff_s42`](perturbdiff_s42/) | **0.2449 ± 0.0038** | +0.0126 | ✅ current (genept arm) |
+| [`state_s42`](state_s42/) | **0.2362 ± 0.0019** | +0.0039 | ✅ current |
+| `cellflow_s42` | — | — | ⏳ trained (val `pearson_delta` 0.2449 gene-space); test export not yet run |
+| [`_WITHDRAWN_txpert_s42_mean_control_export`](_WITHDRAWN_txpert_s42_mean_control_export/) | ~~0.3077 ± 0.0032~~ | — | ⛔ **WITHDRAWN** — see below |
+
+Full metric breakdown, the diagnostic A/B arms and the baselines:
+[`docs/rhj_competitors_results.md`](../../docs/rhj_competitors_results.md).
+
+### ⛔ the original `txpert` export is withdrawn
 
 Kept, not deleted: the record of what was believed when is itself evidence. Three faults
 (`docs/rhj_competitors.md` C28): exported rows omitted the `-1` perturbation token the model
 was trained with; the basal input was a single control cell while the checkpoint was trained
 *and selected* on the `(cell_type, batch)` **mean** control; and the frozen manifest recorded
-`kg_list: []`. Being replaced by a retrain on single-cell controls with `omit_cntr: true`, plus
-an A/B against the mean-control regime.
+`kg_list: []`. Replaced by `txpert_s42`, a retrain on single-cell controls with
+`omit_cntr: true`, which scores **0.3463**.
+
+⚠️ The replacement is **not** a clean re-measurement of the same model: the fairness decision
+changed the training regime, so the +0.0386 over the withdrawn number mixes the export fix with
+a different basal-control recipe. The A/B that separates them is `txpert_mean` (**0.3343**, the
+upstream mean-control regime carried through training *and* inference), in
+`docs/rhj_competitors_results.md`.
 
 ## What each entry contains, and what it deliberately omits
 
@@ -71,8 +86,9 @@ manifests say so.
 python scripts/freeze_for_reproducibility.py \
     --arm <arm> --seed 42 --benchmark rhj_fewshot \
     --run-dir runs/competitors/<arm>/<run> \
-    --selected <the ONE checkpoint that was evaluated>
-# then fill in `deliberate_deviations` in the generated MANIFEST.json
+    --scored-dir runs/rhj_splithalf/compet_<arm>_s42 \
+    --selected <the ONE checkpoint that was evaluated> \
+    --deviation "..." --deviation "..."     # repeatable; the freeze REFUSES without at least one
 ```
 
 Weights and h5ads are **gitignored** — they go to HuggingFace. What git tracks is the manifest,
