@@ -35,6 +35,7 @@ from occam_bridge.occam import (  # noqa: E402
     occam_pert_tokens,
 )
 from occam_bridge import (  # noqa: E402
+    EMBEDDING_KEY,
     apply_cellflow_gene_schema,
     control_row_indices,
     dataset_pert_tokens,
@@ -229,6 +230,45 @@ def _ensure_validation_controls(
     return combined, n_injected
 
 
+def _gene_space_truth(adata_valid, schema) -> dict[str, np.ndarray]:
+    """{perturbation label -> its RAW gene-space cells} from the validation AnnData.
+
+    The selection callback receives validation tensors in `sample_rep` (PCA) space only, so
+    scoring against an untouched target needs the original rows. Keyed by the same label
+    `_condition_label` produces, i.e. the bare perturbation symbol.
+
+    Controls are excluded: the callback appends its own shared control block, and a control
+    row appearing twice would distort cell-eval's baseline.
+    """
+    import numpy as _np
+
+    if adata_valid is None:
+        return {}
+    # `occam_target_gene` is the raw `target_gene` SYMBOL (`occam_bridge/occam.py:118`),
+    # which is exactly what `_condition_label` returns as parts[0] -- so these keys line up
+    # with the labels the callback builds. The schema dict has no perturbation-column entry,
+    # so name the column here rather than relying on a silent `.get()` fallback.
+    col = "occam_target_gene"
+    if col not in adata_valid.obs.columns:
+        raise KeyError(
+            f"validation obs has no {col!r} column, so the gene-space truth cannot be keyed "
+            f"by perturbation. Have {list(adata_valid.obs.columns)}")
+    ctrl_key = schema["control_key"]
+    labels = _np.asarray(adata_valid.obs[col], dtype=str)
+    is_ctrl = _np.asarray(adata_valid.obs[ctrl_key], dtype=bool)
+    X = adata_valid.X
+    X = _np.asarray(X.todense() if hasattr(X, "todense") else X, dtype=_np.float32)
+
+    out: dict[str, _np.ndarray] = {}
+    for lbl in sorted(set(labels[~is_ctrl].tolist())):
+        rows = _np.flatnonzero((labels == lbl) & ~is_ctrl)
+        if rows.size:
+            out[str(lbl)] = X[rows]
+    print(f"[train_cellflow] gene-space truth: {len(out)} perturbations, "
+          f"{sum(len(v) for v in out.values()):,} cells (controls excluded)")
+    return out
+
+
 def run_train(cfg: dict[str, Any], *, config_path: Path | None = None) -> Path:
     data_cfg = cfg["data"]
     pca_cfg = cfg.get("pca", {})
@@ -327,6 +367,32 @@ def run_train(cfg: dict[str, Any], *, config_path: Path | None = None) -> Path:
             raise ValueError(
                 "validation gene axis differs from training; refusing to project it through "
                 "the train-fit PCA basis")
+
+        # ⚠️ ONE VOCABULARY, NOT TWO. `apply_cellflow_gene_schema` unions the tokens PRESENT
+        # in the object it is given with `extra_tokens` and then sorts, so calling it
+        # separately on train and validation can yield dicts of different WIDTH and ORDER --
+        # and `DataManager.get_validation_data` encodes conditions from the PASSED object's
+        # `uns` (`data/_datamanager.py:186` -> `561-573`). The training vocabulary is the
+        # authoritative one, because it fixes the model's condition-input width.
+        #
+        # This worked until now only by accident: the control-injection path below
+        # (`ad.concat` + copying `adata_train.uns`) overwrote the validation `uns` with the
+        # training one, and it only ran because this split happens to have zero controls.
+        # Assert instead of relying on that.
+        _vocab_keys = [k for k in ("cellflow_schema", EMBEDDING_KEY) if k in adata_train.uns]
+        for _k in _vocab_keys:
+            adata_valid.uns[_k] = adata_train.uns[_k]
+        _tv = adata_train.uns[EMBEDDING_KEY] if EMBEDDING_KEY in adata_train.uns else None
+        if _tv is not None:
+            _n_tok = len(_tv)
+            _n_seen = adata_train.obs["occam_target_gene"].nunique()
+            print(f"[vocab] one shared vocabulary: {_n_tok} tokens, "
+                  f"{_n_seen} distinct perturbations in the training cells")
+            if _n_seen > _n_tok:
+                raise ValueError(
+                    f"{_n_seen} training perturbations against a {_n_tok}-token vocabulary: "
+                    f"the model's condition input cannot represent them all, and the excess "
+                    f"would silently take another token's column.")
         other["valid"] = adata_valid
         print(f"[train_cellflow] validation: {adata_valid.n_obs} cells from HEPG2 "
               f"({adata_valid.obs['occam_target_gene'].nunique()} perturbations)")
@@ -481,8 +547,25 @@ def run_train(cfg: dict[str, Any], *, config_path: Path | None = None) -> Path:
         n_valid_conditions = int(
             adata_valid.obs.loc[~adata_valid.obs[schema["control_key"]].astype(bool), "pert_str"].nunique()
         )
-        n_log = min(int(train_cfg.get("n_conditions_on_log_iteration", 8)), n_valid_conditions)
-        n_end = min(int(train_cfg.get("n_conditions_on_train_end", 32)), n_valid_conditions)
+        # `null`/None means ALL conditions -- upstream's own convention
+        # (`model/_cellflow.py:206-211`). `int(None)` would raise, and a NUMBER smaller than
+        # the split silently makes each validation pass score a DIFFERENT random subset,
+        # because `ValidationSampler` re-draws from one rng per pass; the selection scores
+        # then are not comparable to each other. Cap downward only.
+        def _n_conditions(key: str, default: int) -> int:
+            raw = train_cfg.get(key, default)
+            if raw is None:
+                return n_valid_conditions
+            n = min(int(raw), n_valid_conditions)
+            if n < n_valid_conditions:
+                print(f"[train_cellflow] ⚠️  {key}={n} of {n_valid_conditions} conditions: "
+                      f"each validation pass will score a DIFFERENT random subset, so the "
+                      f"selection scores are not comparable across passes. Use null for all.",
+                      flush=True)
+            return n
+
+        n_log = _n_conditions("n_conditions_on_log_iteration", 8)
+        n_end = _n_conditions("n_conditions_on_train_end", 32)
         print(f"[train_cellflow] valid conditions={n_valid_conditions} n_log={n_log} n_end={n_end}")
         cf.prepare_validation_data(
             adata_valid,
@@ -601,6 +684,12 @@ def run_train(cfg: dict[str, Any], *, config_path: Path | None = None) -> Path:
             **({"occam_py": select_cfg["occam_py"]} if "occam_py" in select_cfg else {}),
             **({"occam_repo": select_cfg["occam_repo"]} if "occam_repo" in select_cfg else {}),
             profile=select_cfg.get("profile", "full"),
+            # ⚠️ RAW GENE-SPACE TRUTH per perturbation. Without this the selection metric
+            # scored the PCA-RECONSTRUCTED target, which deletes everything the rank-256
+            # basis cannot express and inflates every component -- the reported metric scores
+            # raw half-A cells, so selection was optimising a different quantity. Built from
+            # `adata_valid` here because the callback only receives PCA-space tensors.
+            truth_by_label=_gene_space_truth(adata_valid, schema),
         )
         print(
             f"[train_cellflow] selection on: {int(ctrl_mask.sum())} control cells, "

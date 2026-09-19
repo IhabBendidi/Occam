@@ -111,9 +111,19 @@ train:
   # 100000 / 20000 = 5 validations, plus the unconditional on_train_end pass, so the final state
   # is always a selection candidate.
   valid_freq: 20000
-  # DELTA 5: score every validation perturbation, not a random sample of 8 / 32.
-  n_conditions_on_log_iteration: 60
-  n_conditions_on_train_end: 60
+  # DELTA 5: score EVERY validation perturbation, not a random sample.
+  #
+  # ⚠️ THESE WERE 60 AGAINST A 103-PERTURBATION SPLIT, which did not do what the comment
+  # said. `ValidationSampler` draws `rng.choice(n_perturbations, size, replace=False)` from a
+  # single rng created at `train()` time (`data/_dataloader.py:135-148, 164-165`), so each of
+  # the five validation passes scored a DIFFERENT random 60 of 103 -- and the five selection
+  # scores that choose the checkpoint were therefore not comparable to one another. The
+  # apparent rise 0.4089 -> 0.4614 -> 0.5165 mixes real improvement with a changing panel.
+  #
+  # `null` is upstream's own way of saying "all" (`model/_cellflow.py:206-211`); 103 would
+  # also work but silently becomes a cap if the split ever grows.
+  n_conditions_on_log_iteration: null
+  n_conditions_on_train_end: null
   # Validation cell-eval and best-state selection, scored by OUR cell-eval
   # 0.6.0 / pdex 0.1.24 -- the SAME scorer every reported number comes from.
   # It used to shell out to a sibling repo's scorer on a different cell-eval

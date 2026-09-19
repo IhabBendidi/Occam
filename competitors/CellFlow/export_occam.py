@@ -159,12 +159,34 @@ def main(argv=None) -> int:
             rows = np.flatnonzero(names == pert)
             block = ad.AnnData(
                 X=X[rows],
+                # ⚠️ `is_control` MUST BE TRUE ON EVERY ROW OF THE PASSED AnnData.
+                # `CellFlow.predict` refuses otherwise (`model/_cellflow.py:619-622`, and
+                # again in `data/_datamanager.py:794-805`):
+                #   "all samples in `adata` must be control samples, and thus
+                #    adata.obs[`is_control`] must be set to `True` everywhere."
+                # These rows ARE controls -- they are the drawn half-B control cells, i.e.
+                # the OT source population the flow is integrated from. `False` here (what
+                # this adapter used to pass) made the export raise before emitting a single
+                # row, which is why no split_* directory has ever existed for this arm.
+                # The covariate frame below is where `is_control=False` belongs: that
+                # describes the TARGET condition being predicted, not the source cells.
+                # Their own working path does exactly this split
+                # (`predict_cellflow.py:215-222` passes `cf.adata[ctrl_mask]`, and `:316`
+                # sets False only on the covariate frame).
                 obs=pd.DataFrame({ct_col: np.full(len(rows), args.cell_type),
                                   "pert_str": np.full(len(rows), pert),
-                                  "is_control": np.zeros(len(rows), dtype=bool)},
+                                  "is_control": np.ones(len(rows), dtype=bool)},
                                  index=[str(i) for i in range(len(rows))]),
                 var=pd.DataFrame(index=pd.Index(genes, name="ensembl_gene_id")))
             block.obsm["X_pca"] = np.ascontiguousarray(x_pca_all[rows])
+            # ⚠️ CARRY `uns` FROM THE TRAINED OBJECT. `predict` resolves the condition through
+            # `rep_dict = adata.uns` (`data/_datamanager.py:245`) and then indexes
+            # `rep_dict['gene_embeddings']` / `['cell_type_embeddings']` (`:401-403`,
+            # `:484-486`). A bare block has an empty `uns`, so this raised a KeyError --
+            # NOT the "Representation ... not found" the guard below tells the reader to
+            # interpret as a vocabulary gap. Their path gets this for free by slicing the
+            # pickled training AnnData.
+            block.uns.update(cf.adata.uns)
 
             cov = pd.DataFrame({"pert_str": [pert], ct_col: [args.cell_type],
                                 "is_control": [False], "gene_1": [pert]})

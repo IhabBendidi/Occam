@@ -34,6 +34,7 @@ Contract shared with the other four arms:
 
 from __future__ import annotations
 
+import hashlib
 import json
 import subprocess
 from pathlib import Path
@@ -176,6 +177,7 @@ class SelectionCallback:
         profile: str = "full",
         num_threads: int | None = None,
         keep_artifacts: bool = False,
+        truth_by_label: dict[str, np.ndarray] | None = None,
     ) -> None:
         self.pcs = np.asarray(pcs)
         self.means = np.asarray(means).reshape(-1)
@@ -191,6 +193,12 @@ class SelectionCallback:
         self.profile = profile
         self.num_threads = num_threads or len(os_sched_affinity())
         self.keep_artifacts = keep_artifacts
+        # ⚠️ RAW GENE-SPACE TRUTH, keyed by perturbation label. See `_score` for why this
+        # exists: without it the metric scored PCA-RECONSTRUCTED ground truth.
+        self.truth_by_label = (
+            {str(k): np.asarray(v, dtype=np.float32) for k, v in truth_by_label.items()}
+            if truth_by_label else None
+        )
 
         # `pcs` is varm["PCs"], i.e. (n_genes, n_comps) -- the orientation
         # occam_bridge.reconstruct_from_pca expects.
@@ -303,9 +311,40 @@ class SelectionCallback:
                 label = _condition_label(cond, cell_type=self.cell_type)
                 n_comps = self.pcs.shape[1]
                 p = self._decode(np.asarray(pred).reshape(-1, n_comps))
-                t = self._decode(np.asarray(truths[cond]).reshape(-1, n_comps))
+
+                # ⚠️ THE TRUTH IS SCORED IN GENE SPACE, NOT PCA-RECONSTRUCTED.
+                #
+                # Decoding the PREDICTION is unavoidable: upstream's validation tensors live
+                # in `sample_rep` space. Decoding the TRUTH is not, and doing it deleted
+                # everything the rank-256 basis cannot express from the target -- inflating
+                # every component of the selection score. It recorded `pearson_delta` 0.4027
+                # and `overlap_at_N` 0.908 on the same 103-perturbation split where a
+                # sibling arm, scored against untouched targets, gets 0.387.
+                #
+                # This module's own premise is that "the selection metric has to be the same
+                # quantity as the reported metric, computed by the same code". That held for
+                # the code and failed for the quantity: the reported metric scores raw
+                # half-A cells. `truth_by_label` carries those raw rows.
+                if self.truth_by_label is not None:
+                    if label not in self.truth_by_label:
+                        raise KeyError(
+                            f"no gene-space truth for condition {label!r}; have "
+                            f"{sorted(self.truth_by_label)[:5]}... Refusing to silently fall "
+                            f"back to the PCA-reconstructed target, which inflates the score.")
+                    t = self.truth_by_label[label]
+                else:
+                    print(f"[selection] ⚠️  no truth_by_label given; scoring against the "
+                          f"PCA-RECONSTRUCTED target, which INFLATES every metric. The "
+                          f"selected checkpoint is chosen on an optimistic quantity.",
+                          flush=True)
+                    t = self._decode(np.asarray(truths[cond]).reshape(-1, n_comps))
+
                 if len(p) > len(t):
-                    rng = np.random.default_rng(abs(hash((label, len(t)))) % (2**32))
+                    # stable across processes: `hash()` on a str is PYTHONHASHSEED-randomised,
+                    # so the previous version was NOT deterministic per (condition, n) as its
+                    # comment claimed.
+                    seed = int(hashlib.sha256(f"{label}:{len(t)}".encode()).hexdigest()[:8], 16)
+                    rng = np.random.default_rng(seed)
                     take = np.sort(rng.choice(len(p), size=len(t), replace=False))
                     p = p[take]
                 pred_blocks.append(p)

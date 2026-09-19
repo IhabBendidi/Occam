@@ -1,7 +1,7 @@
 {
   "arms": {
     "CellFlow": {
-      "bytes": 1416905,
+      "bytes": 1427058,
       "files": {
         ".python-version": {
           "bytes": 5,
@@ -196,20 +196,20 @@
           "sha256": "9577cdd18492cf7376427a0edb361315ed8196bf3d36866bcf068470191f278f"
         },
         "cellflow_selection.py": {
-          "bytes": 23406,
-          "sha256": "4eb49b1bc03f4832f11f30bcee6ba612f12ad9b10595eaebb3afb42977293527"
+          "bytes": 25924,
+          "sha256": "303f78f3a3ec92a5d2f4db0306a98cab17aeb58c144d294fd18085e5938c756d"
         },
         "configs/occam_rhj_fewshot.yaml": {
-          "bytes": 6186,
-          "sha256": "bf33be54555461562db972a76a833068566c789c6d3670026d5a4cef9e88fa4a"
+          "bytes": 6898,
+          "sha256": "c2a5afe4ad61aaf212208623989d0660e08d804efbefd50cd852c046205a2e50"
         },
         "export_occam.py": {
-          "bytes": 10584,
-          "sha256": "2c58b9cb475bc803bfead0d0fbbcbb228bae643db465f10b5a26143989acff74"
+          "bytes": 12347,
+          "sha256": "b8e9017921ef2eabb95ff82a783da2a1570251e877ee62152c594ee97f5ecb70"
         },
         "occam_bridge/__init__.py": {
-          "bytes": 1231,
-          "sha256": "25b63d3fcebd2a193cf8af2c20f87f51c5ef77a3dc4af8819bf3becfdf70f176"
+          "bytes": 1267,
+          "sha256": "e375ebfe2231e4ea48a5446afc3df9ee656d17bc37bb07473142606b452c75a5"
         },
         "occam_bridge/load.py": {
           "bytes": 12287,
@@ -240,8 +240,8 @@
           "sha256": "547607c148539e6c4ccb9ce2dcfd3c866285a8bba6f6a0c24ff6d05bd1727b64"
         },
         "train_cellflow.py": {
-          "bytes": 32002,
-          "sha256": "e1d887706e1007a0895c197c5f485a4eacd20f88bbf2298a67d71befb0333512"
+          "bytes": 37126,
+          "sha256": "9a6983bfa14c8c9f242810ff8485647c79630ea8e2aa9a1753599e4e28621009"
         }
       },
       "n_files": 60

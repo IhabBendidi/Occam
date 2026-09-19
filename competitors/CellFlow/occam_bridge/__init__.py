@@ -24,11 +24,12 @@ from .pca import (
     save_pca_artifacts,
     write_scorer_pca_state,
 )
-from .schema import apply_cellflow_gene_schema
+from .schema import EMBEDDING_KEY, apply_cellflow_gene_schema
 from .splits import load_fold
 from .transforms import apply_normalize_log1p
 
 __all__ = [
+    "EMBEDDING_KEY",
     "apply_cellflow_gene_schema",
     "apply_normalize_log1p",
     "control_row_indices",
