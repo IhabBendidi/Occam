@@ -140,9 +140,24 @@ def validations_landed(arm: str, logs: str) -> tuple[int, str]:
     return len(re.findall(VAL_PATTERNS.get(arm, SELECTION_COL), logs)), "log"
 
 
+def leg_of(jobid: str) -> str:
+    """Which leg a job id belongs to: train / export / score.
+
+    ⚠️ WHY THIS MATTERS. "How many validation scores landed" is a TRAINING health check. An
+    export or score leg never logs one, so applying that criterion to them reported a
+    perfectly good 5-split export as `COMPLETED-NO-SCORE` -- a phantom failure that costs
+    exactly the attention this tool exists to save.
+    """
+    for pat, leg in (("cmp_export_", "export"), ("cmp_score_", "score")):
+        if any((REPO / "runs" / "slurm").glob(f"{pat}*{jobid}*")):
+            return leg
+    return "train"
+
+
 def classify(arm: str, jobid: str, queued: dict[str, str]) -> dict:
     st_q = queued.get(str(jobid)) or queued.get(str(jobid).split("_")[0])
     st_acct, exitcode = sacct(jobid)
+    leg = leg_of(jobid)
     logs = read_logs(arm, jobid)
     n_val, val_src = validations_landed(arm, logs)
     n_swallowed = len(SWALLOWED_RE.findall(logs))
@@ -159,16 +174,20 @@ def classify(arm: str, jobid: str, queued: dict[str, str]) -> dict:
             verdict, why = "⛔ BROKEN-WHILE-RUNNING", fail.group(0)[:60]
         elif age_min is not None and age_min > 90:
             verdict, why = "⚠️ STALLED", f"log silent {age_min:.0f} min"
-        elif n_swallowed and n_val == 0:
+        elif n_swallowed and n_val == 0 and leg == "train":
             # the shape that wastes a whole run: trains fine, selects on nothing
             verdict, why = "⛔ NO-SCORE", (
                 f"{n_swallowed} validation(s) refused and NONE landed -- model selection "
                 f"has nothing to choose on")
         else:
-            verdict, why = "RUNNING", f"{n_val} landed{swallowed} ({val_src})"
+            verdict, why = ("RUNNING", f"{leg} leg" if leg != "train"
+                            else f"{n_val} landed{swallowed} ({val_src})")
     elif st_acct.startswith("COMPLETED"):
-        if n_val == 0:
+        # only a TRAINING leg is expected to publish validation scores
+        if n_val == 0 and leg == "train":
             verdict, why = "⛔ COMPLETED-NO-SCORE", "finished without a single val score"
+        elif leg != "train":
+            verdict, why = "✅ COMPLETED", f"{leg} leg"
         else:
             verdict, why = "✅ COMPLETED", f"{n_val} landed{swallowed} ({val_src})"
     elif st_acct == "UNKNOWN" and st_q is None:
@@ -176,7 +195,7 @@ def classify(arm: str, jobid: str, queued: dict[str, str]) -> dict:
     else:
         verdict, why = f"⛔ {st_acct}", (fail.group(0)[:60] if fail else f"exit {exitcode}")
 
-    return {"arm": arm, "jobid": jobid, "slurm": st_acct, "verdict": verdict,
+    return {"arm": arm, "jobid": jobid, "leg": leg, "slurm": st_acct, "verdict": verdict,
             "detail": why, "validations": n_val, "refused": n_swallowed,
             "log": str(log.relative_to(REPO)) if log else None,
             "log_age_min": round(age_min, 1) if age_min is not None else None}
