@@ -4,6 +4,57 @@
 read, partial results labelled partial, superseded numbers kept with the correction beside
 them.
 
+## ⛔ F-latent1 — the latent loss has NEVER been swept, and its diagnostics were never read
+
+**Asked directly, so checked rather than recalled.**
+
+| | status |
+|---|---|
+| runs using `latent_loss_type != "none"` | **0**, across every run in `runs/` |
+| findings docs mentioning it | **none** |
+| declared in `configs/rhj_fewshot.yaml` | **NO** — so `--set stages.vcell.loss.latent_loss_type=...` would fail exactly as `nb_weight` did, with *"not an existing key"* |
+| registered in `VCELL_SCHEMA` | yes (`schema.py:344`) |
+
+So it is half-plumbed: the dataclass has `latent_loss_type` (`none / delta_z / z_hat / both /
+projected`), `latent_loss_weight`, `latent_loss_alpha`, `latent_proj_dim`, and the schema knows
+them — but the config never declares them, so **the axis is unreachable from a launcher** and
+has never been run.
+
+### ⚠️ Worse: the diagnostics that would justify sweeping it were never read either
+
+`config.py` documents why they exist, and it is a strong claim:
+
+> Run REGARDLESS of the latent loss, because **the arms without one are exactly the ones that
+> can collapse to the identity** (`delta_z_ratio` -> 0, which scores at the identity floor and
+> so reads as "weak", not "broken") or drift off the decoder's manifold (`offmanifold_ratio`
+> >> 1, i.e. the score is decoder extrapolation).
+
+`latent_diag_every: 50` is on by default, and `_compute_latent_diagnostics` emits
+`delta_z_ratio`, `offmanifold_ratio`, `z_hat_offmanifold`, `z_ctrl_offmanifold`,
+`delta_z_cosine_w_target`, `gate_active_dims`. **But they are written only to `train_log`, i.e.
+to wandb** (`pipeline.py:4053-4060`) — never to stdout. Grepping every run log for
+`delta_z_ratio` or `offmanifold` returns **0 hits**, and the arms have no local wandb
+directories, so the values are not on disk at all.
+
+**Consequence: we have never checked whether our models are collapsing to the identity or
+predicting off-manifold** — the two failure modes the code says look like "a weak model" rather
+than a broken one. Every arm in this campaign, including `s313`, could be sitting at the
+identity floor and the score alone would not distinguish that from a genuinely weak model.
+
+### What would make this answerable, cheaply
+
+1. **Print the diagnostics to stdout**, not only wandb — one line per eval epoch. They are
+   already computed; only the sink is wrong, and wandb is now `offline` for competitor runs
+   anyway.
+2. **Declare the four `latent_*` keys in the config** so the axis is reachable at all.
+3. Read `delta_z_ratio` on the existing best arm FIRST. If it is healthy (not ~0), a latent
+   loss is solving a problem we do not have and the sweep is not worth GPUs; if it is near
+   zero, that reframes the whole campaign — the model would be scoring at the identity floor
+   and every loss-composition result above would be measuring the wrong thing.
+
+⚠️ Step 3 is the pre-registration: **the diagnostic decides whether the sweep is worth running**,
+rather than the sweep being run and the diagnostic quoted afterwards.
+
 ## ⭐⭐ F-emit5 — CORRECTION: with a fair theta and the right depth, emission RAISES `overlap_at_N` by 50%
 
 ⚠️ **THIS OVERTURNS F-emit4's RECOMMENDATION, WHICH WAS MINE AND WAS WRONG.** F-emit4 concluded
