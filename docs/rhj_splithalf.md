@@ -55,6 +55,78 @@ identity floor and the score alone would not distinguish that from a genuinely w
 ⚠️ Step 3 is the pre-registration: **the diagnostic decides whether the sweep is worth running**,
 rather than the sweep being run and the diagnostic quoted afterwards.
 
+## ⛔ F-loss6 — the scale-match sweep and the first `delta_mag` run: **neither reduces the 5.6× over-shoot**, and validation gets no better
+
+**Objective.** Best model on SEEN perturbations in an UNSEEN cell line; headline split-half
+paired `pearson_delta`. Anchors: `transfer` 0.2323 · L11 0.3415 (`mae` 0.0210) · D02 0.3661
+(`mae` 0.0277) · D03 0.3686 (`mae` 0.0321) · `experimental` 0.3722 (`mae` 0.0257).
+
+**Questions.** (a) With `dcos` brought down to `smooth_l1`'s scale, is there a weight that keeps
+D03's direction metrics while recovering `mae`? (b) Does `delta_mag_weight` — never used in any
+of 540 prior runs — reduce the measured 5.589× effect-size over-shoot?
+
+**Varied:** `delta_cos_weight` ∈ {0.002, 0.005, 0.01, 0.02, 0.05} (M01–M05, scale-match point
+0.01060), and one arm M06 = D03's config unchanged + `delta_mag_weight` 0.01363. **Held fixed:**
+arm s313 optimisation throughout, seed 42. Job `18186699`, 6/6 COMPLETED.
+
+**Pre-registered meaning.** A hump in the sweep ⇒ direction and magnitude are jointly learnable
+and D03 was mis-scaled. A monotone fall as `dcos` shrinks ⇒ 0.3686 genuinely requires near-total
+direction supervision. For M06: ratio → 1 ⇒ the term works and `mae` should follow.
+
+### Validation `best_metric`, and the re-measured magnitude ratio
+
+`MAGNITUDE RATIO` = `‖pred − ctrl‖ / ‖true − ctrl‖`, **1.0 = correct effect size**.
+
+| arm | `delta_cos_weight` | dcos share | `delta_mag_weight` | epoch | val `best_metric` | **magnitude ratio** |
+|---|---|---|---|---|---|---|
+| L11 (reference) | inert | 0% | 0 | 25 | 0.3769 | 5.703 |
+| M01 | 0.002 | 15.9% | 0 | 25 | 0.3771 | **6.170** |
+| M02 | 0.005 | 32.0% | 0 | 27 | 0.3974 | — |
+| M03 | **0.01 (matched)** | 48.5% | 0 | 25 | 0.4031 | **6.584** |
+| M04 | 0.02 | 65.4% | 0 | 25 | 0.3981 | — |
+| M05 | 0.05 | 82.5% | 0 | 25 | 0.4026 | — |
+| D02 (reference) | 0.25 | 96.3% | 0 | 21 | **0.4100** | 5.513 |
+| D03 (reference) | 0.5 | 97.9% | 0 | 13 | **0.4108** | **5.589** |
+| **M06** | 0.5 | 97.9% | **0.01363** | 17 | 0.4078 | **5.872** |
+
+### Reading — both hypotheses fail
+
+1. **No hump. The scale-matched arms are all WORSE on validation than the dominant ones.**
+   M03 at the exact 50/50 point scores 0.4031 against D03's 0.4108 and D02's 0.4100, and M01 at
+   15.9% dcos collapses to 0.3771 — statistically indistinguishable from L11's pure-smooth_l1
+   0.3769. Validation rises monotonically with dcos share across the whole range
+   (0.3771 → 0.3974 → 0.4031 → ~0.40 → 0.4108). **The direction term wants to dominate**; there
+   is no blend that buys `mae` back for free at the validation level.
+2. **⛔ `delta_mag_weight` did NOT reduce the over-shoot — it slightly increased it.**
+   M06's ratio is **5.872** vs D03's **5.589**, on the same probe with the same inputs. Its
+   validation is also marginally below D03 (0.4078 vs 0.4108). The pre-registered "ratio → 1"
+   outcome did not happen, at this weight.
+3. **Lowering `dcos` makes the over-shoot WORSE, not better** (M03 6.584, M01 6.170 vs D03
+   5.589). So the over-shoot is not something the direction term was causing — consistent with
+   F-loss5, where L11 with DCOS inert was already at 5.703.
+
+### ⚠️ Why M06's null must NOT yet be read as "`delta_mag_weight` does not work"
+
+The term was definitely LIVE: `_needs_group_means` includes `delta_mag_weight` and **refuses to
+start** if the mean table is absent (the F-loss1 guard), the resolved config records
+`delta_mag_weight: 0.01363`, and M06's epoch trajectory differs from D03's. So this is not
+F-loss1 repeating.
+
+But two things could still explain a null at this weight, and neither is tested:
+- **The weight may simply be too small.** It was set so the mag term equals the *dcos* term
+  (0.398). Both are then ~44× `smooth_l1`, but `mag_loss` is a *ratio* penalty whose gradient
+  w.r.t. the prediction shrinks as the ratio grows, so equal loss VALUE does not mean equal
+  pull. A 10–50× larger weight is the untested region.
+- **⚠️ PROBE CAVEAT, applies to every ratio in this table.** `scripts/loss_scale.py` feeds the
+  model the control MEAN, while training feeds single CELLS. If the model's output magnitude
+  responds to input noise, the absolute 5.6–6.6 is probe-dependent. **The cross-checkpoint
+  comparison is still valid** — same probe, same inputs, same 512 perturbations — but the
+  absolute value should not be quoted as "the model over-shoots by 5.6×" without repeating it
+  on single-cell inputs. That has not been done.
+
+**The decisive number is the test `mae` from job `18187190`** (30 tasks, chained, `CALIBRATE=both`),
+not validation `best_metric` and not this probe. Recorded as pending, not inferred.
+
 ## ⭐⭐ F-comp1 — CellFlow completes the panel at **0.2154**, the ONLY competitor BELOW `transfer`, and it discriminates at near-chance
 
 **Objective.** Predict a perturbation's effect in a cellular context where that perturbation was
