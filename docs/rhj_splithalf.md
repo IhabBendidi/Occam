@@ -4,6 +4,60 @@
 read, partial results labelled partial, superseded numbers kept with the correction beside
 them.
 
+## ⛔ F-loss1 — DCOS ran INERT: I added the consumer without the gate that loads its inputs
+
+**Caught by the data, not by reading the code.** Three DCOS arms at `delta_cos_weight`
+0.25 / 0.5 / 1.0 produced **bit-identical validation curves** — 0.2893, 0.3460, 0.2712 for
+their last three epochs, to four decimals. A term that changes nothing at three different
+weights is not applied.
+
+### Two causes, one mine and one pre-existing
+
+**1. The loader gate (mine).** `pipeline.py:1678` only loads the group-mean table when
+something declares it needs it:
+
+```python
+if (getattr(config, "target_pb_k", 1) != 1) or float(getattr(config, "delta_mag_weight", 0.0)) > 0:
+    ... load_group_means(...)
+```
+
+`delta_cos_weight` is not in that condition. So `gmeans` stayed `None`, my guard
+(`st.get("gmeans") is not None`) failed exactly as written, and `dcos_loss` stayed at its
+initialised `0.0` — **silently**, with no warning, for every DCOS arm. Fixed by adding
+`delta_cos_weight` to the gate, with a comment saying every consumer must be listed there.
+
+**2. The table does not exist in this repo (pre-existing).**
+`cache/pert_means` is absent, and `scripts/pert_group_means.py` — the builder that
+`stream_v2.py:789` and `config.py:164` both name — **was never ported**. It exists only in the
+research tree (128 lines, keyed to that tree's file layout and encoder axis).
+
+⚠️ **Consequence beyond DCOS: `delta_mag_weight` has never been usable in this repo either.**
+Setting it >0 would open the gate and then raise `FileNotFoundError: no group-mean tables in
+cache/pert_means`. It is dead config, and it has been dead since the port.
+
+### What this does and does not invalidate
+
+| | status |
+|---|---|
+| L01-L09 (the NB axis) | ✅ **VALID** — they set `delta_cos_weight=0.0`, so the inert term was correctly zero |
+| L10-L15 (the DCOS axis) | ⛔ **VOID as DCOS arms** — they are plain `smooth_l1` / `nb_smooth_l1` runs with a no-op term. L14/L15 remain valid as `nb_smooth_l1` replicates |
+
+**DCOS needs the builder ported before it can be swept at all.** That is a bounded task —
+adapt the 128-line script to our three frozen h5ads and the 6,983-gene axis — but it is a
+prerequisite, not a detail.
+
+### ⚠️ The lesson, which is the same one as C28
+
+The audit's conclusion was that every check in place was about the CONTENT of inputs and none
+about their GROUPING or their COVARIATES. This is the third variant: **a term whose inputs were
+never loaded**. The guard was correct, the weight was plumbed end-to-end, the config declared
+it, the schema registered it, the launcher passed it — and the term was still zero, because one
+`or` clause in an unrelated gate did not mention it.
+
+**A weight that is set and has no effect should be an ERROR, not a silent zero.** The fix
+should not stop at the gate: a term with a non-zero weight whose inputs are missing must
+refuse to train.
+
 ## ⭐ F-emit3 — NB count emission implemented at library norm 2000; `exact_colsum` now measurable
 
 **Question.** F-emit2 showed `exact_colsum` is a no-op without a count emitter. Build the

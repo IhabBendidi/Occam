@@ -1675,7 +1675,18 @@ class VirtualCellTrainer:
             extras_csr = (ev, ec, erp, ers, ectrl, -1)
             del e_ctrl, e_tgt
         _gm_idx = _gmeans = _cmeans = _gline = None
-        if (getattr(config, "target_pb_k", 1) != 1) or float(getattr(config, "delta_mag_weight", 0.0)) > 0:
+        # ⚠️ EVERY CONSUMER OF THE GROUP MEANS MUST BE IN THIS GATE. The table is only loaded
+        # when something asks for it, and a term whose weight is set but whose inputs were
+        # never loaded is SILENTLY ZERO -- its guard (`st.get("gmeans") is not None`) simply
+        # fails. That is exactly what happened when `delta_cos_weight` was added as a consumer
+        # and not added here: three DCOS arms at weights 0.25/0.5/1.0 produced bit-identical
+        # validation curves, because the term contributed nothing in all three.
+        _needs_group_means = (
+            (getattr(config, "target_pb_k", 1) != 1)
+            or float(getattr(config, "delta_mag_weight", 0.0)) > 0
+            or float(getattr(config, "delta_cos_weight", 0.0)) > 0
+        )
+        if _needs_group_means:
             from occam.vcell.stream_v2 import load_group_means
             from occam.vcell.stream_v2 import source_name_of as _srcname
             _gm_idx, _gmeans, _cmeans, _gline = load_group_means(
