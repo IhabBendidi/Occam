@@ -14,6 +14,27 @@
 
 set -euo pipefail
 
+# ─── wandb: OFFLINE for every competitor leg ────────────────────────────────────────────────
+# A PerturbDiff run sat RUNNING for 10 HOURS with a 0% GPU, 27 threads parked in
+# futex_wait_queue_me, its 4 dataloader workers idle in do_poll, and its wandb debug log
+# 20 lines long and stopped 2 seconds after init while `wandb-core` stayed alive futex-waiting.
+# Shared memory (1% of 1 TB) and HDF5 fork-unsafety (zero .h5ad fds) were ruled out by
+# measurement; the identical twin run completed, so it is a race, not a config error. The stack
+# could not be captured (ptrace_scope=1, no sudo), so wandb is the LEADING but UNPROVEN cause.
+#
+# Offline removes the network-dependent blocking call outright. Nothing is lost: every metric
+# we read comes from Lightning's metrics.csv and the job logs, and a run can still be uploaded
+# afterwards with `wandb sync`. Set here, in the one file all twelve legs source, so no arm can
+# be missed -- WANDB_MODE overrides the per-arm entity/project/name flags without touching them.
+export WANDB_MODE="${WANDB_MODE:-offline}"
+
+# ─── nodes to avoid ─────────────────────────────────────────────────────────────────────────
+# hop39's GPU is dead -- `nvidia-smi` there returns "Unable to determine the device handle for
+# GPU0 ... Unknown Error" / "No devices were found" -- while sinfo still reports the node `mix`,
+# so Slurm keeps scheduling onto it. It failed every split of a STATE re-export with
+# "CUDA unknown error". Launchers pass this as --exclude; clear it once the node is drained.
+export COMPETITOR_EXCLUDE_NODES="${COMPETITOR_EXCLUDE_NODES:-hop39}"
+
 # Slurm COPIES the batch script into a node spool dir, so ${BASH_SOURCE[0]} does not point into
 # the repo. Prefer the submit dir, and verify whichever candidate wins.
 _find_repo() {

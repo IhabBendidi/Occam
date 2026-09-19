@@ -49,6 +49,11 @@
 #SBATCH --time=02:00:00
 #SBATCH --output=runs/slurm/cmp_score_%A_%a.out
 #SBATCH --error=runs/slurm/cmp_score_%A_%a.err
+#SBATCH --exclude=hop39
+# ⚠️ hop39's GPU is DEAD -- nvidia-smi there returns "Unable to determine the device
+# handle for GPU0 ... Unknown Error" / "No devices were found" -- while sinfo still
+# reports it `mix`, so Slurm keeps scheduling onto it and every task fails with
+# "CUDA unknown error". REMOVE this line once the node is drained/fixed.
 
 source "$(dirname "${BASH_SOURCE[0]}")/_competitor_common.sh" 2>/dev/null || \
     source "${SLURM_SUBMIT_DIR:-.}/scripts/slurm/_competitor_common.sh"

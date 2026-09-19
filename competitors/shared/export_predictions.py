@@ -74,9 +74,32 @@ class PanelSplit:
     target : (18575, 6983) float32
         The half-A perturbed cells, in OUR evaluation space. Used only by
         `space_diagnostics`; never shown to the model.
+    batches : (18575,) str
+        The sequencing batch of each PERTURBED cell -- i.e. of the cell being predicted, not
+        of the control drawn as its input.
+
+        ⚠️ WHY THE PERTURBED CELL'S. Both set-based arms read this covariate off the
+        perturbed row at training (STATE `zarr_perturbation.py:689` `batch_name =
+        self.batch[i]`; PerturbDiff `dataset_core.py:189-196` `get_covarates`), so the
+        faithful value here is `batches[a_rows]`. The control's batch sits one index away
+        (`batches[ctrl_b][cin_idx]`) and is the easy thing to reach for by mistake.
+
+        ⚠️ WHY IT EXISTS AT ALL. Both arms' exports used to pin this to a single constant --
+        `sorted(...)[0]`, i.e. one of 56 HepG2 batches -- and broadcast it over all 18,575
+        rows, while both models carry a TRAINED batch embedding that is added to every cell.
+        Measured on STATE: `mean|delta pred| / mean|pred|` = 0.37, and the
+        perturbation-specific component of the delta correlated only 0.73-0.86 with the
+        faithful prediction. It does not cancel, because the scored control rows are the real
+        half-B cells, not the model's own output. A real 30-cell sentence spans ~22 distinct
+        batches; one label repeated 30x is off-distribution whichever label is chosen.
+
+        The VALUES here are the panel's own (`hepg2-nad-49`). Each arm's vocabulary differs
+        (STATE's map is keyed `HEPG2__hepg2-nad-49`), so every consumer must BUILD and ASSERT
+        its mapping rather than assume it.
     """
 
-    def __init__(self, index, ctrl, labels, target, ctrl_b_rows, cohort, manifest):
+    def __init__(self, index, ctrl, labels, target, ctrl_b_rows, cohort, manifest,
+                 batches=None):
         self.index = index
         self.ctrl = ctrl
         self.labels = labels
@@ -84,6 +107,7 @@ class PanelSplit:
         self.ctrl_b_rows = ctrl_b_rows
         self.cohort = cohort
         self.manifest = manifest
+        self.batches = batches
 
     def __len__(self) -> int:
         return len(self.labels)
@@ -135,10 +159,21 @@ def load_panel_split(panel_dir: str, split_index: int, *,
             np.expm1(ctrl_eval.astype(np.float64)) * (target_sum / EVAL_TARGET_SUM)
         ).astype(np.float32)
 
+    # the PERTURBED cell's batch -- see the PanelSplit docstring for why not the control's
+    batches = None
+    if "batches" in z.files:
+        batches = np.asarray(z["batches"], dtype=str)[a_rows]
+
     print(f"[export] split {k}: {len(labels):,} rows · {len(ctrl_b):,} half-B controls · "
           f"control input at target_sum {target_sum:g}")
+    if batches is None:
+        print("[export]   ⚠️  panel.npz has no `batches`; arms with a trained batch embedding "
+              "will have to fall back to a constant, which is off-distribution")
+    else:
+        print(f"[export]   batches     : {len(set(batches.tolist()))} distinct, "
+              f"from the perturbed cells")
     print(f"[export]   input space : {describe_space(ctrl_train, target_sum=target_sum).summary()}")
-    return PanelSplit(k, ctrl_train, labels, X[a_rows], ctrl_b, cohort, man)
+    return PanelSplit(k, ctrl_train, labels, X[a_rows], ctrl_b, cohort, man, batches=batches)
 
 
 def export_split(predict: Callable[[np.ndarray, Sequence[str]], np.ndarray],

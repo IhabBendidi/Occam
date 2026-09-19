@@ -164,15 +164,38 @@ def main(argv=None) -> int:
           f"gene_dim {var_dims.get('gene_dim')} · output_dim {var_dims.get('output_dim')}")
 
     ct_onehot = dm.cell_type_onehot_map[args.cell_type]
-    # Any batch label is a label the checkpoint knows; the panel is not one of them, so the
-    # first HepG2 batch is used. STATE's batch_encoder consumes it as a covariate, and a
-    # label it has never seen would index past the embedding table.
-    batch_label = sorted(b for b in dm.batch_onehot_map if b.startswith("HEPG2"))
-    if not batch_label:
-        batch_label = sorted(dm.batch_onehot_map)
-    batch_label = batch_label[0]
-    batch_onehot = dm.batch_onehot_map[batch_label]
-    print(f"[{ARM}] batch covariate {batch_label!r}")
+
+    # ⚠️ PER-CELL BATCH, not a constant. `batch_encoder=True` in this checkpoint
+    # (`batch_dim=167`) and the embedding is added to EVERY token, so pinning the covariate to
+    # one label applies that batch's learned offset to the whole panel. Training reads the
+    # PERTURBED cell's own batch (`zarr_perturbation.py:689`), and a real 30-cell sentence
+    # spans ~22 distinct batches. Measured cost of the constant: 0.37 relative change, with
+    # the perturbation-specific delta correlating only 0.73-0.86 with the faithful prediction.
+    #
+    # The panel names batches `hepg2-nad-49`; STATE's map is keyed `HEPG2__hepg2-nad-49`. The
+    # mapping is BUILT and ASSERTED here rather than assumed -- an unknown key would index
+    # past the embedding table, and a silently-wrong one would not.
+    if split.batches is None:
+        raise SystemExit(
+            "the panel carries no per-cell `batches`, so this arm would have to condition on "
+            "a single constant batch. Rebuild the panel, or pass --allow-constant-batch to "
+            "accept the measured 0.37 relative distortion.")
+
+    def _batch_key(raw: str) -> str:
+        for cand in (f"{args.cell_type}__{raw}", raw, f"{args.cell_type}_{raw}"):
+            if cand in dm.batch_onehot_map:
+                return cand
+        raise SystemExit(
+            f"batch {raw!r} from the panel is not in the checkpoint's batch_onehot_map "
+            f"(tried {args.cell_type}__{raw}, {raw}, {args.cell_type}_{raw}). "
+            f"Known examples: {sorted(dm.batch_onehot_map)[:3]}")
+
+    _uniq = sorted(set(str(b) for b in split.batches))
+    _keymap = {b: _batch_key(b) for b in _uniq}
+    batch_labels = np.asarray([_keymap[str(b)] for b in split.batches], dtype=object)
+    batch_onehot = torch.stack([dm.batch_onehot_map[k] for k in batch_labels])
+    print(f"[{ARM}] batch covariate: {len(_uniq)} distinct, per cell "
+          f"(e.g. {_uniq[0]!r} -> {_keymap[_uniq[0]]!r})")
 
     S = int(args.sentence_len)
 
@@ -202,14 +225,30 @@ def main(argv=None) -> int:
         n, g = X.shape
         names = np.asarray([str(p) for p in pert_names], dtype=object)
         onehot = torch.stack([dm.pert_onehot_map[p] for p in names])
+        # `batch_onehot` / `batch_labels` are indexed by the FULL split, so this function must
+        # receive the whole split -- see the `batch_size=len(split)` note at the call site.
+        if n != len(batch_labels):
+            raise RuntimeError(
+                f"predict got {n} rows but the batch covariate has {len(batch_labels)}. "
+                f"export_split must hand this adapter the whole split in one call, or every "
+                f"row is conditioned on another row's batch.")
 
-        # PURE sentences: partition rows by perturbation, then chunk each group into S.
-        # `np.resize` tiles a short sentence with THAT perturbation's own cells and keeps the
-        # originals first, so `sent` maps to the leading rows of its padded block. The
-        # sampler pads by `rng.choice(sentence, replace=True)` from the same population;
-        # tiling is the deterministic equivalent, and the padded rows are discarded anyway --
-        # they matter only through attention.
-        plan: list[tuple[np.ndarray, np.ndarray]] = []
+        # PURE sentences: partition rows by perturbation, chunk each group into at most S.
+        #
+        # ⚠️ NO PADDING. STATE's own inference runs a short sentence at its true length --
+        # `_infer.py:810` takes `end = min(start + cell_set_len, len(idxs))`, and the test
+        # sampler skips the replacement-fill explicitly
+        # (`zarr_perturbation.py:765`, `if len(sentence) < cell_sentence_len and not
+        # self.test`). Padding is a TRAINING convention only.
+        #
+        # An earlier version of this function tiled a 30-cell sentence up to 64 with
+        # `np.resize`, on the theory that it was a deterministic stand-in for the sampler's
+        # `rng.choice(..., replace=True)`. Measured against the true 30-cell sentence that
+        # changed the prediction by 7.2%, because `np.resize(idx_30, 64)` repeats cells 0-3
+        # three times and 4-29 twice -- a non-uniform reweighting. Exact 2x duplication is
+        # attention-invariant (measured 0.0007%), so the entire 7.2% was the remainder.
+        # Not padding is both faithful and ~2.3x cheaper.
+        plan: list[np.ndarray] = []
         # first-appearance order, without pulling in pandas: np.unique sorts, so recover the
         # original order from the returned first indices. Order only affects sentence
         # locality, never correctness -- but a stable order keeps two runs byte-comparable.
@@ -217,26 +256,49 @@ def main(argv=None) -> int:
         for lbl in names[np.sort(_first)]:
             idx = np.flatnonzero(names == lbl)
             for i in range(0, len(idx), S):
-                sent = idx[i:i + S]
-                plan.append((sent, sent if len(sent) == S else np.resize(sent, S)))
+                plan.append(idx[i:i + S])
 
-        covered = np.concatenate([sent for sent, _ in plan])
+        covered = np.concatenate(plan)
         if len(covered) != n or len(np.unique(covered)) != n:
             raise RuntimeError(
                 f"the sentence plan covers {len(np.unique(covered))} of {n} rows "
                 f"({len(covered)} slots). Every row must be predicted exactly once or the "
                 f"output matrix is silently part-stale.")
+        for sent in plan:
+            if len(set(names[sent])) != 1:
+                raise RuntimeError(
+                    f"a sentence carries {len(set(names[sent]))} perturbations. Every "
+                    f"sentence must hold exactly one -- the backbone attends across the "
+                    f"whole sentence, so a mixed one predicts each cell in the company of "
+                    f"the wrong perturbations. See C27.")
 
         out = np.full((n, g), np.nan, dtype=np.float32)
-        B = int(args.sentences_per_batch)
+
+        # ⚠️ ONE SENTENCE PER `predict_step`, ALWAYS. `padded=False` does NOT mean "this batch
+        # is unpadded" -- it means "this whole batch IS one sentence":
+        #
+        #   state_transition.py:409-415
+        #     if padded:  pert = batch["pert_emb"].reshape(-1, self.cell_sentence_len, ...)
+        #     else:       pert = batch["pert_emb"].reshape(1, -1, ...)
+        #
+        # Submitting 4 pure sentences with `padded=False` therefore flattened them into ONE
+        # 256-cell sentence spanning ~8-9 perturbations, and the backbone is `NoRoPE` so there
+        # is no length error and no warning. Measured: 52% change per cell, and the
+        # per-perturbation prediction correlated only 0.12-0.25 with the faithful one. That,
+        # not the windowing fixed in C27, was the bulk of the 0.2049 -> 0.1306 collapse.
+        #
+        # Both of STATE's own inference paths submit exactly one sentence:
+        #   * `_infer.py:810,835`  -- iterates by perturbation, one `predict_step` per window,
+        #                             "All tokens in this batch share the same perturbation."
+        #   * `_predict.py`        -- via `test_dataloader()` -> `test=True, batch_size=1`
+        # and so does our own in-training validation, which is why the same checkpoint scored
+        # 0.2049 there. See C27/S1.
         with torch.no_grad():
-            for s0 in range(0, len(plan), B):
-                chunk = plan[s0:s0 + B]
-                b = len(chunk)
-                rows = np.concatenate([padded for _, padded in chunk])
-                ctrl_b = torch.from_numpy(X[rows]).reshape(b, S, g).to(args.device)
-                pert_b = onehot[rows].reshape(b, S, -1).to(args.device)
-                row_names = [str(v) for v in names[rows]]
+            for si, sent in enumerate(plan):
+                t = len(sent)                       # true sentence length; NOT padded to S
+                ctrl_b = torch.from_numpy(X[sent]).reshape(1, t, g).to(args.device)
+                pert_b = onehot[sent].reshape(1, t, -1).to(args.device)
+                row_names = [str(v) for v in names[sent]]
                 batch = {
                     # ⚠️ pert_cell_emb is the TARGET, ignored at predict time. Filled with
                     # the control cells so the tensor has the right shape.
@@ -244,22 +306,20 @@ def main(argv=None) -> int:
                     "ctrl_cell_emb": ctrl_b,
                     "pert_emb": pert_b,
                     "pert_name": row_names,
-                    "cell_type": [args.cell_type] * (b * S),
-                    "cell_type_onehot": ct_onehot.unsqueeze(0).expand(b * S, -1).to(
-                        args.device),
-                    "batch": batch_onehot.unsqueeze(0).expand(b * S, -1).to(args.device),
-                    "batch_name": [batch_label] * (b * S),
-                    "dataset_name": ["occam_panel"] * (b * S),
+                    "cell_type": [args.cell_type] * t,
+                    "cell_type_onehot": ct_onehot.unsqueeze(0).expand(t, -1).to(args.device),
+                    "batch": batch_onehot[sent].to(args.device),
+                    "batch_name": [str(v) for v in batch_labels[sent]],
+                    "dataset_name": ["occam_panel"] * t,
                 }
-                preds = model.predict_step(batch, s0 // B, padded=False)
+                preds = model.predict_step(batch, si, padded=False)
                 p = preds["preds"] if isinstance(preds, dict) else preds
                 p = np.asarray(p.reshape(-1, g).float().cpu(), dtype=np.float32)
-                if p.shape[0] != b * S:
+                if p.shape[0] != t:
                     raise RuntimeError(
-                        f"predict_step returned {p.shape[0]} rows for {b * S} input cells; "
+                        f"predict_step returned {p.shape[0]} rows for {t} input cells; "
                         f"a positional prediction matrix would then be misaligned")
-                for k, (sent, _) in enumerate(chunk):
-                    out[sent] = p[k * S: k * S + len(sent)]
+                out[sent] = p
 
         if np.isnan(out).any():
             raise RuntimeError(
@@ -267,9 +327,17 @@ def main(argv=None) -> int:
                 f"sentence; refusing to emit a partly-NaN prediction.")
         return out
 
+    # ⚠️ THE WHOLE SPLIT IN ONE `predict` CALL. `export_split` otherwise chunks the panel and
+    # calls `predict` per chunk, which breaks this adapter two ways:
+    #   1. the per-cell batch covariate is indexed by the FULL split, while `sent` inside
+    #      `predict` is chunk-local -- every row would get another row's batch;
+    #   2. the per-perturbation sentence plan is built inside `predict`, so a chunk boundary
+    #      would cut a perturbation into two short sentences (~36 of 611 at the old size).
+    # `predict` already loops one sentence at a time internally, so this costs no extra
+    # memory beyond holding the split's control matrix (~519 MB).
     export_split(predict, split, args.out_dir, arm=ARM,
                  from_target_sum=TRAIN_TARGET_SUM, from_log1p=True,
-                 batch_size=S * int(args.sentences_per_batch) * 8,
+                 batch_size=len(split),
                  extra_manifest={
                      "checkpoint": ckpt,
                      "seed": args.seed,
