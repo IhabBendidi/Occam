@@ -43,6 +43,24 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 ARMS = ("txpert", "state", "cellflow", "perturbdiff")
 SEEDS = (42, 43, 44, 45, 46)
+
+# ─── WITHDRAWN RESULTS ──────────────────────────────────────────────────────────────────────
+# (arm, seed) -> why. A withdrawn number is marked in the table and EXCLUDED from the
+# "complete" tally, but its value is still printed, struck through, because the history of
+# what was believed when is itself evidence.
+#
+# This registry exists because a number that has been retracted in the findings doc will
+# otherwise keep appearing in this table as a clean `complete` row -- and this table is what
+# gets quoted. Deleting the row instead would hide that the arm was ever reported.
+WITHDRAWN = {
+    ("txpert", 42): (
+        "C28: exported rows omitted the `-1` perturbation token the model was trained with "
+        "(`omit_cntr: false`), the basal input was a single control cell while the checkpoint "
+        "was trained and selected on the (cell_type, batch) MEAN control, and the frozen "
+        "manifest recorded `kg_list: []`. Retraining on single-cell controls with "
+        "`omit_cntr: true`, plus an A/B against the mean-control regime."
+    ),
+}
 N_SPLITS = 5
 COMPARISON = ("pearson_delta", "mae", "overlap_at_N", "discrimination_score_l1")
 LOWER_IS_BETTER = ("mae",)
@@ -99,7 +117,9 @@ def collect(eval_root: str, arms=ARMS, seeds=SEEDS) -> List[Dict[str, object]]:
                 "arm": arm, "seed": seed, "run_dir": d if os.path.isdir(d) else None,
                 "n_splits": len(per_split), "per_split": per_split,
                 "status": "MISSING" if not per_split else
-                          ("complete" if len(per_split) == N_SPLITS else "partial"),
+                          ("WITHDRAWN" if (arm, seed) in WITHDRAWN else
+                           "complete" if len(per_split) == N_SPLITS else "partial"),
+                "withdrawn": WITHDRAWN.get((arm, seed)),
             }
             for key in COMPARISON:
                 vals = [m[key] for m in per_split.values()
@@ -214,10 +234,28 @@ def main(argv=None) -> int:
     for r in recs:
         sd = r.get("pearson_delta_std")
         pdcell = _fmt(r["pearson_delta"]) + (f" ± {_fmt(sd)}" if sd else "")
-        W(f"| `{r['arm']}` | {r['seed']} | {r['status']} | {r['n_splits']} | {pdcell} "
-          f"| {_fmt(r['mae'])} | {_fmt(r['overlap_at_N'])} "
-          f"| {_fmt(r['discrimination_score_l1'])} |")
+        cells = [_fmt(r["mae"]), _fmt(r["overlap_at_N"]),
+                 _fmt(r["discrimination_score_l1"])]
+        status = r["status"]
+        if status == "WITHDRAWN":
+            # struck through, not deleted: the number was reported, and the record of what
+            # was believed when is evidence. The reason goes in a footnote below.
+            status = "⛔ **WITHDRAWN**"
+            pdcell = f"~~{pdcell}~~"
+            cells = [f"~~{c}~~" for c in cells]
+        W(f"| `{r['arm']}` | {r['seed']} | {status} | {r['n_splits']} | {pdcell} "
+          f"| {cells[0]} | {cells[1]} | {cells[2]} |")
     W("")
+
+    wd = [r for r in recs if r["status"] == "WITHDRAWN"]
+    if wd:
+        W("### ⛔ Withdrawn results\n")
+        W("These numbers were reported and are **no longer valid**. They are struck through "
+          "rather than deleted, and excluded from the completion tally.\n")
+        for r in wd:
+            W(f"- **`{r['arm']}` seed {r['seed']}** "
+              f"(was {_fmt(r['pearson_delta'])}): {r['withdrawn']}")
+        W("")
 
     if occam:
         W("## Ours, for comparison\n")

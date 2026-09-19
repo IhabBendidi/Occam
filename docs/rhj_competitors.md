@@ -868,16 +868,18 @@ genept trains `class_embedding.emb.weight`, onehot `class_embedding.null_emb.wei
 **Answer: they moved it past `transfer`.** Same checkpoint (`best_celleval.ckpt`, step 63,999),
 same panel, same scorer — only the export changed.
 
-PARTIAL: 3 of 5 splits scored, `model_nocal`. Split-to-split spread is 0.0031.
+**FINAL: all 5 splits, `model_nocal`.** ± is the across-split sd.
 
 | metric (direction) | DEFECTIVE (mixed sentences) | **FIXED** | change |
 |---|---|---|---|
-| `pearson_delta` ↑ | 0.1306 ± 0.0050 | **0.2373** | **+0.1067** |
-| `mae` ↓ | 0.0337 | **0.0291** | −0.0046 |
-| `overlap_at_N` ↑ | 0.0306 | **0.0855** | **×2.8** |
-| `discrimination_score_l1` ↑ (chance 0.5) | 0.5448 | **0.6642** | +0.1194 |
+| `pearson_delta` ↑ | 0.1306 ± 0.0050 | **0.2362 ± 0.0019** | **+0.1056** |
+| `mae` ↓ | 0.0337 ± 0.0001 | **0.0291 ± 0.0001** | −0.0046 |
+| `overlap_at_N` ↑ | 0.0306 ± 0.0023 | **0.0849 ± 0.0008** | **×2.8** |
+| `discrimination_score_l1` ↑ (chance 0.5) | 0.5448 ± 0.0050 | **0.6639 ± 0.0030** | +0.1191 |
 
-Per split: 0.2373 / 0.2388 / 0.2357.
+Per split: 0.2373 / 0.2388 / 0.2357 / 0.2350 / 0.2340 — spread 0.0048, and the sd HALVED
+(0.0050 → 0.0019), which is itself evidence: a contaminated sentence layout added variance
+that depended on which perturbations happened to share a batch.
 
 **Read against the anchors:** it was sitting ON `meanpert` **0.1324** — the baseline that
 ignores perturbation identity — and now clears `transfer` **0.2323**, the same perturbation
