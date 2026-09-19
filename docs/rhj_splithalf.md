@@ -55,6 +55,160 @@ identity floor and the score alone would not distinguish that from a genuinely w
 ⚠️ Step 3 is the pre-registration: **the diagnostic decides whether the sweep is worth running**,
 rather than the sweep being run and the diagnostic quoted afterwards.
 
+## ⭐⭐ F-emit6 — the 4-way emission/calibration comparison on s313, **split 00 only**: doing NOTHING wins `pearson_delta`; emission buys `overlap_at_N`
+
+**Objective.** Best model on SEEN perturbations in an UNSEEN cell line; headline is split-half
+paired `pearson_delta` on `rhj_fewshot`. Anchors (test, 5 splits): `meanpert` 0.1324 ·
+**`transfer` 0.2323** · **ours 0.3415** · `experimental` 0.3722.
+
+**Question this answers.** On ONE fixed checkpoint, which post-hoc emission treatment should be
+the default: nothing, control-fit quantile calibration, NB count emission, or NB emission with
+per-perturbation exact column sums? Phrased so every outcome is meaningful: if one arm wins all
+four metrics it is simply the default; if the arms trade metrics, the choice depends on which
+metric the submission is scored on, and that has to be said explicitly.
+
+**What is varied:** the post-hoc treatment only. **Held fixed:** the checkpoint (`s313`,
+`rhj_fewshot_s313__lr1e-3_dlr1e-3_cos0.5_dpo0_fmode-mult_fh256_fmf1_s42`, epoch 25,
+`best_metric` 0.3769), the split (00), the cohort, the gene axis, the seeded control draw.
+**Nothing is retrained** — this is engineering on a finished prediction, not modelling.
+
+### Measured — `s313`, split 00
+
+`mae` is an ERROR: **lower is better.**
+
+| treatment | `pearson_delta` | `mae` ↓ | `overlap_at_N` | `disc_l1` | emission config |
+|---|---|---|---|---|---|
+| **none (`model_nocal`) — the default** | **0.3411** | **0.0210** | 0.0646 | 0.6541 | — |
+| calibration only (`model_cal`) | 0.2740 | 0.0886 | 0.0248 | **0.7750** | control-fit quantile |
+| NB emission, fair theta | 0.1775 | 0.0331 | 0.0614 | 0.6475 | theta from checkpoint `log_theta` via `axis_ensembl`, lib 17,500 |
+| **NB emission + `exact_colsum`, fair theta** | 0.2027 | 0.0276 | **0.0961** | 0.6393 | same, per-perturbation column sums pinned |
+| NB emission, **broken** theta/lib | 0.1611 | 0.0490 | 0.0079 | 0.6700 | ⛔ MoM theta collapsed to the 10,000 cap, lib 2,000 (8.7× too shallow) |
+| NB emission + `exact_colsum`, **broken** | 0.2478 | 0.0295 | 0.0314 | 0.6511 | ⛔ same broken inputs |
+
+### Reading
+
+1. **On `pearson_delta`, doing nothing wins by a wide margin.** 0.3411 vs 0.2740 (calibration),
+   0.2027 (NB + colsum), 0.1775 (NB alone). Every treatment costs between 0.067 and 0.164. If
+   `pearson_delta` is the reported metric, the answer is: apply none of them.
+2. **On `overlap_at_N`, NB emission + `exact_colsum` wins by 49%** — 0.0961 vs 0.0646 for the
+   raw model. That is F-emit5's result, reproduced here in the same table as its alternatives.
+   The two metrics point in **opposite directions**, so this is a genuine trade, not a
+   dominance.
+3. **`exact_colsum` is worth +0.025 `pearson_delta` and +0.035 `overlap_at_N` within emission**
+   (0.1775→0.2027, 0.0614→0.0961) and improves `mae` 0.0331→0.0276. It is variance reduction on
+   noise we injected ourselves, and it moves what pinning a column sum should move. Never use NB
+   emission without it.
+4. **Calibration is the worst of both:** it loses 0.067 `pearson_delta`, quadruples `mae`
+   (0.0210→0.0886) and cuts `overlap_at_N` by 2.6× (0.0646→0.0248). Its only gain is `disc_l1`
+   (0.6541→0.7750). Consistent with F-loss3, where calibration lost on 14/14 loss arms.
+5. **The broken-input rows are kept deliberately** (F-emit4 → F-emit5). They show the failure is
+   not subtle: with theta collapsed to the cap and lib 8.7× too shallow, `overlap_at_N` falls to
+   0.0079 — below the baseline — and a conclusion was drawn from it before the zero-fraction
+   sanity check (0.877 vs the reference 0.515) was read.
+
+⚠️ **SPLIT 00 ONLY, n = 1.** Every number in this table is a single split. The loss arms show an
+across-split sd of ~0.003 on `pearson_delta`, so the large gaps here (0.07–0.16) are far outside
+it, but the small ones — `exact_colsum`'s +0.025, and anything on `overlap_at_N`, whose
+across-split variability has not been measured — are **not** established. Splits 1–4 were
+deferred by the user ("nah lets just wait for others").
+
+⚠️ `s313_fairtheta` emitted split 00 but its cell-eval never produced `agg_results.csv`; it is
+not in the table.
+
+## ⭐⭐ F-loss3 — TEST cell-eval on all 14 loss arms: **every NB arm loses to plain smooth_l1, and calibration hurts 14/14**
+
+**Objective.** Best model on SEEN perturbations in an UNSEEN cell line; headline is split-half
+paired `pearson_delta` on `rhj_fewshot`. Anchors (test, all 5 splits): `ctrlcell` −0.0018 ·
+`ctrlmean` 0.0016 · `meanpert` 0.1324 · **`transfer` 0.2323** · **ours 0.3415** ·
+`experimental` 0.3722.
+
+**Questions this answers.** (a) Does an NB likelihood term beat plain smooth_l1 on the *test*
+metric, at any weight, and does scale-matching rescue it? (b) Does control-fit quantile
+calibration help on the loss arms, as it was assumed to?
+
+**What is varied:** `loss_type` ∈ {smooth_l1, nb, nb_smooth_l1}, `nb_weight` ∈ {0, 0.1, 0.25,
+0.5, 0.75, 0.9}, `nb_scale` ∈ {1.0, 6.5}, × calibration {off, on}. **Held fixed:** lr 1e-3,
+decoder_lr 1e-3, cos 0.5, `fmode-mult`, `fh256`, `fmf1`, seed 42, adjacency-map pert model, the
+611-perturbation cohort, the 6,983-gene axis, the seeded per-split control draw.
+
+**What each outcome means (pre-registered).** NB above smooth_l1 ⇒ the count likelihood is worth
+its complexity and `nb_scale` matters. NB below at *every* weight including the scale-matched
+ones ⇒ F6's NB penalty is real on adjacency-map arms and is not a scale artefact. Calibration
+positive ⇒ keep it on. Calibration negative ⇒ the 0.3415 headline must stay `model_nocal`.
+
+⚠️ `nb_scale` 6.5 is the **scale-matched** arm: NB and smooth_l1 have different natural
+magnitudes, so a raw `nb_weight` confounds "how much NB" with "how big NB's gradient is". 6.5 is
+the measured ratio.
+
+### Measured — jobs `18179608` (L01/L02) and `18179618` (14 arms × 5 splits), seed 42
+
+Uncalibrated (`model_nocal`) is the reportable column. `mae` and the calibrated `mae` are
+**ERRORS: lower is better.**
+
+| arm | loss | `nb_weight` | `nb_scale` | n | **`pearson_delta` uncal** | `mae` ↓ | `ovl@N` | `disc_l1` |
+|---|---|---|---|---|---|---|---|---|
+| **L11** | smooth_l1 | 0 | — | 5 | **0.3415 ± 0.0031** | 0.0210 | 0.0642 | 0.6534 |
+| **L13** | smooth_l1 | 0 | — | 5 | **0.3415 ± 0.0031** | 0.0210 | 0.0642 | 0.6534 |
+| L12 | smooth_l1 | 0 | — | 1 | 0.3414 | 0.0210 | 0.0642 | 0.6538 |
+| L10 | smooth_l1 | 0 | — | 2 | 0.3396 ± 0.0025 | 0.0210 | 0.0635 | 0.6533 |
+| L02 | nb_smooth_l1 | 0.1 | 1.0 | 5 | 0.3184 ± 0.0033 | 0.0211 | 0.0621 | 0.6483 |
+| L08 | nb_smooth_l1 | 0.5 | **6.5** | 2 | 0.3129 ± 0.0033 | 0.0211 | 0.0643 | 0.6434 |
+| L14 | nb_smooth_l1 | 0.5 | **6.5** | 2 | 0.3129 ± 0.0033 | 0.0211 | 0.0643 | 0.6434 |
+| L07 | nb_smooth_l1 | 0.25 | **6.5** | 4 | 0.3098 ± 0.0028 | 0.0212 | 0.0608 | 0.6412 |
+| L03 | nb_smooth_l1 | 0.25 | 1.0 | 5 | 0.2989 ± 0.0029 | 0.0214 | 0.0663 | 0.6440 |
+| L09 | nb_smooth_l1 | 0.75 | **6.5** | 4 | 0.2976 ± 0.0025 | 0.0216 | 0.0629 | 0.6447 |
+| L05 | nb_smooth_l1 | 0.75 | 1.0 | 5 | 0.2790 ± 0.0027 | 0.0226 | 0.0539 | 0.6472 |
+| L06 | nb_smooth_l1 | 0.9 | 1.0 | 5 | 0.2774 ± 0.0027 | 0.0221 | 0.0660 | 0.6409 |
+| L01 | **nb (pure)** | 1.0 | 1.0 | 5 | **0.2766 ± 0.0027** | 0.0220 | 0.0651 | 0.6425 |
+| L04 | nb_smooth_l1 | 0.5 | 1.0 | 5 | **0.2740 ± 0.0029** | 0.0219 | 0.0600 | 0.6357 |
+
+### Calibration: control-fit quantile, same arms
+
+| arm | uncal | **cal** | Δ | `mae` uncal ↓ | `mae` cal ↓ | `ovl@N` uncal | `ovl@N` cal | `disc_l1` uncal | `disc_l1` cal |
+|---|---|---|---|---|---|---|---|---|---|
+| L11 | 0.3415 | 0.2732 | **−0.0683** | 0.0210 | 0.0890 | 0.0642 | 0.0243 | 0.6534 | 0.7766 |
+| L13 | 0.3415 | 0.2736 | −0.0679 | 0.0210 | 0.0893 | 0.0642 | 0.0244 | 0.6534 | 0.7757 |
+| L12 | 0.3414 | 0.2732 | −0.0682 | 0.0210 | 0.0890 | 0.0642 | 0.0243 | 0.6538 | 0.7766 |
+| L10 | 0.3396 | 0.2715 | −0.0681 | 0.0210 | 0.0880 | 0.0635 | 0.0239 | 0.6533 | 0.7805 |
+| L02 | 0.3184 | 0.2789 | −0.0395 | 0.0211 | 0.0917 | 0.0621 | 0.0240 | 0.6483 | 0.7575 |
+| L08 | 0.3129 | 0.2773 | −0.0356 | 0.0211 | 0.0871 | 0.0643 | 0.0229 | 0.6434 | 0.7546 |
+| L14 | 0.3129 | 0.2771 | −0.0358 | 0.0211 | 0.0869 | 0.0643 | 0.0226 | 0.6434 | 0.7556 |
+| L07 | 0.3098 | 0.2619 | −0.0479 | 0.0212 | 0.0867 | 0.0608 | 0.0324 | 0.6412 | 0.7610 |
+| L03 | 0.2989 | 0.2612 | −0.0377 | 0.0214 | 0.0624 | 0.0663 | 0.0208 | 0.6440 | 0.7728 |
+| L09 | 0.2976 | 0.2703 | −0.0273 | 0.0216 | 0.0896 | 0.0629 | 0.0243 | 0.6447 | 0.7619 |
+| L05 | 0.2790 | 0.2590 | −0.0200 | 0.0226 | 0.0923 | 0.0539 | 0.0283 | 0.6472 | 0.7699 |
+| L06 | 0.2774 | 0.2691 | −0.0083 | 0.0221 | 0.0917 | 0.0660 | 0.0275 | 0.6409 | 0.7595 |
+| L01 | 0.2766 | 0.2627 | −0.0139 | 0.0220 | 0.0902 | 0.0651 | 0.0246 | 0.6425 | 0.7708 |
+| L04 | 0.2740 | 0.2372 | −0.0368 | 0.0219 | 0.0842 | 0.0600 | 0.0262 | 0.6357 | 0.7754 |
+
+### Reading
+
+1. **NB loses at every weight and every scale — 10/10 NB arms below plain smooth_l1.** Best NB is
+   `L02` (`nb_weight` 0.1) at 0.3184, −0.0231 from 0.3415; pure NB (`L01`) is −0.0649. This
+   reproduces F6 on adjacency-map arms with the confound removed, and the **scale-matched**
+   arms (`nb_scale` 6.5: L07/L08/L09 at 0.3098/0.3129/0.2976) rule out "NB only lost because its
+   gradient was the wrong size". Scale-matching *does* help NB relative to `nb_scale` 1.0 at the
+   same weight (L08 0.3129 > L04 0.2740; L07 0.3098 > L03 0.2989) — it just never reaches
+   smooth_l1. **NB's optimum is at `nb_weight` → 0**, which is an endpoint optimum and means
+   "do not use NB", not "tune it lower".
+2. **⛔ Calibration costs `pearson_delta` on 14/14 arms**, by 0.008 to 0.068, and makes `mae`
+   **4× worse** (0.021 → 0.089). It buys `disc_l1` (0.64 → 0.78) and destroys `overlap_at_N`
+   (0.064 → 0.024, a 2.6× fall). The headline must stay `model_nocal`. This extends F12 from one
+   checkpoint to the whole loss family, and the damage is LARGEST on the best arms
+   (−0.068 on the smooth_l1 group vs −0.008…−0.014 on the weakest NB arms), so calibration is
+   not a safe default that merely fails to help.
+3. **L11 = L13 = 0.3415 to four decimals, and L12 = 0.3414** — the bit-identical-curve signature
+   that detected F-loss1. All four "DCOS" arms here ran with the term INERT, so they are
+   smooth_l1 replicates. That makes them the **exact controls** for the live-DCOS D-series:
+   `L11` is `D02`'s control and `L12` is `D03`'s (same config hash, different git_sha).
+4. **The 0.3415 headline is reproduced** by an independent arm (`L13`) at the same value with the
+   same sd, so it is not a one-run number.
+
+⚠️ **Incomplete at time of writing:** 3 of 60 tasks in `18179618` still RUNNING. `L08`, `L10`,
+`L14` have 2/5 splits and `L12` has 1/5 on the uncalibrated side; their means are **partial** and
+labelled `n` above. Across-split sd is ~0.003 everywhere, so the partial means are unlikely to
+move by more than ~0.005, but they are not final.
+
 ## ⭐⭐ F-loss2 — DCOS, once actually live, adds **+0.028…+0.034 validation** at every weight tested (5/5)
 
 **Objective.** Best model on SEEN perturbations in an UNSEEN cell line; headline is split-half
