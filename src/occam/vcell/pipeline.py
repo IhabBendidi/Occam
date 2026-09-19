@@ -3188,7 +3188,14 @@ class VirtualCellTrainer:
             "is_virtual_cell_checkpoint": True,
         }
         # Stage C: persist the (possibly finetuned) nb/zinb dispersion so this VC ckpt can chain.
+        # ⚠️ `nb_smooth_l1` KEEPS ITS NB TERM IN `_nb_fn`, NOT `recon_loss_fn` (which is None
+        # for the combo losses), so looking only at `recon_loss_fn` silently dropped a TRAINED
+        # per-gene dispersion: L02's checkpoint has no `log_theta` at all, while L01's does.
+        # That loses the arm's own dispersion for chaining AND for NB emission, which is the
+        # one thing a jointly-trained NB arm is uniquely able to provide.
         lf = getattr(self, "recon_loss_fn", None)
+        if lf is None:
+            lf = getattr(self, "_nb_fn", None)
         if lf is not None and hasattr(lf, "parameters") and any(True for _ in lf.parameters()):
             checkpoint["loss_state_dict"] = lf.state_dict()
             disp = {"loss_type": self.config.loss_type}
