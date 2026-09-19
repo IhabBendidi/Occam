@@ -213,28 +213,59 @@ def main(argv=None) -> int:
     col_genes = train_ds.gene_vars[ds_name]
 
     def predict(ctrl: np.ndarray, pert_names: Sequence[str]) -> np.ndarray:
+        """One predicted cell per control row, in PURE cell sets.
+
+        ⚠️ PERTURBDIFF IS SET-BASED. It samples `(b, S, g)` at once with `S =
+        data.use_cell_set` (16 on the official recipe), and training groups its sets by
+        `data.cell_set_group_by=pert_celltype` -- i.e. **one perturbation per set**.
+
+        This function used to pad the whole matrix to a multiple of S and reshape
+        sequentially, which put 46.1% of the panel's cells in a set spanning two to four
+        DIFFERENT perturbations (measured on split 0: 625 of 1,160 sets pure). That is the
+        same defect that collapsed STATE to the `meanpert` baseline -- see C27 -- and it is
+        caught here BEFORE this arm's first export rather than after.
+
+        Sets are built per perturbation. A short set is filled from that perturbation's own
+        cells and the filler slots are flagged in `is_padded_list`, which is the mask the
+        model already consumes for exactly this purpose.
+        """
         X = torch.from_numpy(np.asarray(ctrl, dtype=np.float32))
         n, g = X.shape
-        codes = torch.tensor([dm.pert_dict[str(p)] for p in pert_names], dtype=torch.long)
+        names = np.asarray([str(p) for p in pert_names], dtype=object)
+        codes = torch.tensor([dm.pert_dict[v] for v in names], dtype=torch.long)
 
-        pad = (-n) % S
-        if pad:
-            X = torch.cat([X, X[-1:].expand(pad, g)], 0)
-            codes = torch.cat([codes, codes[-1:].expand(pad)], 0)
-        is_pad = torch.zeros(X.shape[0], dtype=torch.long)
-        if pad:
-            is_pad[n:] = 1
-        n_sets = X.shape[0] // S
+        # PURE sets: partition rows by perturbation, then chunk each group into S.
+        # `np.resize` keeps the originals first, so a set's real rows are its leading slots.
+        plan: list[tuple[np.ndarray, np.ndarray]] = []
+        _, _first = np.unique(names, return_index=True)
+        for lbl in names[np.sort(_first)]:
+            idx = np.flatnonzero(names == lbl)
+            for i in range(0, len(idx), S):
+                sett = idx[i:i + S]
+                plan.append((sett, sett if len(sett) == S else np.resize(sett, S)))
 
-        out = np.empty((X.shape[0], g), dtype=np.float32)
+        covered = np.concatenate([sett for sett, _ in plan])
+        if len(covered) != n or len(np.unique(covered)) != n:
+            raise RuntimeError(
+                f"the set plan covers {len(np.unique(covered))} of {n} rows "
+                f"({len(covered)} slots). Every row must be predicted exactly once or the "
+                f"output matrix is silently part-stale.")
+
+        out = np.full((n, g), np.nan, dtype=np.float32)
         B = int(args.sets_per_batch)
         with torch.no_grad():
-            for s0 in range(0, n_sets, B):
-                s1 = min(s0 + B, n_sets)
-                sl = slice(s0 * S, s1 * S)
-                b = s1 - s0
-                cont = X[sl].reshape(b, S, g).to(args.device)
-                cov_pert = codes[sl].reshape(b, S).to(args.device)
+            for s0 in range(0, len(plan), B):
+                chunk = plan[s0:s0 + B]
+                b = len(chunk)
+                rows = np.concatenate([padded for _, padded in chunk])
+                # 1 marks a filler slot, per their own padding convention
+                pad_mask = np.concatenate([
+                    np.r_[np.zeros(len(sett), dtype=np.int64),
+                          np.ones(S - len(sett), dtype=np.int64)]
+                    for sett, _ in chunk])
+                is_pad = torch.from_numpy(pad_mask)
+                cont = X[rows].reshape(b, S, g).to(args.device)
+                cov_pert = codes[rows].reshape(b, S).to(args.device)
                 batch_data = {
                     # ⚠️ pert_emb is the TARGET. Only its shape and the padding mask are read.
                     "pert_emb": cont,
@@ -247,7 +278,7 @@ def main(argv=None) -> int:
                                                device=args.device),
                     "cov_batch": torch.full((b, S), batch_code, dtype=torch.long,
                                             device=args.device),
-                    "is_padded_list": is_pad[sl].reshape(b, S).to(args.device),
+                    "is_padded_list": is_pad.reshape(b, S).to(args.device),
                     "ds_name": [ds_name] * b,
                     "col_genes": [col_genes] * b,
                 }
@@ -267,8 +298,14 @@ def main(argv=None) -> int:
                     raise RuntimeError(
                         f"sampling returned {p.shape[0]} rows for {b * S} input cells; a "
                         f"positional prediction matrix would then be misaligned")
-                out[sl] = p
-        return out[:n]
+                for k, (sett, _) in enumerate(chunk):
+                    out[sett] = p[k * S: k * S + len(sett)]
+
+        if np.isnan(out).any():
+            raise RuntimeError(
+                f"{int(np.isnan(out).any(1).sum())} row(s) were never written by any set; "
+                f"refusing to emit a partly-NaN prediction.")
+        return out
 
     export_split(predict, split, args.out_dir, arm=ARM,
                  from_target_sum=TRAIN_TARGET_SUM, from_log1p=True,
