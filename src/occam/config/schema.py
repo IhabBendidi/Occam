@@ -344,6 +344,15 @@ VCELL_SCHEMA: Dict[str, Dict[str, Optional[str]]] = {
         "latent_loss_type": "latent_loss_type", "delta_reg_type": "delta_reg_type",
         "expression_loss_mode": "expression_loss_mode",
         "delta_mag_weight": "delta_mag_weight",
+        # DCOS -- the direction of the EFFECT, not of the profile. Distinct from
+        # `cosine_loss_weight`, which is cos(prediction, target) and is dominated by the
+        # baseline expression every perturbation shares.
+        "delta_cos_weight": "delta_cos_weight",
+        # nb_smooth_l1: the two recon terms differ by a measured ~6.5x in scale, so the blend
+        # weight and the pre-scaling are both sweep axes. Without `nb_scale`, `nb_weight`
+        # sweeps over one order of magnitude of the NB term's own size rather than over the
+        # trade-off -- which is the confound F6 hit.
+        "nb_weight": "nb_weight", "nb_scale": "nb_scale",
         "vc_load_dispersion": "vc_load_dispersion",
     },
     "guards": {

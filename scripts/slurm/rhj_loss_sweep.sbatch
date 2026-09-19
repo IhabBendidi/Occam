@@ -1,0 +1,139 @@
+#!/usr/bin/env bash
+# The LOSS-COMPOSITION sweep: optimisation knobs FROZEN at our best arm, loss terms varied.
+#
+#   GRID=scripts/grids/rhj_loss_sweep.tsv \
+#   sbatch --qos=hooke-predict --wckey=hooke-predict --array=0-14%8 \
+#          scripts/slurm/rhj_loss_sweep.sbatch
+#   sbatch --qos=vco --wckey=vco --array=0-14%5 scripts/slurm/rhj_loss_sweep.sbatch
+# qos and wckey must MATCH.
+#
+# WHAT THIS ANSWERS
+# -----------------
+# Overall goal: predict a perturbation's effect in a context where that perturbation was never
+# measured, from a single control cell. Headline metric: cell-eval `pearson_delta` on the
+# 611-perturbation HepG2 test cohort. Anchors: meanpert 0.1324 · transfer 0.2323 ·
+# experimental 0.3722 · our best 0.3415.
+#
+# THIS SWEEP'S QUESTION: does the RECONSTRUCTION LIKELIHOOD or the EFFECT-DIRECTION term buy
+# anything, once the optimisation knobs are held at the best known setting?
+#
+# Two things motivate it, both recorded:
+#   * F6 concluded `smooth_l1` > `nb` 12/12 -- but F6 ITSELF records the confound: NB and
+#     SmoothL1 differ by a measured ~6.5x in scale, so at cosine_loss_weight 0.5 the smooth_l1
+#     arms were genuinely half-cosine while the NB arms were effectively PURE NB. F6 measured a
+#     loss *configuration*, not a likelihood. It was also GNN-era (`pert_model_type=gnn`) and
+#     its arms were NEVER SCORED -- the eval array died on a calibrate='quantile' launch bug,
+#     1 of 27 arms produced a result. So NB is untested on adjacency_map. See F-emit1.
+#   * Occam's existing `cosine_loss_weight` is cos(prediction, target) on the PROFILE, which is
+#     dominated by the baseline expression every perturbation shares. DCOS scores
+#     1 - cos(pred - ctrl_mean, group_mean - ctrl_mean) instead: the direction of the EFFECT.
+#
+# HELD FIXED (our best arm, s313): pert_model_type=adjacency_map, batch_size=2048, lr=1e-3,
+# decoder_lr=1e-3, cosine_loss_weight=0.5, data_perts_only=false, film_mode=multiplicative_only,
+# film_hidden_dim=256, film_mean_free=true, epochs=30, seed=42, and the frozen benchmark.
+#
+# VARIED: loss_type, nb_weight, nb_scale, delta_cos_weight (one row per arm in the TSV).
+#
+# HOW TO READ THE RESULT
+# ----------------------
+# ⚠️ JUDGE ON THE VALIDATION METRIC FIRST -- that is what this sweep is for. Do NOT score the
+# test panel until the validation ordering is decided, or the panel stops being held out.
+# ⚠️ AND READ THE PER-EPOCH CURVE BEFORE RANKING. F7: the validation metric oscillates by ±0.20
+# between consecutive epochs, against a between-arm span of ~0.012 in the F6 grid. A single
+# best-epoch number is NOT a ranking signal on its own.
+#
+# WHAT EACH OUTCOME MEANS
+#   * a scale-matched NB arm (L07-L09) beats smooth_l1 -> F6's verdict was the confound, not
+#     the likelihood, and the loss choice should be revisited.
+#   * it does not -> F6's conclusion survives on adjmap too, now without the confound.
+#   * DCOS (L10-L13) helps -> the profile cosine was the wrong cosine, and the effect direction
+#     is worth supervising directly.
+#   * DCOS does nothing -> the FiLM/adjacency path already captures direction, and the
+#     remaining gap is magnitude or context, not direction.
+
+#SBATCH --job-name=rhj_loss
+#SBATCH --partition=hopper
+#SBATCH --gres=gpu:h100:1
+#SBATCH --cpus-per-task=16
+#SBATCH --mem=128G
+#SBATCH --time=02:00:00
+#SBATCH --exclude=hop39
+#SBATCH --output=runs/slurm/rhj_loss_%A_%a.out
+#SBATCH --error=runs/slurm/rhj_loss_%A_%a.err
+
+set -euo pipefail
+
+_find_repo() {
+    local c
+    for c in "${OCCAM_REPO:-}" "${SLURM_SUBMIT_DIR:-}" \
+             "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)"; do
+        if [ -n "$c" ] && [ -f "$c/pyproject.toml" ] && [ -d "$c/src/occam" ]; then
+            echo "$c"; return 0
+        fi
+    done
+    echo "cannot locate the Occam repo; sbatch from the repo root or set OCCAM_REPO" >&2
+    return 1
+}
+HERE="$(_find_repo)" || exit 1
+cd "$HERE"
+mkdir -p runs/slurm
+
+export PYTHONPATH="$HERE/src${PYTHONPATH:+:$PYTHONPATH}"
+export CUBLAS_WORKSPACE_CONFIG=":4096:8"
+
+GRID="${GRID:-scripts/grids/rhj_loss_sweep.tsv}"
+CONFIG="${CONFIG:-configs/rhj_fewshot.yaml}"
+IDX="${SLURM_ARRAY_TASK_ID:-0}"
+
+ROW="$(grep -v '^#' "$GRID" | tail -n +2 | sed -n "$((IDX + 1))p")"
+if [ -z "$ROW" ]; then
+    echo "no row at index $IDX in $GRID" >&2
+    exit 1
+fi
+read -r ARM LOSS NBW NBS DCW <<<"$ROW"
+
+SEED="${SEED:-42}"
+SUFFIX="${ARM}__${LOSS}_nbw${NBW}_nbs${NBS}_dcos${DCW}_s${SEED}"
+
+echo "=== rhj loss-composition sweep arm ${ARM} ==="
+echo "host    : $(hostname)"
+echo "started : $(date -Is)"
+echo "git sha : $(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
+echo "slurm   : job ${SLURM_ARRAY_JOB_ID:-?} task ${IDX}  qos ${SLURM_JOB_QOS:-?}"
+echo "varied  : loss_type=${LOSS} nb_weight=${NBW} nb_scale=${NBS} delta_cos_weight=${DCW}"
+echo "frozen  : adjacency_map batch=2048 lr=1e-3 dlr=1e-3 cos=0.5 dpo=false"
+echo "          film=multiplicative_only fh=256 fmf=true epochs=30 seed=${SEED}  (= arm s313)"
+echo "run dir : runs/rhj_loss_${SUFFIX}/vcell"
+echo
+
+mkdir -p "runs/rhj_loss_${SUFFIX}/vcell"
+cat > "runs/rhj_loss_${SUFFIX}/slurm_job.json" <<JSON
+{"arm_id": "${ARM}", "kind": "loss", "loss_type": "${LOSS}",
+ "nb_weight": "${NBW}", "nb_scale": "${NBS}", "delta_cos_weight": "${DCW}",
+ "slurm_array_job_id": "${SLURM_ARRAY_JOB_ID:-}", "slurm_task_id": "${IDX}",
+ "qos": "${SLURM_JOB_QOS:-}", "host": "$(hostname)", "started": "$(date -Is)"}
+JSON
+
+python -m occam.train --config "$CONFIG" --stages vcell \
+    --run-suffix "$SUFFIX" \
+    --set "stages.vcell.graph.pert_model_type=adjacency_map" \
+    --set "stages.vcell.optim.batch_size=2048" \
+    --set "stages.vcell.optim.lr=1e-3" \
+    --set "stages.vcell.optim.decoder_lr=1e-3" \
+    --set "stages.vcell.loss.loss_type=${LOSS}" \
+    --set "stages.vcell.loss.cosine_loss_weight=0.5" \
+    --set "stages.vcell.loss.nb_weight=${NBW}" \
+    --set "stages.vcell.loss.nb_scale=${NBS}" \
+    --set "stages.vcell.loss.delta_cos_weight=${DCW}" \
+    --set "stages.vcell.graph.data_perts_only=false" \
+    --set "stages.vcell.interaction.interaction_type=film" \
+    --set "stages.vcell.interaction.film_mode=multiplicative_only" \
+    --set "stages.vcell.interaction.film_hidden_dim=256" \
+    --set "stages.vcell.interaction.film_mean_free=true" \
+    --set "seed=${SEED}"
+
+echo
+echo "finished: $(date -Is)"
+echo
+echo "⚠️ JUDGE ON VALIDATION FIRST. Check the per-epoch curve BEFORE ranking (F7, ±0.20 swing):"
+echo "    grep 'pearson_delta: mean=' runs/slurm/rhj_loss_${SLURM_ARRAY_JOB_ID:-JOB}_${IDX}.out"
