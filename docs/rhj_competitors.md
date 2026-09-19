@@ -948,9 +948,46 @@ Build sentences per perturbation, matching `_create_sentences`:
    only its effect through attention matters);
 4. scatter each sentence's real predictions back to their original row positions.
 
-**This also means the other set-based arm needs checking**: PerturbDiff uses
-`use_cell_set=16` with `cell_set_group_by=pert_celltype`, so its export has the same
-requirement. TxPert and CellFlow are per-cell and unaffected — TxPert's 0.3077 stands.
+### Verification of the fix, before spending a GPU
+
+Replaying the new plan on split 0's real labels:
+
+| | before | after |
+|---|---|---|
+| sentences | 290 | 671 |
+| **PURE (1 perturbation)** | **39** | **671 of 671** |
+| rows covered exactly once | yes | yes (18,575 of 18,575) |
+
+Padding overhead is 131% — most perturbations have ~30 cells and pad to 64 — so the export
+costs ~2.3x more compute. That is the price of matching training, and training pads the same
+way.
+
+### ⛔ THE SAME DEFECT WAS PRESENT IN PERTURBDIFF — caught before its first export
+
+PerturbDiff is also set-based: it samples `(b, S, g)` with `S = data.use_cell_set = 16`, and
+training groups sets by `data.cell_set_group_by=pert_celltype`, i.e. one perturbation per set.
+Its export adapter reshaped sequentially in exactly the same way. Measured on split 0:
+
+| distinct perturbations per 16-cell set | 1 | 2 | 3 | 4 |
+|---|---|---|---|---|
+| sets | 625 | 498 | 36 | 1 |
+
+**53.9% of sets were pure, and 46.1% of the panel's cells (8,560 of 18,575) sat in an impure
+set.** Less severe than STATE's 87% because S is 16 against ~30 cells per perturbation, but
+the same error. Fixed the same way, with one improvement available here: PerturbDiff has an
+`is_padded_list` mask the model already consumes, so filler slots are FLAGGED rather than
+silently tiled.
+
+**TxPert and CellFlow are per-cell and unaffected** — TxPert predicts row by row and CellFlow
+predicts per condition from a PCA latent, so neither has a set axis. **TxPert's 0.3077
+stands.**
+
+⚠️ **The general lesson, and why this is worth a finding.** Every check in place was about the
+CONTENT of the input rows — gene axis order, ID space, library size, control pairing, one-hot
+lookup by name. **None was about their GROUPING.** For a set-based model the grouping IS part
+of the input, and getting it wrong yields a plausible, well-calibrated matrix that scores at a
+baseline. Any future arm with a set axis needs a purity check on the emitted plan, not only on
+the values.
 
 ## ⭐⭐ C26 — the max-value refusal would have discarded a GOOD arm over 1 value in 4,357,392
 
