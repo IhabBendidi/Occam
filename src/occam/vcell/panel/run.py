@@ -155,8 +155,24 @@ def score_arm(tag: str, matrix: np.ndarray, arm_labels: np.ndarray, panel: Panel
 
     metrics = run_celleval_v1(pred_path, target_path, arm_dir, **kwargs)
     if not metrics:
-        print(f"[panel] {tag}: cell-eval returned nothing; skipping")
-        return {}, arm_dir, target_path
+        # ⛔ F-infra1. This used to print and CONTINUE, so the split finished its other arms,
+        # wrote metrics.json and exited 0 -- SLURM reported COMPLETED, the arm directory
+        # existed, and only agg_results.csv was missing. A pdex 0.1.24 shared-memory race
+        # (`FileNotFoundError: '/psm_<hex>'` at pdex/_single_cell.py:140, when several
+        # cell-eval processes run on one node) hit 18 of 60 tasks that way and silently turned
+        # 31 (arm, split, mode) means into means-over-fewer-splits with no error anywhere.
+        #
+        # Failing loudly is the whole point: an absent score must not be indistinguishable from
+        # a completed one. The arm-split is then re-runnable, which a silent skip is not,
+        # because nothing records that it did not happen.
+        msg = (f"cell-eval returned no metrics for arm {tag!r} "
+               f"(pred={pred_path}, target={target_path}, out={arm_dir}). "
+               f"This is usually the pdex shared-memory race (F-infra1) -- re-run this split. "
+               f"Set OCCAM_ALLOW_EMPTY_CELLEVAL=1 to downgrade this to a warning.")
+        if os.environ.get("OCCAM_ALLOW_EMPTY_CELLEVAL") == "1":
+            print(f"[panel] ⚠️ {msg}")
+            return {}, arm_dir, target_path
+        raise RuntimeError(msg)
 
     if not os.path.isfile(cache_path):
         produced = os.path.join(arm_dir, "real_de.csv")

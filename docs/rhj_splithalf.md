@@ -55,7 +55,57 @@ identity floor and the score alone would not distinguish that from a genuinely w
 ⚠️ Step 3 is the pre-registration: **the diagnostic decides whether the sweep is worth running**,
 rather than the sweep being run and the diagnostic quoted afterwards.
 
-## ⭐⭐⭐ F-loss4 — DCOS CONFIRMED ON TEST: **+0.0246 `pearson_delta`, 5/5 splits**, but it COSTS `mae` and `overlap_at_N`
+## ⛔ F-infra1 — a pdex shared-memory race silently dropped **31 (arm, split, mode) scores** while every SLURM task exited 0
+
+**What broke.** `pdex 0.1.24`'s multiprocessing path fails with
+`FileNotFoundError: [Errno 2] No such file or directory: '/psm_<hex>'` at
+`pdex/_single_cell.py:140` (`SharedMemory(name=shm_name)`) when several cell-eval processes run
+concurrently on one node. Measured in **18 of 60** tasks of job `18179618`.
+
+**Why it was invisible.** `src/occam/vcell/panel/run.py:158` catches the empty result and prints
+`[panel] <tag>: cell-eval returned nothing; skipping`, then **continues**. The task finishes the
+other arms, writes `metrics.json`, and exits 0 — so `sacct` reports `COMPLETED`, the
+`celleval_model_<mode>/` directory exists, and only `agg_results.csv` is absent. **24 skips**
+across those 18 tasks.
+
+**Damage: 31 missing (arm, split, mode) scores**, so several published means are over fewer
+than 5 splits:
+
+| arm | uncalibrated splits present | calibrated |
+|---|---|---|
+| `L12` | **1/5** | 5/5 |
+| `L10` | 2/5 | 1/5 |
+| `L08` | 2/5 | 4/5 |
+| `L14` | 3/5 | 4/5 |
+| `L07`, `L09` | 4/5 | 4/5 |
+| `L01`, `L05`, `L06`, `L13` | 5/5 | 4/5 |
+| `D03` | 2/5 | 3/5 |
+| `D02` | **5/5** ✅ | 4/5 |
+
+**What this does and does not invalidate.**
+- ✅ **F-loss4 stands.** `D02` has all 5 uncalibrated splits and `L11` has all 5, so the
+  +0.0246 / +0.0646 paired comparison is complete and unaffected.
+- ✅ **F-loss3's ordering stands.** Every NB arm's uncalibrated mean rests on 4–5 splits, and
+  the across-split sd is ~0.003 against gaps of 0.02–0.07.
+- ⚠️ **`D03` (the validation optimum, `delta_cos_weight` 0.5) cannot be reported.** Its control
+  `L12` has 1/5 uncalibrated splits and `D03` itself has 2/5. That pair is the one this bug
+  actually blocks.
+
+**Why this is the dangerous class of failure.** The job says COMPLETED, the directory exists,
+and the number is merely absent — so a mean silently becomes a mean-over-fewer-splits with no
+error anywhere. This is the same shape as F-loss1 (DCOS ran inert with no error) and the STATE
+sentence-collapse (S1, no error, no warning). **A guard that checks a count is not a guard that
+checks a result.**
+
+**Fix applied:** `run.py` now RAISES on an empty cell-eval result instead of printing and
+continuing, so the task fails loudly and the arm-split is re-runnable. Opt out with
+`OCCAM_ALLOW_EMPTY_CELLEVAL=1` for the case where a genuinely degenerate arm is expected to
+produce nothing.
+
+**Not yet done:** re-running the 31 missing scores. Cheap (~10 min each, embarrassingly
+parallel) but not launched — it was not requested.
+
+## ⭐⭐⭐ F-loss4 — DCOS CONFIRMED ON TEST: **`pearson_delta` +0.0246 AND `disc_l1` +0.0646**, at the cost of `mae` and `overlap_at_N`
 
 **Objective.** Best model on SEEN perturbations in an UNSEEN cell line; headline is split-half
 paired `pearson_delta` on `rhj_fewshot`. Anchors (test, 5 splits): `ctrlcell` −0.0018 ·
@@ -89,6 +139,14 @@ validation-metric artefact.
 | 4 | 0.3414 → **0.3631** | **+0.0217** | 0.0210 → 0.0278 | 0.0642 → 0.0563 |
 | **mean** | **0.3415 → 0.3661** | **+0.0246** | 0.0210 → 0.0277 (**+32%, worse**) | 0.0642 → 0.0568 (**−12%, worse**) |
 
+**`discrimination_score_l1` (chance 0.5, higher is better) — the fourth metric, and it IMPROVES:**
+
+| split | 0 | 1 | 2 | 3 | 4 | mean |
+|---|---|---|---|---|---|---|
+| L11 (inert) | 0.6541 | 0.6525 | 0.6537 | 0.6527 | 0.6538 | 0.6534 |
+| **D02 (live)** | **0.7181** | **0.7181** | **0.7191** | **0.7165** | **0.7181** | **0.7180** |
+| Δ | +0.0640 | +0.0656 | +0.0654 | +0.0638 | +0.0643 | **+0.0646** |
+
 ### Reading
 
 1. **DCOS survives to test. 5/5 splits positive**, range +0.0217…+0.0274 — the whole range sits
@@ -97,12 +155,22 @@ validation-metric artefact.
    validation-metric artefact.
 2. **0.3661 is a new best.** It clears the previous 0.3415 headline and also clears the best
    competitor, TxPert at 0.3463 (+0.0198). It sits 0.0061 below `experimental` 0.3722.
-3. **⚠️ It is a TRADE, not a free win.** `mae` degrades 32% (0.0210 → 0.0277) and
-   `overlap_at_N` degrades 12% (0.0642 → 0.0568), consistently on all 5 splits. That is the
-   expected signature of a term that supervises delta DIRECTION with magnitude divided out:
-   direction improves, calibrated magnitude gets worse. **Anyone quoting 0.3661 must quote the
-   `mae` and `overlap_at_N` cost beside it.** Which arm is preferable depends on the metric the
-   submission is scored on; that is a decision, not a measurement.
+3. **`disc_l1` gains +0.0646, 5/5 splits, range +0.0638…+0.0656** — a 2.6× larger move than
+   `pearson_delta`'s, and even tighter. `disc_l1` measures how well the prediction identifies
+   WHICH perturbation it is, so a delta-direction term improving it is mechanistically the
+   expected result, not a coincidence.
+4. **⚠️ It is a TRADE: two metrics up, two down.** UP: `pearson_delta` +0.0246, `disc_l1`
+   +0.0646. DOWN: `mae` 0.0210 → 0.0277 (+32%, worse) and `overlap_at_N` 0.0642 → 0.0568
+   (−12%, worse), consistently on all 5 splits. That is the expected signature of a term that
+   supervises delta DIRECTION with magnitude divided out: direction and identity improve,
+   calibrated magnitude degrades. **Anyone quoting 0.3661 must quote all four.** Which arm is
+   preferable depends on the metric the submission is scored on; that is a decision, not a
+   measurement.
+
+   ⚠️ **Correction to my own first report of this finding:** I reported the `mae` and
+   `overlap_at_N` costs but gave D02's `disc_l1` as 0.6534 — that is L11's value. D02's is
+   0.7180. The trade is 2-up/2-down, not 1-up/2-down, and the largest single move in the whole
+   comparison is a GAIN.
 4. The `disc_l1` column and `D03` (`delta_cos_weight` 0.5, the validation optimum at 0.4108, vs
    0.25's 0.4100) are still scoring — `D03`'s control `L12` currently has 1/5 uncalibrated
    splits, so that pair is **not yet comparable**.
