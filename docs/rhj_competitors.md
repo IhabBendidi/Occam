@@ -958,6 +958,40 @@ so an arm carrying many such values will have inflated `nmae`/`mse`. That is now
 manifest instead of fatal — the number is reported with the caveat attached rather than
 withheld.
 
+### ⭐ CONFIRMED ON THE REAL TEST COHORT — the arm exports, and it is well calibrated
+
+STATE finished (`18097897`, COMPLETED, 6 h 22 m) and its export ran under the new rule.
+Split 0, 18,575 rows x 6,983 genes, from `best_celleval.ckpt`:
+
+```
+raw emission : range [0.0000, 12.5607] · zero 0.5433 · median expm1 rowsum 8,666.2
+eval space   : range [0.0000, 10.9513] · zero 0.5433 · median expm1 rowsum 1,733.2
+[emission] ⚠️  max 10.9513 exceeds log1p(2000) = 7.6014. Scoring it anyway.
+representable ✓   diagnostics: rowsum ratio 1.0019 · gene-mean corr 0.9970 · zero 0.5433 (target 0.5170)
+for reference, OUR OWN arm: rowsum ratio 0.9399 · gene-mean corr 0.9998 · zero 0.0000
+```
+
+**Under the old rule this arm produced nothing at all** — eval-space max 10.95 against a
+7.6014 ceiling. Under the new one it exports, with the excursion recorded in the manifest.
+
+**And the prediction is good by every measure that describes the matrix rather than its single
+largest element:**
+
+| diagnostic | STATE | our own best arm | target |
+|---|---|---|---|
+| library-size ratio vs target | **1.0019** | 0.9399 | 1.0 |
+| gene-mean correlation | 0.9970 | **0.9998** | 1.0 |
+| zero fraction | **0.5433** | 0.0000 | 0.5170 |
+
+STATE's library size is within **0.2%** of the target where ours is 6% low, and its zero
+fraction is close to the target's where ours is zero. Refusing it over the maximum would have
+discarded the better-calibrated emission of the two.
+
+⚠️ The caveat stands and is the reason the warning prints: values above `log1p(target_sum)` are
+impossible for real data, so read this arm's `nmae` and `mse` knowing a few elements are out of
+range. `pearson_delta` and `discrimination_score_l1` are rank/correlation quantities and are
+far less exposed to it.
+
 ### Consequence for the running arm
 
 STATE `18097897` is still running under the **old** code, so its step-32,000 validation stays
@@ -1034,7 +1068,7 @@ then reported `cell-eval returned no ['pearson_delta','discrimination_score_l1']
 Three layers had to be peeled:
 
 1. **A red herring, ruled out.** `adata_pred.h5ad` is written by anndata **0.13.3**; my first
-   reproduction read it with the `scmae` interpreter's anndata **0.9.2**, which raised on
+   reproduction read it with the SCORING DRIVER's interpreter (anndata **0.9.2**), which raised on
    `obs/_index` (a `nullable-string-array` group). **That is not the live failure** — cell-eval
    actually runs under the `jupyter` interpreter (anndata 0.11.4), which reads the file fine.
    Fixing what my own reproduction showed would have fixed a non-problem.

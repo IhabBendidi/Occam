@@ -123,7 +123,14 @@ def test_the_10k_to_2k_map_lands_within_one_float32_ulp_of_the_panel():
     4.7683716e-07 -- seven orders of magnitude below the +/-10% library-size tolerance.
     """
     od = _od()
-    from emission_space import TRAIN_TARGET_SUM, assert_same_space, to_eval_space
+    # `assert_same_space` was removed in C18: it conflated "can this be scored" with "is this
+    # a good prediction" and refused our own best arm. Its two jobs are now split --
+    # `assert_representable` raises only on what cell-eval cannot score, and
+    # `space_diagnostics` reports the rest without ever raising.
+    from emission_space import (
+        EVAL_TARGET_SUM, TRAIN_TARGET_SUM, assert_representable, space_diagnostics,
+        to_eval_space,
+    )
 
     b = od.load_occam_benchmark(BENCH, verify_sources=False)
     a = od.load_occam_adata(b, cell_lines=("HEPG2",), target_sum=TRAIN_TARGET_SUM,
@@ -134,9 +141,17 @@ def test_the_10k_to_2k_map_lands_within_one_float32_ulp_of_the_panel():
 
     diff = np.abs(back - z["X"]).max()
     assert diff <= np.spacing(np.float32(6.0)), f"max |diff| {diff:.3e} exceeds one ULP"
-    assert assert_same_space(
-        back, z["X"], pred_var=list(a.var.index),
-        target_var=[str(s) for s in z["axis_symbols"]])["verdict"] == "same space"
+
+    axis = [str(g) for g in z["axis_symbols"]]
+    # hard contract: right width, finite, non-negative, gene axis identical AND in order,
+    # library size within the factor band of the panel's own
+    assert_representable(back, n_genes=len(axis), name="10k->2k remap",
+                         target_sum=EVAL_TARGET_SUM, target=z["X"],
+                         var=list(a.var.index), expect_var=axis)
+    # and the soft report agrees it is the same space as the panel
+    diag = space_diagnostics(back, z["X"], reference="panel")
+    assert 0.99 <= diag["rowsum_ratio"] <= 1.01, diag
+    assert diag["gene_mean_corr"] >= 0.999, diag
 
 
 # ---------------------------------------------------------------------------

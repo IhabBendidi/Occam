@@ -342,4 +342,13 @@ def test_export_split_writes_the_three_files_phase_b_verifies(tmp_path):
     assert man["benchmark_sha256"] == "def"
     assert man["emission"]["from_target_sum"] == 10_000.0
     assert man["emission"]["to_target_sum"] == 2000.0
-    assert man["space_check"]["verdict"]
+    # C18 replaced the single `space_check` verdict with two separate fields, because one
+    # combined judgement conflated "cell-eval can score this" with "this is a good
+    # prediction" -- and refused our own best arm on the latter.
+    assert man["representable"] is True
+    diag = man["space_diagnostics"]
+    for key in ("rowsum_ratio", "gene_mean_corr", "zero_fraction_pred", "zero_fraction_target"):
+        assert key in diag, f"{key} missing from space_diagnostics: {sorted(diag)}"
+    # the identity arm is the control cells remapped, so it sits on the target's own space
+    assert 0.5 <= diag["rowsum_ratio"] <= 2.0, diag
+    assert diag["gene_mean_corr"] >= 0.9, diag
