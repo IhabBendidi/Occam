@@ -888,6 +888,36 @@ measured in a different cell line. Still below ours (0.3415) and `experimental` 
 **Every one of the three fixes was export-only**, so this cost a 15-minute re-export rather
 than a 6.5-hour retrain: the checkpoint was always fine, we were asking it the wrong question.
 
+### Does STATE need a RETRAIN? No — four independent checks say the training was correct
+
+Asked directly, so verified rather than asserted:
+
+1. **`padded` defaults to True in training.** `training_step(self, batch, batch_idx,
+   padded=True)` (`state_transition.py:543`), and grepping every call site shows nothing in the
+   training path overrides it — the only `padded=False` call is `_predict.py:154`, a loss probe
+   in the predict CLI. Lightning itself calls `training_step(batch, batch_idx)`.
+2. **Training sentences are pure and exactly `S` long.** `_create_sentences` groups by
+   `(cell_type, perturbation)`; `_create_batches` pads any short sentence to exactly
+   `cell_sentence_len` when `not test`. So the concatenated batch is aligned to 64-cell
+   boundaries and `reshape(-1, 64, dim)` recovers precisely those sentences.
+3. **The batch covariate was per-cell at training**: `batch_name = self.batch[i]`
+   (`zarr_perturbation.py:689`), indexed by the row. That is exactly what S3 restored in the
+   export — the constant was ours, never theirs.
+4. **The in-training validation was already faithful** (`batch_size=1` **with**
+   `padded=False`), which is why the same checkpoint reported 0.2049 there throughout.
+
+**The decisive evidence is the result itself.** Changing ONLY the export moved `pearson_delta`
++0.1056. No export change can create signal that is not already in the weights, so the
+checkpoint demonstrably carried it. A retrain would cost 6.5 h to reproduce a checkpoint we
+have already shown to be sound.
+
+⚠️ **A separate question, still open:** whether STATE's *recipe* is optimal. Its hyperparameters
+could not be verified against an official reference — the cited
+`reproducibility/state__replogle_nadig_fewshot` does not exist in this checkout — and
+`batch_encoder=True` is non-default in every in-repo upstream config. That is a caveat to
+report beside the number, not a reason to retrain: it would be re-running an unverifiable
+recipe against itself.
+
 ⚠️ **Note for the val→test gap model.** STATE's test (0.2373) is now HIGHER than its own
 validation (0.2049), where our own arms run ~0.035 *lower* on test than on validation. Not
 alarming — different panels (103 vs 611 perturbations) and a different control pairing — but it
