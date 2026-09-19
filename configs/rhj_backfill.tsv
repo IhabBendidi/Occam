@@ -1,0 +1,25 @@
+# F-infra1 backfill: (arm, split) triples whose cell-eval score is MISSING.
+# `calibrate` is EXACTLY the missing modes -- never re-run a mode that worked.
+# Regenerate with scripts/build_backfill_grid.py; do not hand-edit.
+arm_id	tag	split	calibrate	missing_modes
+L01	nb_nbw0_nbs1.0_dcos0.0_s42	4	quantile	cal
+L05	nb_smooth_l1_nbw0.75_nbs1.0_dcos0.0_s42	4	quantile	cal
+L06	nb_smooth_l1_nbw0.9_nbs1.0_dcos0.0_s42	4	quantile	cal
+L07	nb_smooth_l1_nbw0.25_nbs6.5_dcos0.0_s42	4	both	nocal,cal
+L08	nb_smooth_l1_nbw0.5_nbs6.5_dcos0.0_s42	0	none	nocal
+L08	nb_smooth_l1_nbw0.5_nbs6.5_dcos0.0_s42	1	none	nocal
+L08	nb_smooth_l1_nbw0.5_nbs6.5_dcos0.0_s42	4	both	nocal,cal
+L09	nb_smooth_l1_nbw0.75_nbs6.5_dcos0.0_s42	0	both	nocal,cal
+L10	smooth_l1_nbw0_nbs1.0_dcos0.1_s42	0	both	nocal,cal
+L10	smooth_l1_nbw0_nbs1.0_dcos0.1_s42	1	both	nocal,cal
+L10	smooth_l1_nbw0_nbs1.0_dcos0.1_s42	2	both	nocal,cal
+L10	smooth_l1_nbw0_nbs1.0_dcos0.1_s42	3	quantile	cal
+L12	smooth_l1_nbw0_nbs1.0_dcos0.5_s42	0	none	nocal
+L12	smooth_l1_nbw0_nbs1.0_dcos0.5_s42	1	none	nocal
+L12	smooth_l1_nbw0_nbs1.0_dcos0.5_s42	2	none	nocal
+L12	smooth_l1_nbw0_nbs1.0_dcos0.5_s42	3	none	nocal
+L14	nb_smooth_l1_nbw0.5_nbs6.5_dcos0.25_s42	0	none	nocal
+L14	nb_smooth_l1_nbw0.5_nbs6.5_dcos0.25_s42	1	none	nocal
+L14	nb_smooth_l1_nbw0.5_nbs6.5_dcos0.25_s42	4	quantile	cal
+D02	smooth_l1_nbw0_nbs1.0_dcos0.25_s42	4	quantile	cal
+D03	smooth_l1_nbw0_nbs1.0_dcos0.5_s42	0	none	nocal

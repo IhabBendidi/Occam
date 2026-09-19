@@ -44,6 +44,7 @@ Loss composition and delta-cosine sweep, seed 42.
 
 | arm | n | `pearson_delta` ↑ | `mae` ↓ | `overlap_at_N` ↑ | `disc_l1` ↑ | note |
 |---|---|---|---|---|---|---|
+| `D03` smooth_l1_nbw0_nbs1.0_dcos0.5 | 4 | **0.3686** ± 0.0024 | 0.0321 | 0.0719 | 0.7265 |  ⚠️ PARTIAL |
 | `D02` smooth_l1_nbw0_nbs1.0_dcos0.25 | 5 | **0.3661** ± 0.0023 | 0.0277 | 0.0568 | 0.7180 |  |
 | `L11` smooth_l1_nbw0_nbs1.0_dcos0.25 | 5 | **0.3415** ± 0.0031 | 0.0210 | 0.0642 | 0.6534 |  |
 | `L13` smooth_l1_nbw0_nbs1.0_dcos1.0 | 5 | **0.3415** ± 0.0031 | 0.0210 | 0.0642 | 0.6534 |  |
@@ -67,7 +68,7 @@ Shown because it was measured, NOT because it should be used.
 | arm | n | `pearson_delta` ↑ | `mae` ↓ | `overlap_at_N` ↑ | `disc_l1` ↑ | note |
 |---|---|---|---|---|---|---|
 | `D02` smooth_l1_nbw0_nbs1.0_dcos0.25 | 4 | **0.2993** ± 0.0013 | 0.1021 | 0.0289 | 0.8099 |  ⚠️ PARTIAL |
-| `D03` smooth_l1_nbw0_nbs1.0_dcos0.5 | 1 | **0.2990** | 0.0925 | 0.0217 | 0.7753 |  ⚠️ PARTIAL |
+| `D03` smooth_l1_nbw0_nbs1.0_dcos0.5 | 2 | **0.2986** ± 0.0006 | 0.0925 | 0.0216 | 0.7767 |  ⚠️ PARTIAL |
 | `L02` nb_smooth_l1_nbw0.1_nbs1.0_dcos0.0 | 5 | **0.2789** ± 0.0024 | 0.0917 | 0.0240 | 0.7575 |  |
 | `L08` nb_smooth_l1_nbw0.5_nbs6.5_dcos0.0 | 4 | **0.2773** ± 0.0013 | 0.0871 | 0.0229 | 0.7546 |  ⚠️ PARTIAL |
 | `L14` nb_smooth_l1_nbw0.5_nbs6.5_dcos0.25 | 4 | **0.2773** ± 0.0013 | 0.0871 | 0.0229 | 0.7546 |  ⚠️ PARTIAL |
