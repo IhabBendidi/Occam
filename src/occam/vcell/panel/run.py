@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from typing import Dict, List, Mapping, Optional, Sequence, Tuple
 
 import numpy as np
@@ -153,7 +154,25 @@ def score_arm(tag: str, matrix: np.ndarray, arm_labels: np.ndarray, panel: Panel
         kwargs["de_real"] = cache_path
         print(f"[panel] {tag}: reusing real-side DE for target {digest[:16]}")
 
-    metrics = run_celleval_v1(pred_path, target_path, arm_dir, **kwargs)
+    # F-infra1 RETRY. The pdex 0.1.24 failure is a TRANSIENT race, not a deterministic
+    # error: it creates a ~588 MB SharedMemory segment in the parent and attaches to it by
+    # name from mp.Pool workers, and under node crowding the segment is gone before the
+    # workers get there (`FileNotFoundError: '/psm_<hex>'`). Every attempt draws a NEW random
+    # segment name, so simply running it again usually succeeds -- which is why throttling
+    # the array alone was not enough (it cut the rate from 18/60 to ~1/20, not to zero).
+    # Retrying here is far cheaper than failing an 8-minute task and re-queueing it.
+    attempts = int(os.environ.get("OCCAM_CELLEVAL_ATTEMPTS", "3"))
+    metrics = {}
+    for attempt in range(1, attempts + 1):
+        metrics = run_celleval_v1(pred_path, target_path, arm_dir, **kwargs)
+        if metrics:
+            if attempt > 1:
+                print(f"[panel] {tag}: cell-eval succeeded on attempt {attempt}/{attempts}")
+            break
+        if attempt < attempts:
+            print(f"[panel] ⚠️ {tag}: cell-eval returned nothing on attempt "
+                  f"{attempt}/{attempts} (usually the pdex shm race, F-infra1); retrying")
+            time.sleep(5 * attempt)
     if not metrics:
         # ⛔ F-infra1. This used to print and CONTINUE, so the split finished its other arms,
         # wrote metrics.json and exited 0 -- SLURM reported COMPLETED, the arm directory

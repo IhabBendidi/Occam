@@ -55,6 +55,90 @@ identity floor and the score alone would not distinguish that from a genuinely w
 ⚠️ Step 3 is the pre-registration: **the diagnostic decides whether the sweep is worth running**,
 rather than the sweep being run and the diagnostic quoted afterwards.
 
+## ⭐⭐⭐ F-loss5 — DCOS is ~100× LARGER than smooth_l1, so `delta_cos_weight` 0.5 means **98% direction, 2% magnitude** — and the model over-shoots the effect by **5.6×**
+
+**Objective.** Best model on SEEN perturbations in an UNSEEN cell line; headline is split-half
+paired `pearson_delta`. Anchors: `meanpert` 0.1324 · `transfer` 0.2323 · `experimental` 0.3722 ·
+D03 **0.3686** · D02 **0.3661** · L11 0.3415.
+
+**Questions this answers.** (a) What is the actual SCALE of the delta-cosine term relative to
+`smooth_l1`, i.e. what does `delta_cos_weight` really buy? (b) Is there a second cosine term on
+output counts? (c) Why is `mae` the one metric DCOS makes worse, and what would fix it?
+
+**What is varied:** nothing — this is a measurement on three trained checkpoints. **Held fixed:**
+inputs are the REAL HepG2 control means from `cache/pert_means/hepg2.npz` (encoder axis, log1p,
+`target_sum` 2000, verified against the checkpoint's own range: ctrl max 3.709, group-mean max
+4.105, prediction max 4.070), 512 real perturbations, present-gene mask (9,612 genes).
+
+### (b) — There is exactly ONE cosine term, and it is NOT on counts
+
+`pipeline.py:2106`: `dcos_loss = (1 - cosine_similarity(pred - ctrl_mean, group_mean - ctrl_mean))`,
+computed on the **continuous log1p output**, on the **delta**, masked to present genes. No second
+cosine on counts exists anywhere in D02 or D03, and none is added. The other optional terms
+(`ranking_loss`, `gpl_loss`, `delta_reg`, `latent_loss`) are not cosines on counts either.
+
+There is also a plain `cosine_loss_weight` on the ABSOLUTE profile (`expr_loss = (1-w)*recon +
+w*cos`), set to 0.5 in these arms — but that one is the near-useless quantity F-loss5's comment
+block warns about: the absolute profile is dominated by the shared baseline, so two predictions
+that disagree entirely about the effect still score ~0.99 on it.
+
+### (a) — Measured scale, per ELEMENT over the same present-gene mask
+
+⚠️ Normalisation is the whole finding. Both terms must be per-element means over the same mask;
+dividing a batch-summed error by a one-row gene count inflates `smooth_l1` by the batch size and
+inverts the conclusion. (I made exactly that error first and reported DCOS as 0.2× — it is ~100×.)
+
+| checkpoint | `smooth_l1` (per element) | `dcos` = 1−cos | **ratio** | share of loss at its OWN weight |
+|---|---|---|---|---|
+| **D03** (`dcos` 0.5) | 0.008443 | 0.796206 | **94.3×** | **97.9%** |
+| **D02** (`dcos` 0.25) | 0.008036 | 0.833635 | **103.7×** | **96.3%** |
+| L11 (`dcos` inert) | 0.009635 | 0.927644 | 96.3× | — (term was off) |
+
+**`delta_cos_weight` is not a blend knob — it is an off-switch for `smooth_l1`.** At 0.25 the
+reconstruction term is already down to 3.7% of the total; at 0.5 it is 2.1%; at 1.0 it is 1.0%.
+The "weight" reads like a half-and-half mix and is nothing of the kind.
+
+⇒ **This fully explains F-loss4's metric pattern.** `pearson_delta` (a correlation) and
+`disc_l1` (identity) are direction quantities and improve. `mae` is a MAGNITUDE quantity and
+degrades, because the term that supervised magnitude was switched off. It also explains why the
+0.25 → 0.5 step changed so little (96.3% → 97.9%): both arms are already in the direction-only
+regime, so the sweep from F-loss2 was flat for a structural reason, not a tuning one.
+
+### (c) — The model over-shoots the perturbation effect by 5.6×, and cosine CANNOT see it
+
+`‖pred − ctrl_mean‖ / ‖group_mean − ctrl_mean‖`, where **1.0 = correct size**:
+
+| checkpoint | magnitude ratio | mean prediction | mean group-mean truth | mean control |
+|---|---|---|---|---|
+| D03 | **5.589** | 0.0646 | 0.0261 | 0.0263 |
+| D02 | **5.513** | 0.0689 | 0.0261 | 0.0263 |
+| L11 (no DCOS) | **5.703** | 0.0938 | 0.0261 | 0.0263 |
+
+**The over-shoot predates DCOS** — L11, with the term inert, is the WORST at 5.703. So DCOS did
+not cause it; DCOS just removed the only term that was pushing back on it. Cosine similarity is
+scale-invariant by construction, so a direction-only loss is blind to a 5.6× magnitude error.
+
+### ⇒ The lever for "keep D03's metrics, fix `mae`": `delta_mag_weight`, which EXISTS and has NEVER been used
+
+`pipeline.py:2079` already implements exactly the missing term:
+
+```python
+mag_loss = ((‖pred − ctrl_mean‖ / ‖group_mean − ctrl_mean‖) − 1.0)**2
+```
+
+It is declared (`config.py:149`), wired into the total loss (`pipeline.py:2176`), gated into the
+group-mean loader, and **set to 0.0 in all 540 runs on disk**. It penalises precisely the
+quantity measured at 5.6 above, and it is orthogonal to DCOS: cosine fixes the direction, this
+fixes the length of the same vector. Both read the same precomputed group means, so it costs no
+extra forward pass.
+
+⚠️ `mag_loss` is ~`(5.6−1)² ≈ 21` at the current over-shoot — **an order of magnitude larger
+again than `dcos`**, so it needs its own scale-matched weight or it will switch BOTH other terms
+off. The same trap this finding is about. A weight near `0.01–0.05` puts it in the same decade as
+`dcos`; that is arithmetic from the numbers above, **not a measurement**.
+
+**Not launched.** Proposed only.
+
 ## ⛔ F-infra1 — a pdex shared-memory race silently dropped **31 (arm, split, mode) scores** while every SLURM task exited 0
 
 **What broke.** `pdex 0.1.24`'s multiprocessing path fails with
