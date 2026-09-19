@@ -1,0 +1,7 @@
+arm	loss_type	nb_weight	nb_scale	delta_cos_weight
+D01	smooth_l1	0	1.0	0.1
+D02	smooth_l1	0	1.0	0.25
+D03	smooth_l1	0	1.0	0.5
+D04	smooth_l1	0	1.0	1.0
+D05	smooth_l1	0	1.0	2.0
+D06	nb_smooth_l1	0.1	1.0	0.25
