@@ -10,7 +10,7 @@
 
 Metrics: `pearson_delta`, `mae` ↓, `overlap_at_N`, `discrimination_score_l1` (**l1**, not l2; chance 0.5). Uncalibrated (`model_nocal`) throughout — on our own model calibration cost 0.047 `pearson_delta` and quadrupled `mae` (F12).
 
-1/20 declared (arm, seed) runs complete, 0 partial, 19 never ran.
+2/20 declared (arm, seed) runs complete, 0 partial, 18 never ran.
 
 ## Baselines, all 5 splits
 
@@ -31,7 +31,7 @@ Metrics: `pearson_delta`, `mae` ↓, `overlap_at_N`, `discrimination_score_l1` (
 | `txpert` | 44 | MISSING | 0 | — | — | — | — |
 | `txpert` | 45 | MISSING | 0 | — | — | — | — |
 | `txpert` | 46 | MISSING | 0 | — | — | — | — |
-| `state` | 42 | MISSING | 0 | — | — | — | — |
+| `state` | 42 | complete | 5 | 0.1306 ± 0.0050 | 0.0337 | 0.0306 | 0.5448 |
 | `state` | 43 | MISSING | 0 | — | — | — | — |
 | `state` | 44 | MISSING | 0 | — | — | — | — |
 | `state` | 45 | MISSING | 0 | — | — | — | — |

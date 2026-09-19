@@ -860,6 +860,98 @@ Both training, finite gradients (total norm 12.40 / 6.15), **0.145 s/step** → 
 **3.2 h** plus five validation cell-eval passes. The two differ in the expected place:
 genept trains `class_embedding.emb.weight`, onehot `class_embedding.null_emb.weight`.
 
+## ⛔ C27 — STATE's 0.1306 is OUR BUG, not STATE: we fed it mixed-perturbation cell sentences
+
+**Objective.** Unchanged: best model on SEEN perturbations in an UNSEEN context (HepG2
+`rhj_fewshot`), headline cell-eval `pearson_delta` on the 611-perturbation test cohort.
+Anchors: `ctrlcell` −0.0018 · `ctrlmean` 0.0016 · **`meanpert` 0.1324** · `transfer` 0.2323 ·
+`experimental` 0.3722 · ours 0.3415 · TxPert 0.3077.
+
+**Question this answers.** STATE's test score came out at `meanpert`. Is STATE unable to
+generalise to these perturbations, or is our port destroying its signal?
+
+**What is varied / held fixed.** Nothing varied — one checkpoint, five splits, then a read of
+how the export builds model inputs versus how training builds them.
+
+**What each outcome means.** Real → report STATE as at-chance-for-identity on this task.
+Port bug → the number is meaningless and must not be published as STATE's.
+
+### The measured number (DEFECTIVE — do not cite as STATE's performance)
+
+`compet_state_s42`, 5 splits, `model_nocal`, from `best_celleval.ckpt` (step 63,999):
+
+| split | `pearson_delta` | `mae` ↓ | `overlap_at_N` | `disc_l1` |
+|---|---|---|---|---|
+| 0 | 0.1314 | 0.0337 | 0.0288 | 0.5405 |
+| 1 | 0.1381 | 0.0338 | 0.0324 | 0.5463 |
+| 2 | 0.1310 | 0.0336 | 0.0336 | 0.5520 |
+| 3 | 0.1253 | 0.0338 | 0.0281 | 0.5395 |
+| 4 | 0.1270 | 0.0337 | 0.0302 | 0.5455 |
+| **mean** | **0.1306** | **0.0337** | **0.0306** | **0.5448** |
+| sd | 0.0050 | 0.0001 | 0.0023 | 0.0050 |
+
+**0.1306 against `meanpert` 0.1324** — indistinguishable from the baseline that predicts the
+average perturbation response and ignores perturbation identity. `disc_l1` 0.5448 is barely
+above its 0.5 chance level. Meanwhile the SAME checkpoint scored `pearson_delta` **0.2049** on
+its own validation pass. A model does not lose 0.074 of `pearson_delta` between two held-out
+panels of the same design; something differs in how it was asked.
+
+### The cause: cell sentences are built differently at export than at training
+
+STATE does not predict per cell. It predicts per **cell sentence** — `cell_set_len=64` — and
+the backbone is a `LlamaBidirectionalModel`, i.e. **bidirectional attention across the whole
+sentence**, so every cell's prediction depends on its 63 companions.
+
+`SentenceBatchSampler._create_sentences` (`zarr_perturbation.py`) builds them like this:
+
+```python
+keys = np.ravel_multi_index((ct, pert), ...)   # group by (cell_type, PERTURBATION)
+...
+for i in range(0, len(group), self.cell_sentence_len):
+    sent = group[i : i + self.cell_sentence_len]
+```
+
+**Every training sentence contains exactly ONE perturbation.** A short final sentence is padded
+by sampling that same sentence's own cells with replacement (`_create_batches`).
+
+Our export adapter instead padded the WHOLE matrix to a multiple of 64 and reshaped
+sequentially. Measured on split 0 (18,575 rows, 611 perturbations, 30.4 cells each):
+
+| distinct perturbations per 64-cell sentence | 1 | 2 | 3 | 4 | 5 | 6 |
+|---|---|---|---|---|---|---|
+| sentences | **39** | 43 | 101 | 71 | 34 | 2 |
+
+**Only 39 of 290 sentences were pure.** The median sentence mixed **3** perturbations, some
+mixed 6. So for ~87% of the panel, STATE was asked to predict each cell while attending over
+cells belonging to two to five *other* perturbations — a regime it never saw in training.
+
+That is precisely the shape that collapses to `meanpert`: the predictions still vary by
+perturbation (measured between-perturbation variance of group means 8.95e-4, and two arbitrary
+perturbations differ by 0.029 against a mean |pred| of 0.141, so the one-hot IS reaching the
+model), but the variation is contaminated by whatever else shared the sentence, so it carries
+little perturbation-specific information.
+
+⚠️ **Why the earlier checks all passed.** The one-hot is looked up by NAME
+(`dm.pert_onehot_map[p]`), so no ordering bug was possible and I verified exactly that. The
+emission diagnostics were excellent — library ratio 1.0011–1.0027 across all five splits,
+gene-mean correlation 0.9970. **Every check I had was about the CONTENT of the input rows, and
+none was about their GROUPING.** For a set-based model the grouping IS part of the input.
+
+### The fix
+
+Build sentences per perturbation, matching `_create_sentences`:
+
+1. group panel rows by perturbation label;
+2. chunk each group into sentences of ≤ 64;
+3. pad a short sentence from **that perturbation's own cells** (deterministically, by tiling
+   rather than the sampler's `rng.choice`, since at predict time the padding is discarded and
+   only its effect through attention matters);
+4. scatter each sentence's real predictions back to their original row positions.
+
+**This also means the other set-based arm needs checking**: PerturbDiff uses
+`use_cell_set=16` with `cell_set_group_by=pert_celltype`, so its export has the same
+requirement. TxPert and CellFlow are per-cell and unaffected — TxPert's 0.3077 stands.
+
 ## ⭐⭐ C26 — the max-value refusal would have discarded a GOOD arm over 1 value in 4,357,392
 
 **Objective.** Unchanged: best model on SEEN perturbations in an UNSEEN context (HepG2
