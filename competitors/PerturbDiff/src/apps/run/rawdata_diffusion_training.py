@@ -7,6 +7,27 @@ import hydra
 import omegaconf
 import pytorch_lightning as pl
 
+# ─── make a hang diagnosable ───────────────────────────────────────────────────────────────
+# A run of this script sat RUNNING for 10 HOURS at Epoch 0 step 1120 with a 0% GPU: 27 threads
+# in futex_wait_queue_me, the 4 dataloader workers parked in do_poll, 10 minutes of CPU in
+# 9h53m. Shared memory and HDF5 fork-unsafety were ruled out by measurement and the identical
+# twin run completed, so it was a race -- but the blocking Python frame could NOT be captured
+# (`py-spy` needs ptrace and the node has `ptrace_scope=1` with no sudo), so the cause is still
+# unproven and the 10 hours of GPU bought nothing.
+#
+# `faulthandler` closes that hole with no dependency: SIGUSR1 dumps every thread's stack to
+# stderr, i.e. into the job log. On the next hang:
+#
+#     scancel --signal=USR1 <jobid>      # then read runs/slurm/cmp_pdiff_<id>_0.err
+#
+# `register(..., chain=False)` keeps the process running, so this is a probe and not a kill.
+import faulthandler
+import signal
+
+faulthandler.enable()
+if hasattr(signal, "SIGUSR1"):
+    faulthandler.register(signal.SIGUSR1, all_threads=True, chain=False)
+
 # local imports
 exc_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 sys.path.append(exc_dir)

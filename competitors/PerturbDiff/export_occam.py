@@ -41,9 +41,13 @@ control cell, the same cell our own arms and all five baselines see (`eval_contr
 0.001-0.003 split-to-split std on `pearson_delta`. Recorded beside PerturbDiff's numbers in
 `docs/rhj_competitors.md`.
 
-⚠️ CELL SETS ARE PADDED, NOT WRAPPED. The last set is padded with repeats of its final row,
-`is_padded_list` marks the padding, and the padded rows are DISCARDED after sampling. Wrapping
-to the front would make the first cells' predictions depend on the split's length.
+⚠️ CELL SETS ARE PURE AND PADDED WITHIN ONE PERTURBATION. Rows are partitioned by
+perturbation first (training groups sets by `cell_set_group_by=pert_celltype`, i.e. one
+perturbation per set), then chunked into `use_cell_set`; a short set is filled from THAT
+perturbation's own cells and the filler is flagged in `is_padded_list` and discarded after
+sampling. An earlier version reshaped the panel sequentially, which put 46.1% of cells in a
+set spanning two to four different perturbations -- the defect that collapsed the sibling arm
+to the `meanpert` baseline (C27).
 
 ⚠️ COVARIATE CODES ARE THE GLOBAL DICTIONARY'S, not a per-file cache's. `cov_pert` /
 `cov_celltype` / `cov_batch` index `datamodule.pert_dict` / `cell_type_dict` / `batch_dict`, and
@@ -69,6 +73,7 @@ from __future__ import annotations
 
 import argparse
 import glob
+import pathlib
 import logging
 import os
 import sys
@@ -96,22 +101,51 @@ def _resolve_checkpoint(seed: int, explicit: str, penc: str = "") -> str:
         if not os.path.isfile(explicit):
             raise SystemExit(f"no checkpoint at {explicit}")
         return explicit
-    root = os.path.join(_REPO, "runs", "competitors", "perturbdiff", "ckpt")
-    # ⚠️ `penc` NARROWS THE GLOB. Two encodings of the same seed (genept and onehot) both match
-    # `pd_occam_*_s{seed}`, and the >1 guard below would then refuse both. The run name carries
-    # the encoding (`pd_occam_<group>_lr<lr>_<penc>_cs<n>_s<seed>`), so pass --penc to pick one.
-    pat = f"pd_occam_*_{penc}_*_s{seed}" if penc else f"pd_occam_*_s{seed}"
-    hits = sorted(glob.glob(os.path.join(root, pat, "*.ckpt")))
-    if not hits:
+    # ⚠️ RESOLVE FROM THE MARKER THE TRAINING LEG WROTE, not by globbing.
+    #
+    # `ModelCheckpoint.best_model_path` is recorded by `training_pipeline.py:72-77` at
+    # `runs/competitors/perturbdiff/runs/<run_name>.best_ckpt_path`, and PerturbDiff's own
+    # eval script reads exactly that and refuses to run without it:
+    #
+    #   launch.real.eval.sh:71-80
+    #     if [ ! -f "${MARKER}" ]; then
+    #       echo "Refusing to score the final weights instead -- that would report a model
+    #             that was never selected." >&2; exit 1; fi
+    #
+    # Globbing could not work here and had three independent faults:
+    #   1. `save_last: True` (lightning/base.yaml:27) puts `last.ckpt` beside the selected
+    #      file, so the >1 guard always fired;
+    #   2. the launcher appends TAG_SUFFIX *after* `_s${SEED}` (`..._cs16_s42_genept`), which
+    #      NO variant of `pd_occam_*_s{seed}` matches -- so it found nothing at all;
+    #   3. `--penc` is never passed by `competitor_export.sbatch`.
+    # The natural workaround, `--checkpoint .../last.ckpt`, reports final-step weights that
+    # `validation/celleval/selection_score` never chose -- here step 64000 of 80000.
+    runs_dir = os.path.join(_REPO, "runs", "competitors", "perturbdiff", "runs")
+    markers = sorted(glob.glob(os.path.join(runs_dir, f"*_s{seed}*.best_ckpt_path")))
+    if penc:
+        markers = [m for m in markers if f"_{penc}_" in os.path.basename(m)
+                   or os.path.basename(m).rstrip(".best_ckpt_path").endswith(f"_{penc}")]
+    if not markers:
         raise SystemExit(
-            f"no checkpoint under {root}/{pat}/. Either training has not finished for seed "
-            f"{seed}, or it wrote elsewhere, or --penc {penc!r} does not match the run name.")
-    if len(hits) > 1:
+            f"no best-checkpoint marker matching *_s{seed}* in {runs_dir} "
+            f"(penc={penc!r}). Training either has not finished or did not record its "
+            f"selected checkpoint. REFUSING to glob for a .ckpt: that risks scoring the "
+            f"final weights, which selection never chose.")
+    if len(markers) > 1:
         raise SystemExit(
-            f"{len(hits)} checkpoints under {root}/{pat}/: {hits}. "
-            f"save_top_k=1 only prunes files it tracked itself, so a smoke run's checkpoint "
-            f"can sit beside a real one. Pass --checkpoint explicitly.")
-    return hits[0]
+            f"{len(markers)} markers match *_s{seed}* (penc={penc!r}): "
+            f"{[os.path.basename(m) for m in markers]}. Pass --penc to disambiguate.")
+    path = pathlib.Path(markers[0]).read_text().strip()
+    if not path or not os.path.isfile(path):
+        raise SystemExit(
+            f"the marker {markers[0]} points at {path!r}, which is not a file.")
+    if os.path.basename(path) == "last.ckpt":
+        raise SystemExit(
+            f"the marker points at last.ckpt, i.e. the FINAL weights rather than the ones "
+            f"`validation/celleval/selection_score` selected. Refusing, as their own eval "
+            f"script does.")
+    print(f"[{ARM}] checkpoint from marker {os.path.basename(markers[0])}")
+    return path
 
 
 def main(argv=None) -> int:
@@ -197,20 +231,62 @@ def main(argv=None) -> int:
     # Any batch label the checkpoint knows; the panel is not one of them, so the first HepG2
     # batch is used. Namespaced exactly as occam_setup builds batch_dict.
     # batch_dict keys are namespaced `f"{dataset_name}_{batch}"` by occam_setup.
+    # ⚠️ PER-CELL BATCH, not a constant. `cov_batch` feeds a TRAINED
+    # `nn.Embedding(num_batch, 128)` whose output is concatenated into the conditioning vector
+    # that adaLN-modulates every block, so pinning it applies one batch's offset to the whole
+    # panel. Training reads the PERTURBED cell's own batch (`dataset_core.py:189-196`
+    # `get_covarates`), which is why `PanelSplit.batches` is indexed by `a_rows`, not by the
+    # drawn control. Measured on the sibling arm (STATE, same defect): 0.37 relative change.
+    #
+    # The panel names batches `hepg2-nad-49`; `dm.batch_dict` is keyed
+    # `<ds_name>_<batch_center>`. The mapping is BUILT AND ASSERTED here -- a key that is
+    # merely plausible would index a different batch with no error.
+    def _batch_code(raw: str) -> int:
+        for cand in (f"{ds_name}_{raw}",
+                     f"{ds_name}_{args.cell_type}__{raw}",
+                     f"{ds_name}_{args.cell_type}_{raw}", raw):
+            if cand in dm.batch_dict:
+                return int(dm.batch_dict[cand])
+        raise SystemExit(
+            f"batch {raw!r} from the panel is not in dm.batch_dict under any expected key "
+            f"form. Known examples: {sorted(dm.batch_dict)[:3]}")
+
+    if split.batches is None:
+        raise SystemExit(
+            "the panel carries no per-cell `batches`, so this arm would condition every row "
+            "on one constant batch against a trained batch embedding. Rebuild the panel.")
+    _uniq_b = sorted(set(str(b) for b in split.batches))
+    _bmap = {b: _batch_code(b) for b in _uniq_b}
+    batch_codes_all = torch.tensor([_bmap[str(b)] for b in split.batches], dtype=torch.long)
+    print(f"[{ARM}] batch covariate: {len(_uniq_b)} distinct, per cell "
+          f"(e.g. {_uniq_b[0]!r} -> code {_bmap[_uniq_b[0]]})")
+
     batch_keys = sorted(b for b in dm.batch_dict if b.startswith(f"{ds_name}_"))
     if not batch_keys:
         raise SystemExit(f"no batch label for {ds_name!r} in batch_dict")
-    batch_code = int(dm.batch_dict[batch_keys[0]])
     ct_code = int(dm.cell_type_dict[args.cell_type])
     ctrl_code = int(dm.pert_dict[str(cfg.data.control_pert)])
-    print(f"[{ARM}] batch covariate {batch_keys[0]!r} · cell type code {ct_code} · "
-          f"control code {ctrl_code}")
+    print(f"[{ARM}] cell type code {ct_code} · control code {ctrl_code}")
 
     S = int(cfg.data.use_cell_set)
     use_ddim = bool(cfg.sampling.get("use_ddim", False))
     clip_denoised = bool(cfg.sampling.get("clip_denoised", False))
     train_ds = dm.train_dataset
     col_genes = train_ds.gene_vars[ds_name]
+
+    # ⚠️ SEED THE SAMPLER. Their eval entry point does this
+    # (`rawdata_diffusion_sampling.py:37`, `pl.seed_everything(cfg.optimization.seed)`) and
+    # `launch.real.eval.sh:108` passes the seed in specifically so sampling is reproducible.
+    # It matters here more than usual: `ddim_sample_loop_progressive` starts from
+    # `th.randn(*shape)` and with `eta: 0.0` the per-step noise is scaled by sigma=0, so the
+    # ENTIRE prediction is a deterministic function of that single draw. Unseeded, two export
+    # runs of the same checkpoint and split disagree, and `--seed` -- which only selects the
+    # checkpoint -- does not control it.
+    import pytorch_lightning as _pl
+    _pl.seed_everything(int(args.seed) + 1000 * int(args.split), workers=True)
+    print(f"[{ARM}] sampler seeded with {int(args.seed) + 1000 * int(args.split)} "
+          f"(seed {args.seed} + 1000*split {args.split}) -- per split, so the five splits "
+          f"are independent but reproducible")
 
     def predict(ctrl: np.ndarray, pert_names: Sequence[str]) -> np.ndarray:
         """One predicted cell per control row, in PURE cell sets.
@@ -226,12 +302,27 @@ def main(argv=None) -> int:
         caught here BEFORE this arm's first export rather than after.
 
         Sets are built per perturbation. A short set is filled from that perturbation's own
-        cells and the filler slots are flagged in `is_padded_list`, which is the mask the
-        model already consumes for exactly this purpose.
+        cells, and the filler slots are flagged in `is_padded_list`.
+
+        ⚠️ `is_padded_list` IS NOT SEEN BY THE MODEL. An earlier version of this docstring
+        claimed it was "the mask the model already consumes for exactly this purpose"; that is
+        false. It is used only by `generate_samples` AFTER sampling, to drop the filler rows
+        (`sampling_generation.py:188`), and attention runs across the whole cell-set axis with
+        no key-padding mask (`cross_dit_blocks.py:73-75`). So filler rows DO influence the
+        real rows' predictions, and what we fill with matters. Theirs draws with replacement
+        from the whole `(pert, cell_type)` group (`src/data/sampler.py:119-129`); this tiles
+        the short set's own rows. Both stay within one perturbation and coincide when a group
+        has a single cell, so the gap is small -- but it is a real difference, not a no-op.
         """
         X = torch.from_numpy(np.asarray(ctrl, dtype=np.float32))
         n, g = X.shape
         names = np.asarray([str(p) for p in pert_names], dtype=object)
+        # `batch_codes_all` is indexed by the FULL split -- see `batch_size=len(split)`.
+        if n != len(batch_codes_all):
+            raise RuntimeError(
+                f"predict got {n} rows but the batch covariate has "
+                f"{len(batch_codes_all)}. export_split must hand this adapter the whole "
+                f"split in one call, or every row is conditioned on another row's batch.")
         codes = torch.tensor([dm.pert_dict[v] for v in names], dtype=torch.long)
 
         # PURE sets: partition rows by perturbation, then chunk each group into S.
@@ -271,13 +362,17 @@ def main(argv=None) -> int:
                     "pert_emb": cont,
                     "cont_emb": cont,
                     "cov_pert": cov_pert,
-                    # the control token for the conditioning branch, per their own convention
+                    # ⚠️ CONSUMED BY NOTHING. A repo-wide grep finds `cov_mapped_pert`
+                    # produced in `dataset_core.py:118` and read nowhere. An earlier comment
+                    # here called it "the control token for the conditioning branch, per
+                    # their own convention", which is wrong -- there is no such branch. The
+                    # value is still the semantically right one (in training it is the
+                    # companion control cell's pert code), so it is kept for shape parity.
                     "cov_mapped_pert": torch.full((b, S), ctrl_code, dtype=torch.long,
                                                   device=args.device),
                     "cov_celltype": torch.full((b, S), ct_code, dtype=torch.long,
                                                device=args.device),
-                    "cov_batch": torch.full((b, S), batch_code, dtype=torch.long,
-                                            device=args.device),
+                    "cov_batch": batch_codes_all[rows].reshape(b, S).to(args.device),
                     "is_padded_list": is_pad.reshape(b, S).to(args.device),
                     "ds_name": [ds_name] * b,
                     "col_genes": [col_genes] * b,
@@ -307,9 +402,18 @@ def main(argv=None) -> int:
                 f"refusing to emit a partly-NaN prediction.")
         return out
 
+    # ⚠️ THE WHOLE SPLIT IN ONE `predict` CALL. `export_split` otherwise chunks at
+    # S*sets_per_batch*4 = 512 rows, which breaks this adapter two ways:
+    #   1. `batch_codes_all` is indexed by the FULL split while `rows` inside `predict` is
+    #      chunk-local, so every cell would get another cell's batch;
+    #   2. the pure-set partition is built inside `predict`, so each of ~36 chunk boundaries
+    #      would cut one perturbation into two short sets.
+    # Their sampler groups over the whole split (`src/data/sampler.py:89-129`) and pads only
+    # the last set of each group, once. `predict` already batches internally at
+    # `--sets-per-batch`, so this costs no extra GPU memory.
     export_split(predict, split, args.out_dir, arm=ARM,
                  from_target_sum=TRAIN_TARGET_SUM, from_log1p=True,
-                 batch_size=S * int(args.sets_per_batch) * 4,
+                 batch_size=len(split),
                  extra_manifest={
                      "checkpoint": ckpt,
                      "seed": args.seed,
