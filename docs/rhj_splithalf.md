@@ -4,6 +4,68 @@
 read, partial results labelled partial, superseded numbers kept with the correction beside
 them.
 
+## ⭐ F-emit1 — inventory: what NB / exact-colsum / calibration evidence ACTUALLY exists
+
+**Question.** Before proposing emission work: has an **adjacency-map** Occam ever been trained
+with NB, has it ever been finally scored, and does `exact_colsum` exist here at all?
+
+**Answers, all verified from the runs and the code rather than from memory.**
+
+### 1. No adjmap model has EVER been trained with NB
+
+| | `pert_model_type` | `loss_type` | evidence |
+|---|---|---|---|
+| F6 loss grid (`a01`–`a25`, 24 runs) | **`gnn`** | 12 × `nb`, 12 × `smooth_l1` | `gnn_config.pert_model_type` read from `a01`'s checkpoint |
+| adjmap sweep (`s000`–`s4xx`, incl. our best) | **`adjacency_map`** | `smooth_l1` **held fixed** | `rhj_adjmap_sweep.sbatch:105` |
+
+So **every NB number we have is GNN-era**, and the adjmap sweep pins `loss_type=smooth_l1` as a
+standing decision. **NB is untested on adjmap.**
+
+### 2. The NB arms were never finally scored — a launch bug, not a result
+
+All 13 `a*` arms submitted to the split-half panel have **empty split dirs**. Scoring array
+`18034289` (2026-09-17) failed every task with:
+
+```
+ValueError: calibrate='quantile' needs the calibrated prediction.
+            Fit it with occam.vcell.panel.calibrate.fit_control_quantile_map
+```
+
+**1 of 27 `a*` arms has any `agg_results.csv`.** So there is **no test-panel number for any NB
+model**, GNN or otherwise. The only NB evidence is F6's *validation* metric.
+
+### 3. What F6 actually said (validation metric, GNN, 12 vs 12)
+
+| loss | n | best | worst | mean |
+|---|---|---|---|---|
+| `smooth_l1` | 12 | 0.3543 | 0.3276 | **0.3400** |
+| `nb` | 12 | 0.3019 | 0.2765 | **0.2919** |
+
+12/12 with no range overlap — but ⚠️ **F6 itself records the confound**: at
+`cosine_loss_weight 0.5` the `smooth_l1` arms are genuinely half-cosine while the NB arms are
+effectively pure-NB, because the two recon terms differ by an order of magnitude. F6 calls it
+*"a loss-configuration comparison, not a clean likelihood comparison"*. And per F7 the
+within-arm epoch-to-epoch swing is **±0.20**, against a between-arm span of 0.012.
+
+### 4. `exact_colsum` does not exist in this repo
+
+`grep -rln exact_colsum src/ scripts/ docs/` → **nothing**. It lives only in the research tree.
+`calibrate.py`'s own header says why: *"the second, count-space scorer and its emission
+machinery are gone -- Occam scores with cell-eval v1 only"*. **NB emission went with it.** The
+only emission-side knob here is the quantile calibration.
+
+### 5. Calibration, measured on our best arm (`s313`, 5 splits)
+
+| | `pearson_delta` | `mae` ↓ | `overlap_at_N` |
+|---|---|---|---|
+| `model_nocal` | **0.3415** | **0.0210** | **0.0642** |
+| `model_cal` | 0.2732 | 0.0890 | 0.0243 |
+
+Calibration costs **−0.068 `pearson_delta`**, **4.2× worse `mae`**, and **−62% `overlap_at_N`**.
+It is not close, and `overlap_at_N` — the metric we would be trying to push — is what it damages
+most.
+
+
 ## What the protocol is for
 
 **Overall objective.** Predict a perturbation's effect in a context where that perturbation
