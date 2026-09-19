@@ -342,7 +342,11 @@ def main(argv=None) -> int:
                      "checkpoint": ckpt,
                      "seed": args.seed,
                      "cell_set_len": S,
-                     "batch_covariate": batch_label,
+                     # per-cell now, not one constant -- see S3. Recording the count and a
+                     # sample keeps the manifest honest about which regime produced the number.
+                     "batch_covariate": f"per-cell, {len(_uniq)} distinct "
+                                        f"(e.g. {_uniq[0]} -> {_keymap[_uniq[0]]})",
+                     "batch_covariate_n_distinct": len(_uniq),
                      "control_pairing": "one drawn half-B control cell per predicted row; "
                                         "OUR protocol, not their (cell_type, batch) pool",
                      "sentences": "PURE -- one perturbation per sentence, matching "
