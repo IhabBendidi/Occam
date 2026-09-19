@@ -860,6 +860,65 @@ Both training, finite gradients (total norm 12.40 / 6.15), **0.145 s/step** → 
 **3.2 h** plus five validation cell-eval passes. The two differ in the expected place:
 genept trains `class_embedding.emb.weight`, onehot `class_embedding.null_emb.weight`.
 
+## ⭐⭐ C30 — PerturbDiff 0.2449, and CellFlow's PCA-truth inflation MEASURED at ~0.15
+
+### PerturbDiff (genept) — FINAL, 5/5 splits, `model_nocal`
+
+Checkpoint `epoch=12-step=64000`, resolved from the `.best_ckpt_path` marker (B1), sampler
+seeded per split (B2), per-cell batch covariate (M1), whole split in one `predict` call (M2).
+
+| split | `pearson_delta` | `mae` ↓ | `overlap_at_N` | `disc_l1` |
+|---|---|---|---|---|
+| 0 | 0.2472 | 0.0288 | 0.0738 | 0.6680 |
+| 1 | 0.2486 | 0.0286 | 0.0712 | 0.6634 |
+| 2 | 0.2445 | 0.0286 | 0.0730 | 0.6638 |
+| 3 | 0.2455 | 0.0286 | 0.0729 | 0.6680 |
+| 4 | 0.2388 | 0.0287 | 0.0759 | 0.6617 |
+| **mean** | **0.2449 ± 0.0038** | **0.0287 ± 0.0001** | **0.0734 ± 0.0017** | **0.6650 ± 0.0029** |
+
+**Clears `transfer` 0.2323**, and currently the best competitor. Still below ours (0.3415) and
+`experimental` (0.3722).
+
+### ⭐ CellFlow: the PCA-reconstructed truth was inflating `pearson_delta` by ~0.15
+
+C3 predicted the old selection metric was optimistic because it decoded the TRUTH through the
+rank-256 basis. The retrain scores the same quantity the reported metric does — raw gene-space
+half-A cells — on all 103 conditions. Same model family, same data, same scorer:
+
+| validation pass | OLD: PCA-reconstructed truth, 60 of 103 conditions | **NEW: raw gene-space truth, 103 of 103** |
+|---|---|---|
+| 1 | 0.3114 | **0.2485** |
+| 2 | 0.3617 | **0.2453** |
+| 3 | **0.4027** | **0.2448** |
+| 4 | 0.2703 | 0.2310 |
+
+**The inflation is ~0.15 `pearson_delta` at the peak** — larger than the entire gap between
+`meanpert` and `transfer`. Anything selected or reported on the old metric was reading a
+number that does not exist on the real target.
+
+⚠️ **And the SHAPE changed, not just the level.** The old curve rose 0.3114 → 0.3617 → 0.4027
+and looked like a model still improving. The new one is **flat-to-declining** (0.2485 → 0.2453
+→ 0.2448 → 0.2310), i.e. it peaks at the first validation. The old rise was partly C4: each
+pass scored a DIFFERENT random 60 of 103, so the "improvement" mixed real change with a
+changing panel. Two defects that individually look like tuning noise together manufactured a
+training curve.
+
+### Standings so far
+
+| | `pearson_delta` | note |
+|---|---|---|
+| `meanpert` | 0.1324 | ignores perturbation identity |
+| `transfer` | **0.2323** | the bar |
+| STATE | 0.2362 ± 0.0019 | |
+| **PerturbDiff genept** | **0.2449 ± 0.0038** | best competitor |
+| **Occam (ours)** | **0.3415** | |
+| `experimental` | 0.3722 | replicate agreement, not a ceiling |
+| ~~TxPert~~ | ~~0.3077~~ | withdrawn (C28), retraining |
+
+⚠️ TxPert's withdrawn 0.3077 was the only competitor number above ours-minus-a-bit, and it was
+wrong in a direction we have not yet measured. Its two retrains (single- vs mean-control) will
+say whether it genuinely sits above the others.
+
 ## ⭐⭐ C29 — STATE: 0.1306 → 0.2373. The three export fixes were worth +0.107, no retraining.
 
 **Objective / anchors** as C28. **Question:** did the S1-S3 export fixes move STATE off the
