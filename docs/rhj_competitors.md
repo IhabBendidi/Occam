@@ -860,6 +860,45 @@ Both training, finite gradients (total norm 12.40 / 6.15), **0.145 s/step** → 
 **3.2 h** plus five validation cell-eval passes. The two differ in the expected place:
 genept trains `class_embedding.emb.weight`, onehot `class_embedding.null_emb.weight`.
 
+## ⭐⭐ C29 — STATE: 0.1306 → 0.2373. The three export fixes were worth +0.107, no retraining.
+
+**Objective / anchors** as C28. **Question:** did the S1-S3 export fixes move STATE off the
+`meanpert` baseline, or was the grouping never the cause?
+
+**Answer: they moved it past `transfer`.** Same checkpoint (`best_celleval.ckpt`, step 63,999),
+same panel, same scorer — only the export changed.
+
+PARTIAL: 3 of 5 splits scored, `model_nocal`. Split-to-split spread is 0.0031.
+
+| metric (direction) | DEFECTIVE (mixed sentences) | **FIXED** | change |
+|---|---|---|---|
+| `pearson_delta` ↑ | 0.1306 ± 0.0050 | **0.2373** | **+0.1067** |
+| `mae` ↓ | 0.0337 | **0.0291** | −0.0046 |
+| `overlap_at_N` ↑ | 0.0306 | **0.0855** | **×2.8** |
+| `discrimination_score_l1` ↑ (chance 0.5) | 0.5448 | **0.6642** | +0.1194 |
+
+Per split: 0.2373 / 0.2388 / 0.2357.
+
+**Read against the anchors:** it was sitting ON `meanpert` **0.1324** — the baseline that
+ignores perturbation identity — and now clears `transfer` **0.2323**, the same perturbation
+measured in a different cell line. Still below ours (0.3415) and `experimental` (0.3722).
+
+**Every one of the three fixes was export-only**, so this cost a 15-minute re-export rather
+than a 6.5-hour retrain: the checkpoint was always fine, we were asking it the wrong question.
+
+⚠️ **Note for the val→test gap model.** STATE's test (0.2373) is now HIGHER than its own
+validation (0.2049), where our own arms run ~0.035 *lower* on test than on validation. Not
+alarming — different panels (103 vs 611 perturbations) and a different control pairing — but it
+means the "val − 0.035" rule does not transfer across arms, and a competitor's validation
+number should not be used to predict its test number.
+
+⚠️ **This also retires my earlier caution honestly**: I reported that the new split-0
+prediction differed from the defective one by only ~1% on aggregate statistics (between-
+perturbation variance 9.049e-04 vs 8.947e-04) and said the score was the real test. It was —
+a 1% shift in those summary statistics corresponded to +0.107 `pearson_delta`. **Aggregate
+variance statistics are a poor proxy for a DE-based metric**; do not use them to judge whether
+a fix landed.
+
 ## ⭐⭐ C28 — PORT FIDELITY AUDIT: three of four arms had score-changing deviations
 
 **Objective.** Unchanged: best model on SEEN perturbations in an UNSEEN context (HepG2
