@@ -106,6 +106,28 @@ def _paired_dataset_class():
     return _PairedDataset
 
 
+def _resolved_kg_list(cfg) -> list:
+    """The knowledge graphs this run actually used.
+
+    `modify_config` CONSUMES `cfg.graph.kg_list`, so by export time the surviving copy is
+    `cfg.model.pert_model.kg_list`. Refuse an empty list rather than record a manifest that
+    says the arm ran with no graphs -- that claim was in the provenance of five reported
+    splits before this was fixed.
+    """
+    for path in (("model", "pert_model", "kg_list"), ("graph", "kg_list"),
+                 ("datamodule", "kg_list")):
+        node = cfg
+        for key in path:
+            node = node.get(key) if hasattr(node, "get") else None
+            if node is None:
+                break
+        if node:
+            return [str(x) for x in node]
+    raise SystemExit(
+        "no non-empty kg_list found at model.pert_model / graph / datamodule. Recording an "
+        "empty one would misstate which knowledge graphs produced this number.")
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -308,7 +330,14 @@ def main(argv=None) -> int:
                      "checkpoint": ckpt_path,
                      "seed": args.seed,
                      "config_name": args.config_name,
-                     "kg_list": list(cfg.datamodule.get("kg_list", [])),
+                     # ⚠️ `model.pert_model.kg_list`, NOT `cfg.datamodule.kg_list`. The
+                     # latter does not exist, so `.get(..., [])` silently recorded
+                     # `"kg_list": []` in the frozen manifest of every reported split --
+                     # i.e. the provenance of the published number claimed the arm ran with
+                     # NO knowledge graphs, when it ran with GO + STRING. The adapter already
+                     # documented this exact trap above and then fell into it for the
+                     # manifest. Read it from where it lives, and refuse if it is empty.
+                     "kg_list": _resolved_kg_list(cfg),
                      "emission_clip": "negatives clipped at 0 in the adapter; TxPert's head "
                                       "is unconstrained and emitted down to -0.3274 in log1p "
                                       "space on the epoch-20 checkpoint",

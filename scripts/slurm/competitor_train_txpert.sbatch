@@ -71,6 +71,33 @@ SEED=$(( ${SEED_BASE:-42} + ${SLURM_ARRAY_TASK_ID:-0} ))
 EPOCHS="${EPOCHS:-50}"
 CHECK_VAL="${CHECK_VAL:-10}"
 TAG="occam_s${SEED}${TAG_SUFFIX:-}"
+
+# ─── the control regime the model is TRAINED on ────────────────────────────────────────────
+# TxPert's published config trains on the (cell_type, batch) MEAN control:
+# `datamodule.match_cntr=true, avg_cntr=true` -> `_get_control_data` returns
+# `control_data[control_ct_batch_indices[ct][batch]].mean(0)`. But our benchmark protocol
+# scores every arm from ONE drawn half-B control cell, so a mean-trained TxPert would be fed
+# an input regime it never saw, AND would be the only arm receiving a denoised basal if we
+# matched inference to its training instead.
+#
+# So this is an explicit A/B, both arms inferenced on single cells:
+#   TXPERT_CNTR=single  (match_cntr=false, avg_cntr=false)  train == inference regime
+#   TXPERT_CNTR=mean    (match_cntr=true,  avg_cntr=true)   TxPert's published regime
+# Everything else is identical, so the difference IS the train/inference regime mismatch.
+TXPERT_CNTR="${TXPERT_CNTR:-single}"
+case "$TXPERT_CNTR" in
+    single) MATCH_CNTR=false ; AVG_CNTR=false ;;
+    mean)   MATCH_CNTR=true  ; AVG_CNTR=true  ;;
+    *) echo "FATAL: TXPERT_CNTR must be 'single' or 'mean', got '$TXPERT_CNTR'" >&2; exit 1 ;;
+esac
+
+# ⚠️ OMIT THE CONTROL TOKEN, on BOTH sides. `-1` is the second slot of TxPert's GEARS-format
+# condition string -- `data_utils.py` rewrites every single-gene perturbation as "SYMBOL+ctrl"
+# to fill an unused combinatorial slot -- and our cohort is single-gene throughout. With
+# `omit_cntr=true`, `gears_derivative.py:261` skips it, so training and our export agree
+# without the export having to synthesise a token that carries no signal on this data.
+# This IS a deviation from TxPert's published `omit_cntr: false`; recorded as one.
+OMIT_CNTR="${OMIT_CNTR:-true}"
 OUT_ROOT="$HERE/runs/competitors/txpert"
 CKPT_DIR="$OUT_ROOT/ckpt/$TAG"
 VAL_DIR="$OUT_ROOT/valscore/$TAG"
@@ -107,6 +134,9 @@ cd "$HERE/competitors/TxPert"
     training.epochs="$EPOCHS" \
     training.check_val_every_n_epoch="$CHECK_VAL" \
     datamodule.occam_bench_dir="$HERE/data/benchmarks/rhj_fewshot" \
+    datamodule.match_cntr="$MATCH_CNTR" \
+    datamodule.avg_cntr="$AVG_CNTR" \
+    model.omit_cntr="$OMIT_CNTR" \
     wandb.name="txpert-occam-s${SEED}" \
     training.checkpoint.dirpath="$CKPT_DIR" \
     training.validation_celleval.output_dir="$VAL_DIR"
