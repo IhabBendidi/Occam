@@ -4,6 +4,69 @@
 read, partial results labelled partial, superseded numbers kept with the correction beside
 them.
 
+## ⛔ F-emit2 — `exact_colsum` CANNOT go first: it is a no-op without count emission
+
+**Question.** Port `exact_colsum` and run it on `s313` to push `overlap_at_N`.
+
+**Finding: there is nothing for it to pin.** It is not a matter of effort — the operation is
+undefined in Occam's current emission path.
+
+### What `exact_colsum` actually does
+
+`occam/scripts/build_submission.py:142` takes **sampled integer counts** and forces each gene's
+per-perturbation column sum onto `round(sum_i mu[i,g])`, scattering the residual over random
+cells:
+
+```python
+def exact_colsum(counts, mu, n_per, rng):
+    tgt = np.rint(mu[s0:e].sum(0)).astype(np.int64)
+    cur = blk.sum(0, dtype=np.int64)
+    d = tgt - cur   # the SAMPLING scatter, and the only thing removed
+```
+
+Its own docstring says what the variance is: *"Sampling each cell independently leaves the
+realised column sum scattered around the profile we actually predicted, and that scatter is pure
+self-inflicted loss."* **The scatter it removes is created by the sampler.**
+
+### Occam's panel emits no counts
+
+`celleval_v1.py:64` writes the prediction straight through:
+
+```python
+ad.AnnData(X=pred_X, ...).write_h5ad(ppath)
+```
+
+`pred_X` is the continuous log1p profile — **one predicted row per drawn control cell, no
+sampler, no `mu`, no integers.** `calibrate.py`'s header already records why: *"the second,
+count-space scorer and its emission machinery are gone."*
+
+So the group-sum pseudobulk the metric reads is **already exactly the sum of the model's own
+predictions**. There is no sampling residual `d`, so `exact_colsum` would compute `d ≈ 0` on
+rounded values and, if forced to round first, would *add* quantisation error rather than remove
+scatter.
+
+### Corrected order — the two items are coupled, not independent
+
+`exact_colsum` is a **variance reduction for a count emitter**, so it can only be evaluated
+downstream of one:
+
+1. **NB emission** (with the right library norm — 2,000 for our eval space) is the
+   prerequisite, not a parallel option.
+2. **`exact_colsum` on top of it** then removes the scatter that emission introduces, and the
+   comparison that means something is `NB emission` vs `NB emission + exact_colsum`.
+
+⚠️ And a caution on the target metric: VCC measured `exact_colsum` at **+0.038–0.040 on `nmae`
+and consistent `pds` gains**, because those read the group-sum pseudobulk — but **`jac` moved
+−0.002…−0.004**. `overlap_at_N` is Wilcoxon/DE-based, in the same family as `jac`. The
+mechanism predicts it helps `pearson_delta`/`mae` and does **little or nothing for
+`overlap_at_N`**, which is the metric this was meant to push.
+
+### What proceeds unblocked
+
+The loss work is independent of all of this and is being implemented and launched now: a clean
+adjmap NB arm, a joint SmoothL1+NB loss, DCOS integration, and the loss-weight sweep with the
+optimisation knobs frozen at `s313`.
+
 ## ⭐ F-emit1 — inventory: what NB / exact-colsum / calibration evidence ACTUALLY exists
 
 **Question.** Before proposing emission work: has an **adjacency-map** Occam ever been trained
