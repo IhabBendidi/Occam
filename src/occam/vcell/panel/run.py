@@ -121,6 +121,7 @@ def run_panel_evaluation(
 def score_arm(tag: str, matrix: np.ndarray, arm_labels: np.ndarray, panel: Panel,
               out_dir: str, celleval_kwargs: Optional[Mapping] = None,
               *, pred_ctrl: Optional[np.ndarray] = None,
+              emit: Optional[Mapping] = None,
               ) -> Tuple[Dict[str, float], str, str]:
     """Write one arm's cell-eval pair, score it, and return ``(metrics, arm_dir, target)``.
 
@@ -137,8 +138,11 @@ def score_arm(tag: str, matrix: np.ndarray, arm_labels: np.ndarray, panel: Panel
     from occam.decoder_train.metrics import real_de_cache_path
 
     arm_dir = os.path.join(out_dir, f"celleval_{tag}")
+    # `emit` (optional) turns the continuous profile into NB COUNTS before scoring. It is
+    # forwarded untouched so the emitter owns its own contract; None = the mean-only
+    # behaviour every number to date was produced with.
     pred_path, target_path = write_celleval_v1(matrix, arm_labels, panel, out_dir, tag,
-                                               pred_ctrl=pred_ctrl)
+                                               pred_ctrl=pred_ctrl, emit=emit)
 
     kwargs = dict(celleval_kwargs or {})
     cache_dir = kwargs.pop("de_real_cache_dir", None) or os.path.join(

@@ -4,6 +4,68 @@
 read, partial results labelled partial, superseded numbers kept with the correction beside
 them.
 
+## ⭐ F-emit3 — NB count emission implemented at library norm 2000; `exact_colsum` now measurable
+
+**Question.** F-emit2 showed `exact_colsum` is a no-op without a count emitter. Build the
+emitter, and check the coupling actually holds.
+
+**What was built** — `occam.vcell.panel.celleval_v1.nb_emit`, opt-in via
+`score_arm(..., emit={...})`. `emit=None` is the default and reproduces every number to date.
+
+The space chain, which is the part that goes wrong:
+
+| step | operation |
+|---|---|
+| in | `pred_log1p`, log1p at **2000** on the FULL-panel denominator |
+| 1 | `mu_2000 = expm1(pred_log1p)` — expected counts per 2000-library |
+| 2 | `mu_cell = mu_2000 * lib / 2000` — at `lib=2000` this is a no-op by construction |
+| 3 | `counts ~ NB(mu_cell, theta)` as Gamma-Poisson, so `Var = mu + mu²/theta` |
+| 4 | optional `exact_colsum`, pinned **per perturbation** |
+| 5 | **`log1p(counts / rowsum * 2000)` — back to the eval space** |
+
+⚠️ **Step 5 is not optional.** Skipping it hands cell-eval a count matrix while the target is
+log1p, and every metric silently becomes a comparison between two different spaces — the
+failure this whole campaign has been chasing.
+
+⚠️ **Emission applies to the PERTURBED ROWS ONLY.** The control block is real half-B cells that
+already carry real dispersion; re-emitting them would replace measurements with samples and
+destroy what makes `pearson_delta` a paired comparison.
+
+### Measured on a synthetic panel (40 cells, 2 perturbations, 300 genes, theta 2.0)
+
+| | mean-only (current) | NB emit | **NB + `exact_colsum`** |
+|---|---|---|---|
+| zero fraction | **0.0000** | 0.5174 | 0.5234 |
+| within-group std (count space) | 0.147 | **4.84** | 4.73 |
+| mean rel-error vs the input profile | — | 0.0935 | **0.0060** |
+| rowsum in eval space | 2000.2 | 2000.0 | 2000.0 |
+
+**Two things this shows.**
+
+1. **The structural defect is real and large.** A mean-only prediction has a zero fraction of
+   **0.0000** against a real-data ~0.52, and essentially no within-group dispersion. The
+   Wilcoxon test behind `overlap_at_N` reads exactly that dispersion, so it has been calling
+   significance on a distribution no real data has. This is the same pseudobulk-variance
+   artifact documented for XCellv2.
+2. **`exact_colsum` is worth 15× on mean fidelity — but only now.** It cuts the mean
+   reconstruction error 0.0935 → **0.0060**, and that gain exists *because* step 3 introduced
+   scatter for it to remove. Run on the current mean-only path it would have had a residual of
+   zero and done nothing, exactly as F-emit2 predicted.
+
+### ⚠️ What this does NOT yet establish
+
+- **No `overlap_at_N` number yet.** The measurements above are distributional, on synthetic
+  input. Whether restoring dispersion actually raises `overlap_at_N` on the real panel is the
+  open question, and VCC's evidence cuts against it (`jac` −0.002…−0.004 from colsum, and
+  `overlap_at_N` is in the same Wilcoxon family).
+- **`theta` has to come from somewhere.** Per-gene `log_theta` from an NB-trained checkpoint is
+  the principled source; a scalar broadcast is a weaker, different claim and `nb_emit` prints
+  which was used. **Our best arm (`s313`) is `smooth_l1` and carries no dispersion tensor** —
+  so the NB arms now training (L01–L09) are also the prerequisite for a principled `theta`.
+- This is **engineering, not modelling**: the emitter adds no information and leaves the mean
+  unchanged in expectation. It changes the shape of the predicted distribution so the scorer's
+  assumptions hold. Label it that way next to any number.
+
 ## ⛔ F-emit2 — `exact_colsum` CANNOT go first: it is a no-op without count emission
 
 **Question.** Port `exact_colsum` and run it on `s313` to push `overlap_at_N`.
