@@ -217,8 +217,11 @@ def main(argv=None) -> int:
                      "run_dir": run_dir,
                      "seed": args.seed,
                      "n_comps": int(pca["n_comps"]),
-                     "emission": "reconstruct_from_pca through the TRAIN-FIT basis, "
-                                 "clip_min=0.0, clip_max=None",
+                     # NOT "emission": that key holds the STRUCTURED, machine-read
+                     # {from_target_sum, from_log1p, to_target_sum, map} dict written by
+                     # export_split. Overwriting it with prose is what broke scoring.
+                     "emission_note": "reconstruct_from_pca through the TRAIN-FIT basis, "
+                                      "clip_min=0.0, clip_max=None",
                      "clip_note": "their own scorer clips to [0, 14]; ours does not, and "
                                   "clipping only the competitor would be an unrecorded "
                                   "asymmetry",

@@ -251,6 +251,21 @@ def export_split(predict: Callable[[np.ndarray, Sequence[str]], np.ndarray],
         "space_diagnostics": diag,
     }
     if extra_manifest:
+        # ⚠️ An adapter's `extra_manifest` must not be able to CLOBBER a field this writer
+        # owns. CellFlow's adapter passed `emission` as a prose string, which silently
+        # replaced the structured {from_target_sum, from_log1p, to_target_sum, map} dict that
+        # every consumer reads -- and scoring then died five splits in with
+        # `'str' object has no attribute 'get'`, after a 1h22m export. The adapter is the
+        # wrong place to discover this, so refuse it here where the contract lives.
+        _owned = set(manifest) & set(extra_manifest)
+        _clashes = {k for k in _owned if manifest[k] != extra_manifest[k]}
+        if _clashes:
+            raise ValueError(
+                f"extra_manifest from arm {arm!r} would overwrite field(s) this writer owns: "
+                f"{sorted(_clashes)}. These are the declared, machine-read provenance fields "
+                f"(emission space, shas, row counts); an adapter that needs to say more should "
+                f"use a NEW key such as '<field>_note'. Existing values: "
+                f"{ {k: manifest[k] for k in sorted(_clashes)} }")
         manifest.update(extra_manifest)
     with open(os.path.join(out_dir, "manifest.json"), "w") as fh:
         json.dump(manifest, fh, indent=2, sort_keys=True, default=str)

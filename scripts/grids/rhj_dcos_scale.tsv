@@ -1,0 +1,45 @@
+# DCOS SCALE-MATCH sweep + one pre-emptive delta_mag arm.
+#
+# WHY. F-loss5 measured the raw term values on D03: smooth_l1 = 0.008443, dcos = 0.796206,
+# mag_loss = mean((r-1)^2) = 29.2109. So `delta_cos_weight` was never a blend knob -- at D03's
+# 0.5 the dcos term is 0.3981 and smooth_l1 is 2.1% of the total. Every DCOS arm measured so
+# far (0.1 .. 2.0) sits at 90-99% direction, which is why that sweep was FLAT and why `mae`,
+# the one magnitude metric, was the one that degraded.
+#
+# THIS SWEEP'S QUESTION: with dcos brought DOWN to the same order as smooth_l1, is there a
+# weight that keeps D03's pearson_delta 0.3686 / disc_l1 0.7265 / overlap_at_N 0.0719 while
+# recovering `mae` toward L11's 0.0210? Both outcomes are meaningful: a hump means direction
+# and magnitude are jointly learnable and D03 was simply mis-scaled; a monotone fall in
+# pearson_delta as dcos shrinks means the 0.3686 genuinely REQUIRES near-total direction
+# supervision and `mae` cannot be bought back this way.
+#
+# WHAT IS VARIED: delta_cos_weight only, across the scale-match point 0.01060
+# (= smooth_l1 / dcos, the weight at which the two terms contribute equally).
+#   0.002 -> 15.9% dcos    0.005 -> 32.0%    0.01 -> 48.5% (matched)
+#   0.02  -> 65.4%         0.05  -> 82.5%
+# HELD FIXED: everything else at arm s313 -- adjacency_map, batch 2048, lr 1e-3, decoder_lr
+# 1e-3, cosine_loss_weight 0.5, film multiplicative_only, fh 256, mean-free, 30 epochs, seed 42.
+#
+# REFERENCE ARMS ALREADY MEASURED (do not re-run): D03 dcos 0.5 = 97.9% dcos, test
+# pearson_delta 0.3686 (4/5 splits); D02 dcos 0.25 = 96.3%, 0.3661 (5/5); L11 dcos inert
+# (pure smooth_l1), 0.3415 (5/5) with the best `mae` 0.0210.
+#
+# ANCHORS: meanpert 0.1324 · transfer 0.2323 · experimental 0.3722 (mae 0.0257).
+#
+# M06 IS THE PRE-EMPTIVE MAGNITUDE ARM, requested to run ahead of the full mag sweep. It keeps
+# D03 EXACTLY as it is (dcos 0.5) and adds delta_mag_weight = 0.01363, which is
+# 0.5*dcos / mag_loss = 0.3981 / 29.2109 -- i.e. the magnitude term contributes the SAME as the
+# dcos term. It tests the F-loss5 prediction directly: the model over-shoots effect size by
+# 5.589x (p10 2.70, p90 9.04) and cosine is scale-invariant, so it cannot see that error;
+# delta_mag_weight penalises (||pred-ctrl||/||true-ctrl|| - 1)^2 and should pull the ratio
+# toward 1. If `mae` improves while pearson_delta/disc_l1 hold, that is the objective met
+# WITHOUT touching the direction term. ⚠️ delta_mag_weight is 0.0 in all 540 runs on disk, so
+# this is its first use ever -- treat a null as "untested code path" until the ratio is
+# re-measured on the resulting checkpoint with scripts/loss_scale.py.
+arm	loss_type	nb_weight	nb_scale	delta_cos_weight	delta_mag_weight
+M01	smooth_l1	0	1.0	0.002	0.0
+M02	smooth_l1	0	1.0	0.005	0.0
+M03	smooth_l1	0	1.0	0.01	0.0
+M04	smooth_l1	0	1.0	0.02	0.0
+M05	smooth_l1	0	1.0	0.05	0.0
+M06	smooth_l1	0	1.0	0.5	0.01363

@@ -90,26 +90,44 @@ if [ -z "$ROW" ]; then
     echo "no row at index $IDX in $GRID" >&2
     exit 1
 fi
-read -r ARM LOSS NBW NBS DCW <<<"$ROW"
+# 6th column `delta_mag_weight` is OPTIONAL: rows from the original 5-column grid leave MAGW
+# empty and it defaults to 0, which is the value all 540 runs to date used. Without the
+# default, adding the column would silently pass an empty string to --set.
+read -r ARM LOSS NBW NBS DCW MAGW <<<"$ROW"
+MAGW="${MAGW:-0.0}"
 
 SEED="${SEED:-42}"
-SUFFIX="${ARM}__${LOSS}_nbw${NBW}_nbs${NBS}_dcos${DCW}_s${SEED}"
+# ⚠️ The suffix must carry EVERY varied axis. It is the run's identity on disk, and two arms
+# differing only in `delta_mag_weight` would otherwise write to the same directory and the
+# second would silently resume/overwrite the first. `_mag` is appended only when the term is
+# on, so every pre-existing run directory name is unchanged and still resolvable.
+SUFFIX="${ARM}__${LOSS}_nbw${NBW}_nbs${NBS}_dcos${DCW}"
+if [ "${MAGW}" != "0.0" ] && [ "${MAGW}" != "0" ]; then
+    SUFFIX="${SUFFIX}_mag${MAGW}"
+fi
+SUFFIX="${SUFFIX}_s${SEED}"
 
 echo "=== rhj loss-composition sweep arm ${ARM} ==="
 echo "host    : $(hostname)"
 echo "started : $(date -Is)"
 echo "git sha : $(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
 echo "slurm   : job ${SLURM_ARRAY_JOB_ID:-?} task ${IDX}  qos ${SLURM_JOB_QOS:-?}"
-echo "varied  : loss_type=${LOSS} nb_weight=${NBW} nb_scale=${NBS} delta_cos_weight=${DCW}"
+echo "varied  : loss_type=${LOSS} nb_weight=${NBW} nb_scale=${NBS} delta_cos_weight=${DCW} delta_mag_weight=${MAGW}"
 echo "frozen  : adjacency_map batch=2048 lr=1e-3 dlr=1e-3 cos=0.5 dpo=false"
 echo "          film=multiplicative_only fh=256 fmf=true epochs=30 seed=${SEED}  (= arm s313)"
-echo "run dir : runs/rhj_loss_${SUFFIX}/vcell"
+# ⚠️ The real run dir is runs/rhj_fewshot_<suffix>/: the orchestrator derives it from the
+# config's `name`, NOT from this launcher. Writing the marker to runs/rhj_loss_<suffix>/ (as
+# this did) created empty directories that look like runs, are not, and were mistaken for the
+# real ones once already.
+RUN_DIR="runs/rhj_fewshot_${SUFFIX}"
+echo "run dir : ${RUN_DIR}/vcell"
 echo
 
-mkdir -p "runs/rhj_loss_${SUFFIX}/vcell"
-cat > "runs/rhj_loss_${SUFFIX}/slurm_job.json" <<JSON
+mkdir -p "${RUN_DIR}"
+cat > "${RUN_DIR}/slurm_job.json" <<JSON
 {"arm_id": "${ARM}", "kind": "loss", "loss_type": "${LOSS}",
  "nb_weight": "${NBW}", "nb_scale": "${NBS}", "delta_cos_weight": "${DCW}",
+ "delta_mag_weight": "${MAGW}",
  "slurm_array_job_id": "${SLURM_ARRAY_JOB_ID:-}", "slurm_task_id": "${IDX}",
  "qos": "${SLURM_JOB_QOS:-}", "host": "$(hostname)", "started": "$(date -Is)"}
 JSON
@@ -125,6 +143,7 @@ python -m occam.train --config "$CONFIG" --stages vcell \
     --set "stages.vcell.loss.nb_weight=${NBW}" \
     --set "stages.vcell.loss.nb_scale=${NBS}" \
     --set "stages.vcell.loss.delta_cos_weight=${DCW}" \
+    --set "stages.vcell.loss.delta_mag_weight=${MAGW}" \
     --set "stages.vcell.graph.data_perts_only=false" \
     --set "stages.vcell.interaction.interaction_type=film" \
     --set "stages.vcell.interaction.film_mode=multiplicative_only" \

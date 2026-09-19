@@ -1,0 +1,23 @@
+# TEST cell-eval for the DCOS scale-match sweep + the single delta_mag arm (train job 18186699).
+#
+# QUESTION: F-loss5 showed delta_cos_weight was never a blend knob -- every arm measured so far
+# sat at 90-99% direction, which is why pearson_delta and disc_l1 rose while `mae`, the one
+# magnitude metric, fell. With dcos brought down to smooth_l1's scale, is there a weight that
+# keeps D03's pearson_delta 0.3686 / disc_l1 0.7265 / ovl@N 0.0719 while recovering `mae`
+# toward L11's 0.0210? And does the never-before-used delta_mag term do it directly?
+#
+# READ EACH ROW AGAINST, all uncalibrated, 5 splits unless noted:
+#   L11 pure smooth_l1  pearson_delta 0.3415  mae 0.0210  ovl@N 0.0642  disc_l1 0.6534
+#   D02 dcos 0.25       0.3661                0.0277      0.0568       0.7180
+#   D03 dcos 0.5        0.3686 (4/5)          0.0321      0.0719       0.7265
+# ANCHORS: meanpert 0.1324 · transfer 0.2323 · experimental 0.3722 (mae 0.0257).
+#
+# `mae` is an ERROR: LOWER IS BETTER. The objective is a row that holds pearson_delta near
+# 0.3686 while mae falls well below 0.0321 -- ideally toward 0.0210.
+arm_id	kind	tag
+M01	loss	smooth_l1_nbw0_nbs1.0_dcos0.002_s42
+M02	loss	smooth_l1_nbw0_nbs1.0_dcos0.005_s42
+M03	loss	smooth_l1_nbw0_nbs1.0_dcos0.01_s42
+M04	loss	smooth_l1_nbw0_nbs1.0_dcos0.02_s42
+M05	loss	smooth_l1_nbw0_nbs1.0_dcos0.05_s42
+M06	loss	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_s42
