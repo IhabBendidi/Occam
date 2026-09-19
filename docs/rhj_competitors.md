@@ -860,6 +860,130 @@ Both training, finite gradients (total norm 12.40 / 6.15), **0.145 s/step** → 
 **3.2 h** plus five validation cell-eval passes. The two differ in the expected place:
 genept trains `class_embedding.emb.weight`, onehot `class_embedding.null_emb.weight`.
 
+## ⭐⭐ C28 — PORT FIDELITY AUDIT: three of four arms had score-changing deviations
+
+**Objective.** Unchanged: best model on SEEN perturbations in an UNSEEN context (HepG2
+`rhj_fewshot`), headline cell-eval `pearson_delta` on the 611-perturbation cohort. Anchors:
+`ctrlcell` −0.0018 · `ctrlmean` 0.0016 · **`meanpert` 0.1324** · `transfer` 0.2323 ·
+`experimental` 0.3722 · ours 0.3415.
+
+**Question.** C27 showed our export fed STATE mixed-perturbation cell sentences — a defect in
+the GROUPING of inputs, which no content check could see. Is that an isolated slip, or a class?
+
+**What is varied / held fixed.** Nothing varied. Each port was read against its OWN pipeline
+(native train/predict entry points and official configs), by three independent audits, with
+file:line evidence demanded on both sides.
+
+**What each outcome means.** One slip → fix and move on. A class → every arm's number is
+suspect until audited, including ones already written down.
+
+**It is a class. Three of four arms were affected, and one of them was TxPert, whose 0.3077
+was already recorded as a result (C22).**
+
+### ⛔ STATE — the C27 fix was necessary but NOT SUFFICIENT
+
+| # | finding | measured |
+|---|---|---|
+| **S1** | `predict_step(..., padded=False)` does not mean "unpadded" — it means **"this whole batch IS one sentence"** (`state_transition.py:409-415`, `reshape(1, -1, dim)`). Our export submitted 4 pure sentences per call, so they were flattened into **one 256-cell sentence spanning ~8-9 perturbations**. `NoRoPE` backbone → no length error, no warning. | `mean\|Δ\|/mean\|pred\|` **0.52**; per-perturbation prediction correlated **0.12-0.25** with the faithful one |
+| **S2** | We padded a 30-cell sentence to 64. **STATE's inference does not pad at all** (`_infer.py:810`; the test sampler skips the fill: `if len(sentence) < cell_sentence_len and not self.test`). My C27 `np.resize` tiling repeated cells 0-3 three times and 4-29 twice. | **7.2%** change; exact 2x duplication is attention-invariant (**0.0007%**), so the whole 7.2% was the non-uniform remainder |
+| **S3** | The batch covariate was **one constant** (`sorted(...)[0]` = `HEPG2__hepg2-nad-1`, 762 of 42,402 rows) broadcast to all 18,575 rows, against a **trained** `batch_encoder` (`batch_dim=167`) added to every token. A real 30-cell sentence spans ~22 batches. | **0.37** relative change; perturbation-specific delta correlated **0.73-0.86** |
+
+**Both of STATE's own inference paths submit exactly one sentence** — `_infer.py:810,835`
+("All tokens in this batch share the same perturbation") and `_predict.py:400`
+(`data_module.batch_size = 1`) — and so does our in-training validation, which is why the same
+checkpoint scored **0.2049** there and **0.1306** on export.
+
+✅ **STATE's TRAINING was correct**, so no retrain: `training_step` defaults to `padded=True`,
+the sampler pads every training sentence to exactly `S`, and the validation pairs
+`batch_size=1` **with** `padded=False`. Fixed: one sentence per forward, no padding (0% overhead,
+was 131%), per-cell batch (56 distinct, median 19 per sentence), whole split in one `predict`
+call, plus a purity assertion — the old guard checked row COUNT, which a sentence-collapse
+preserves.
+
+### ⛔ TxPert — 0.3077 IS WITHDRAWN
+
+| # | finding |
+|---|---|
+| **T1** | Every exported row omitted the `-1` token. Theirs passes `[pert_id, -1]` (`datamodule_hybrid.py:443`) because `data_utils.py:267-271` rewrites a single-gene perturbation as `"SYMBOL+ctrl"`; with `omit_cntr: false` the model adds `z_p[pert] + z_p[-1]` in training, validation **and** their own export. |
+| **T2** | The basal input was one control cell, but the checkpoint was trained AND selected with `match_cntr/avg_cntr: true` — the `(cell_type, batch)` **MEAN** control. The model had never seen a single-cell basal. Consistent with validation `pearson_delta` 0.387 vs exported 0.3077. |
+| **T4** | The frozen manifest of all five reported splits recorded `"kg_list": []` — the adapter read `cfg.datamodule.kg_list`, which does not exist, so `.get(..., [])` silently claimed the arm ran with **no knowledge graphs**. |
+
+**Decisions (user):** `omit_cntr: true` on **both** sides — the `-1` is the unused second slot
+of a combinatorial format and our cohort is single-gene throughout — and TxPert is **retrained
+on single-cell controls** so that training, inference and the benchmark protocol all agree.
+**Rationale: fairness.** Every other arm predicts from one drawn half-B control; giving TxPert a
+denoised batch-mean basal would make its number incomparable. **BatchNorm deliberately
+untouched**, same reason. Both are deviations from TxPert's published config and are recorded
+as such.
+
+⚠️ An **A/B is running** to measure T2 rather than assume it: two arms identical except for the
+training control regime (`single` vs `mean`), both inferenced on single cells.
+
+### ⛔ CellFlow — the export had NEVER run, and selection was inflated
+
+| # | finding |
+|---|---|
+| **C1** | `predict` requires `obs[control_key].all()` to be **True** (`_cellflow.py:619-622`); we passed all `False`. Those rows *are* controls — the OT source population; `False` belongs on the covariate frame, which is what their own `predict_cellflow.py:215-222,316` does. |
+| **C2** | The prediction block carried no `uns`, so `rep_dict['gene_embeddings']` raised `KeyError` (`_datamanager.py:245,401-403`) — not the "Representation not found" our guard told the reader to expect. |
+| **C3** | The selection metric decoded the **TRUTH** through the rank-256 PCA basis, deleting everything the basis cannot express. It recorded `pearson_delta` 0.4027 / `overlap_at_N` 0.908 on the same split where TxPert, scored against untouched targets, gets 0.387. The module's own premise — "the selection metric has to be the same quantity as the reported metric" — held for the code and failed for the quantity. |
+| **C4** | `n_conditions_on_log_iteration: 60` against **103** conditions, re-drawn each pass from one rng, so the five selection scores that chose the checkpoint were **not comparable to each other**. The apparent rise 0.4089 → 0.4614 → 0.5165 mixes improvement with a changing panel. |
+| **C5** | The one-hot vocabulary was built **twice**, independently for train and validation, so widths could diverge. It worked only because the control-injection path overwrote the validation `uns` — which itself only fires because this split has zero controls. |
+| **C6** | `abs(hash((label, n)))` is `PYTHONHASHSEED`-randomised, so the subsample was not "deterministic per (condition, n)" as its comment claimed. |
+
+**C3 + C4 determine WHICH checkpoint was kept and cannot be fixed after the fact**, so CellFlow
+is **retrained**. Verified live in the new run: `one shared vocabulary: 2395 tokens, 2395
+distinct perturbations`; `valid conditions=103 n_log=103 n_end=103`; `gene-space truth: 103
+perturbations, 6,731 cells (controls excluded)`.
+
+✅ **Cleared:** no set axis (inference is `jax.vmap` per cell; minibatch OT is training-only and
+each batch already holds one perturbation), and — checked at the user's request — **the PCA
+basis is fit on TRAINING DATA ONLY** (`centered_pca(adata_train)`, then
+`project_pca(ref_adata=adata_train)`; `adata_train` never receives validation rows). ⚠️ The
+basis uses `random_state=0`, so it does not vary with `model.seed`.
+
+### ⛔ PerturbDiff — two blockers, no retrain needed
+
+| # | finding |
+|---|---|
+| **B1** | Checkpoint resolution matched **nothing**: `save_last: True` puts `last.ckpt` beside the selected file (tripping the `>1` guard), the launcher appends `TAG_SUFFIX` *after* `_s${SEED}` so no glob variant matched the real dir, and `--penc` is never passed. The natural workaround would have scored **final-step weights selection never chose** — which their own eval script explicitly refuses. Now reads the `.best_ckpt_path` marker the training leg already writes. |
+| **B2** | The export never seeded torch. With `eta: 0.0` the DDIM prediction is a deterministic function of one `th.randn` draw, so two runs of the same checkpoint disagreed and `--seed` did not control it. Theirs: `pl.seed_everything(cfg.optimization.seed)`. Now seeded per split (`42 + 1000*split`, visible in the log as `Seed set to 42 / 1042 / 2042`). |
+| **M1** | Same constant-batch defect as STATE's S3. Fixed per-cell; ⚠️ the faithful index is the **perturbed** cell's batch (`batches[a_rows]`), not the drawn control's — `get_covarates` runs on the perturbed row. |
+| **M2** | `export_split` chunked at 512 rows while the set partition lived inside `predict`, so ~36 boundaries cut a perturbation in two. Fixed with `batch_size=len(split)`. |
+
+✅ Every training and sampling hyperparameter matches the reference recipe (verified against the
+real `pd_fewshot_*` run logs), and EMA is handled correctly — the checkpoint holds the averaged
+weights validation scored.
+
+### ⚠️ Corrections to claims in code I wrote myself
+
+- **`is_padded_list` is never seen by the model.** It is used only post-hoc to drop rows
+  (`sampling_generation.py:188`), and attention runs across the whole set with **no key-padding
+  mask** (`cross_dit_blocks.py:73-75`) — so filler rows **do** influence real ones. My docstring
+  claimed it was "the mask the model already consumes for exactly this purpose".
+- **`cov_mapped_pert` is consumed by nothing** (grep finds only the producer). My comment called
+  it "the control token for the conditioning branch"; there is no such branch.
+- **`assert_same_space` / `man["space_check"]`** were removed in C18, and two tests still
+  referenced them — they only surfaced now, three test runs deep.
+- A **shared TxPert data cache** would have had two concurrent arms writing one `combined.h5ad`
+  (both logged "adata not cached" within 60 ms); each arm now has a private cache.
+
+### ⚠️ Three false provenance claims
+
+The recipe files cited as authoritative for STATE, TxPert and PerturbDiff
+(`reproducibility/{state,txpert,perturbdiff}__replogle_nadig_fewshot/...`) **do not exist in
+this checkout**. All three sets of hyperparameters were confirmed against run logs instead.
+TxPert's config additionally records that three of its model hyperparameters came from a
+217-run sweep that **maximised a TEST metric** — a selection-on-test concern that belongs
+beside its number.
+
+### The general lesson
+
+Every check in place was about the **CONTENT** of input rows — gene axis order, ID space,
+library size, control pairing, one-hot lookup by name. **None was about their GROUPING, their
+COVARIATES, or the batch layout they were submitted in.** All three produce a well-formed,
+well-calibrated matrix that scores at a baseline. Any future arm needs assertions on the
+*shape of the request*, not only on the values in it.
+
 ## ⛔ C27 — STATE's 0.1306 is OUR BUG, not STATE: we fed it mixed-perturbation cell sentences
 
 **Objective.** Unchanged: best model on SEEN perturbations in an UNSEEN context (HepG2
