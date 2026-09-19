@@ -143,3 +143,10 @@ competitors/**/cell-eval-outdir/
 # Two such files (103 MB each) reached a commit and would have been REJECTED by GitHub, whose
 # hard limit is 100 MB per file. The callback now writes per-run; this is the backstop.
 /cell-eval-outdir/
+
+# reproducibility/: git tracks the MANIFEST, the config and the cell-eval CSVs -- everything
+# needed to READ a result. The weights and prediction h5ads are multi-GB and go to
+# HuggingFace, verified afterwards against the manifest's sha256.
+reproducibility/**/*.h5ad
+reproducibility/**/*.torch
+reproducibility/**/*.npy
