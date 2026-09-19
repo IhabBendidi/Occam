@@ -98,9 +98,23 @@ esac
 # without the export having to synthesise a token that carries no signal on this data.
 # This IS a deviation from TxPert's published `omit_cntr: false`; recorded as one.
 OMIT_CNTR="${OMIT_CNTR:-true}"
+
+# ─── a PRIVATE data cache per arm ──────────────────────────────────────────────────────────
+# ⚠️ `datamodule.cache_dir` defaults to `${hydra:runtime.cwd}/cache`, i.e. ONE directory
+# shared by every TxPert run launched from this repo. Two concurrent arms both logged
+# "adata not cached, loading and processing data" within 60 ms of each other and would then
+# have written the same `combined.h5ad` simultaneously -- a corrupt file, or one arm reading
+# the other's half-written one, with no error either way.
+#
+# It is also what makes the EXPORT leg fragile: `_extend_pert_vocabulary` and the zarr split
+# are computed ONLY on a cold cache, so a cache written by training makes a later export
+# raise "zarr splits requested before _load_zarr_data() ran". A per-arm cache keeps each
+# arm's train and export legs consistent with each other and isolated from every other arm.
 OUT_ROOT="$HERE/runs/competitors/txpert"
 CKPT_DIR="$OUT_ROOT/ckpt/$TAG"
 VAL_DIR="$OUT_ROOT/valscore/$TAG"
+TXPERT_CACHE="${TXPERT_CACHE:-$OUT_ROOT/cache/$TAG}"
+mkdir -p "$TXPERT_CACHE"
 
 # A final epoch that is never validated can never be selected, so the run would silently be
 # unable to choose its own last checkpoint. Assert rather than trust.
@@ -134,6 +148,7 @@ cd "$HERE/competitors/TxPert"
     training.epochs="$EPOCHS" \
     training.check_val_every_n_epoch="$CHECK_VAL" \
     datamodule.occam_bench_dir="$HERE/data/benchmarks/rhj_fewshot" \
+    datamodule.cache_dir="$TXPERT_CACHE" \
     datamodule.match_cntr="$MATCH_CNTR" \
     datamodule.avg_cntr="$AVG_CNTR" \
     model.omit_cntr="$OMIT_CNTR" \
