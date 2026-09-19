@@ -184,6 +184,46 @@ default `CALIBRATE=quantile`, which emits `model_cal` ONLY. Calibration costs 0.
 as `18181379` with `CALIBRATE=both`. The one salvageable number from it agrees:
 D02 split 0 calibrated 0.3009 vs L11 calibrated 0.2732, **+0.0277**.
 
+
+### ⏳ PARTIAL — `D03` (`delta_cos_weight` 0.5): 3 of 5 splits, and it looks BETTER than `D02` on 3 of 4 metrics
+
+⚠️ **n = 3 (splits 1, 2, 3). Not a result yet.** Splits 0 and 4 lost their uncalibrated arm to
+the F-infra1 shm race and are being re-run. Recorded now because F-loss2 pre-registered 0.5 as
+the validation optimum (0.4108 vs 0.25's 0.4100), so this is the arm that prediction points at.
+
+⚠️ **The control is `L11`, not `L12`.** `D03`'s exact same-config-hash twin is `L12`, which has
+only **1 of 5** uncalibrated splits (F-infra1). `L11`, `L12` and `L13` are all smooth_l1
+replicates and agree to four decimals where both exist (0.3415 / 0.3414 / 0.3415), so `L11` is a
+sound stand-in — but it is a **stand-in, stated as such**, not the exact pairing used for `D02`.
+
+| | split 1 | split 2 | split 3 | mean (n=3) |
+|---|---|---|---|---|
+| `L11` control `pearson_delta` | 0.3464 | 0.3407 | 0.3378 | 0.3416 |
+| **`D03` `pearson_delta`** | **0.3721** | **0.3672** | **0.3670** | **0.3688** |
+| `L11` control `overlap_at_N` | 0.0655 | 0.0640 | 0.0628 | 0.0641 |
+| **`D03` `overlap_at_N`** | **0.0732** | **0.0716** | **0.0699** | **0.0716** |
+
+**Paired `D03` − `L11` over those 3 splits, all four metrics:**
+
+| metric | Δ | direction |
+|---|---|---|
+| `pearson_delta` ↑ | **+0.0271** | better (`D02` was +0.0246) |
+| `discrimination_score_l1` ↑ | **+0.0732** | better (`D02` was +0.0646) |
+| `overlap_at_N` ↑ | **+0.0075** | **better — and `D02` was −0.0074, i.e. the sign FLIPS** |
+| `mae` ↓ | +0.0112 | worse (`D02` was +0.0067, so `D03` is worse here) |
+
+**Reading, if it holds at n=5.** At weight 0.5 the trade is no longer 2-up/2-down: **three
+metrics improve and only `mae` degrades.** `overlap_at_N` changing sign between weight 0.25
+(−0.0074) and 0.5 (+0.0075) is the single most interesting thing in the sweep, because
+`overlap_at_N` was the metric DCOS appeared to cost. If real, the right `delta_cos_weight` is
+0.5, not 0.25, and the "DCOS trades DE-overlap for correlation" framing from `D02` is an
+artefact of using too small a weight.
+
+⚠️ **Do not act on this yet.** n=3, one seed, and the two missing splits are not missing at
+random — they are the ones the shm race hit. `D02`'s per-split spread is ±0.0023 and its worst
+split (4) is its lowest, so a mean over splits 1–3 is plausibly optimistic. The `D02` numbers in
+the table above ARE complete (5/5) and are the ones to quote today.
+
 **Config that produced it:** `rhj_fewshot_D02__smooth_l1_nbw0_nbs1.0_dcos0.25_s42`, checkpoint
 epoch 21 `best_metric` 0.4100, git `e7c3a78`, `configs/rhj_fewshot.yaml` +
 `--set stages.vcell.loss.delta_cos_weight=0.25`. Scored by `configs/rhj_dcos_eval.tsv` through
