@@ -137,3 +137,9 @@ reproducibility/**/*.pth
 # csv) and collides between concurrent seeds. Fixed to write per-run; ignored belt-and-braces.
 competitors/**/cell-eval-outdir/
 **/celleval_scratch/
+
+# cell-eval scratch at the REPO ROOT too. `MetricsEvaluator`'s outdir default is the RELATIVE
+# "./cell-eval-outdir", so a run whose cwd is the repo root drops ~205 MB of pdex DE csv here.
+# Two such files (103 MB each) reached a commit and would have been REJECTED by GitHub, whose
+# hard limit is 100 MB per file. The callback now writes per-run; this is the backstop.
+/cell-eval-outdir/
