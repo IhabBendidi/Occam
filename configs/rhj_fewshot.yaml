@@ -178,6 +178,20 @@ stages:
       source_weight: none
       loss_norm: pooled
       delta_mag_weight: 0.0
+      # DCOS -- 1 - cos(pred - ctrl_mean, group_mean - ctrl_mean): the direction of the
+      # EFFECT. ⚠️ NOT the same as `cosine_loss_weight` above, which is cos(prediction,
+      # target) on the PROFILE and is dominated by the baseline expression every
+      # perturbation shares -- two predictions that disagree completely about the effect can
+      # still score ~0.99 there. 0.0 = off.
+      delta_cos_weight: 0.0
+      # nb_smooth_l1 only: recon = (1 - nb_weight) * smooth_l1 + nb_weight * nb / nb_scale.
+      # ⚠️ The two terms differ by a MEASURED ~6.5x in scale, which is exactly the confound
+      # F6 recorded: at cosine_loss_weight 0.5 its smooth_l1 arms were genuinely half-cosine
+      # while its NB arms were effectively pure-NB, so F6 compared loss *configurations*, not
+      # likelihoods. `nb_scale` divides the NB term first so `nb_weight` sweeps the trade-off
+      # rather than one order of magnitude of the NB term's own size.
+      nb_weight: 0.5
+      nb_scale: 1.0
       # The released checkpoint carries a trained per-gene log_theta; warm-starting it
       # removes the early-training regime where the NB gradient diverges worst.
       vc_load_dispersion: true
