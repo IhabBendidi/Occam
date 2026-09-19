@@ -23,8 +23,10 @@
     "Perturbation vocabulary self-extended by 20 symbols absent from gears_gene_set.csv (9854 -> 9874)."
   ],
   "git_commit": "fb8cdea352de7d992be413e083c7926a66d4efe8",
+  "layout_note": "Legacy FLAT freeze, written before the checkpoints/ artifacts/ predictions/ celleval/ layout existed. Kept as-is on purpose: re-freezing it would imply the withdrawn number was re-derived, which it was not.",
   "scored_by": "cell-eval 0.6.0 / pdex 0.1.24 via scripts/eval_competitor.py, uncalibrated (model_nocal), one drawn half-B control cell per predicted row",
   "seed": 42,
+  "selected_checkpoint": "best-ep49.ckpt",
   "test_scores_5_splits_uncalibrated": {
     "mean": {
       "discrimination_score_l1": 0.6457799052290121,
@@ -100,5 +102,8 @@
       "selection_score": 0.544278908538758
     }
   },
-  "what": "TxPert trained on Occam's rhj_fewshot benchmark: our three h5ads, our frozen 6,983-gene axis, our splits, our exclusions. NOT their published setup."
+  "what": "TxPert trained on Occam's rhj_fewshot benchmark: our three h5ads, our frozen 6,983-gene axis, our splits, our exclusions. NOT their published setup.",
+  "withdrawn": true,
+  "withdrawn_reason": "C28. Three faults at once: exported rows omitted the -1 perturbation token the model was trained with (omit_cntr: false); the basal input was a single control cell while the checkpoint was trained AND selected on the (cell_type, batch) MEAN control; and the frozen manifest recorded kg_list: []. Superseded by reproducibility/rhj_fewshot/txpert_s42 (0.3463), a retrain on single-cell controls with omit_cntr: true.",
+  "withdrawn_score_pearson_delta": 0.3077
 }
