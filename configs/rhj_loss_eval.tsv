@@ -1,0 +1,19 @@
+# Loss-composition arms with a saved checkpoint, for the split-half panel.
+# ⚠️ L10-L15 carry delta_cos_weight but ran BEFORE the group-mean gate was fixed,
+#    so their DCOS term was silently ZERO (F-loss1) -- they are smooth_l1 /
+#    nb_smooth_l1 replicates, not DCOS arms.
+arm_id	kind	tag
+L01	loss	nb_nbw0_nbs1.0_dcos0.0_s42
+L02	loss	nb_smooth_l1_nbw0.1_nbs1.0_dcos0.0_s42
+L03	loss	nb_smooth_l1_nbw0.25_nbs1.0_dcos0.0_s42
+L04	loss	nb_smooth_l1_nbw0.5_nbs1.0_dcos0.0_s42
+L05	loss	nb_smooth_l1_nbw0.75_nbs1.0_dcos0.0_s42
+L06	loss	nb_smooth_l1_nbw0.9_nbs1.0_dcos0.0_s42
+L07	loss	nb_smooth_l1_nbw0.25_nbs6.5_dcos0.0_s42
+L08	loss	nb_smooth_l1_nbw0.5_nbs6.5_dcos0.0_s42
+L09	loss	nb_smooth_l1_nbw0.75_nbs6.5_dcos0.0_s42
+L10	loss	smooth_l1_nbw0_nbs1.0_dcos0.1_s42
+L11	loss	smooth_l1_nbw0_nbs1.0_dcos0.25_s42
+L12	loss	smooth_l1_nbw0_nbs1.0_dcos0.5_s42
+L13	loss	smooth_l1_nbw0_nbs1.0_dcos1.0_s42
+L14	loss	nb_smooth_l1_nbw0.5_nbs6.5_dcos0.25_s42
