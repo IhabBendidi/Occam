@@ -106,7 +106,7 @@ F-latent3: **no arm improves M03.** The only positive is `P06` at +0.0013, insid
 | `P05` latcos(delta_z) 1× | 5/5 | **0.3578** ± 0.0015 | 0.0212 | 0.0675 | 0.6637 |  |
 | `P07` latcos(z_hat) 1× | 5/5 | **0.3570** ± 0.0030 | 0.0214 | 0.0702 | 0.6547 | the one z_hat arm |
 | `P04` latcos(delta_z) 0.1× | 4/5 ⚠️ | **0.3551** ± 0.0025 | 0.0216 | 0.0673 | 0.6663 |  |
-| `T01` both 0.01× | 0/5 | — | — | — | — | orphaned by a cancelled dependency; rescoring as 18217089 |
+| `T01` both 0.01× | 5/5 | **0.3595** ± 0.0027 | 0.0214 | 0.0700 | 0.6653 | rescored via 18217089; WORSE than 0.1× |
 
 ## Latent-space losses — M06 base (job 18215244)
 
@@ -127,7 +127,7 @@ F-latent4: **the latent loss HELPS on M06 and HURTS on M03 — identical interve
 | `Q07` latcos(z_hat) 1× | 4/5 ⚠️ | **0.3681** ± 0.0020 | 0.0225 | 0.0663 | 0.6890 | the one z_hat arm |
 | `Q10` latMSE 10× + cos 1× | 0/5 | — | — | — | — | not scored |
 | `Q11` both 0.1× | 0/5 | — | — | — | — | not scored |
-| `T02` both 0.01× | 0/5 | — | — | — | — | orphaned by a cancelled dependency; rescoring as 18217089 |
+| `T02` both 0.01× | 5/5 | **0.3617** ± 0.0023 | 0.0235 | 0.0714 | 0.7026 | rescored via 18217089; first latent arm to HURT M06 |
 
 ## Post-hoc emission treatments on `s313` — ⚠️ split 00 only (n=1)
 

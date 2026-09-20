@@ -55,6 +55,51 @@ identity floor and the score alone would not distinguish that from a genuinely w
 ⚠️ Step 3 is the pre-registration: **the diagnostic decides whether the sweep is worth running**,
 rather than the sweep being run and the diagnostic quoted afterwards.
 
+## ⛔ F-latent5 — the 0.01× latent arms are WORSE than 0.1× on both bases. **Too little latent supervision is harmful, on M06 as well.**
+
+**Status note.** These arms trained on 2026-09-20 but were never scored: their eval job
+`18216433` was CANCELLED by its `afterok` dependency when 10/12 split-reconstruction arms
+crashed (F-recon2). The checkpoints survived; only the scoring was lost. Rescored as `18217089`,
+10/10 tasks, both arms 5/5.
+
+**Question.** `P11` (`both` at 0.1× parity) was the best combination arm on M03. Does an order
+of magnitude lower — 0.01× — do better? M03 weights lmse 0.000157 / lcos 0.000097; M06 lmse
+0.000044 / lcos 0.000059.
+
+### Measured — test cell-eval, uncalibrated, 5/5
+
+| arm | base | n | `pearson_delta` | `mae` ↓ | `ovl@N` | `disc_l1` |
+|---|---|---|---|---|---|---|
+| **M03** (no latent) | M03 | 5/5 | **0.3679 ± 0.0017** | **0.0212** | 0.0722 | **0.6715** |
+| `P11` both 0.1× | M03 | 5/5 | 0.3670 ± 0.0023 | **0.0211** | **0.0738** | 0.6653 |
+| `P01` MSE 0.1× | M03 | 5/5 | 0.3600 ± 0.0019 | 0.0213 | 0.0693 | 0.6589 |
+| **`T01` both 0.01×** | M03 | 5/5 | **0.3595 ± 0.0027** | 0.0214 | 0.0700 | 0.6653 |
+| **`Q02`** MSE 1× | M06 | 5/5 | **0.3783 ± 0.0027** | 0.0225 | 0.0774 | 0.7029 |
+| `Q01` MSE 0.1× | M06 | 5/5 | 0.3725 ± 0.0024 | 0.0227 | **0.0794** | 0.7008 |
+| **M06** (no latent) | M06 | 5/5 | 0.3681 ± 0.0023 | 0.0232 | 0.0703 | **0.7047** |
+| **`T02` both 0.01×** | M06 | 5/5 | **0.3617 ± 0.0023** | 0.0235 | 0.0714 | 0.7026 |
+
+`T01 − M03`: `pearson_delta` **−0.0085** · `mae` +0.0002 · `ovl@N` −0.0022 · `disc_l1` −0.0062.
+`T02 − M06`: `pearson_delta` **−0.0063** · `mae` +0.0004 · `ovl@N` +0.0011 · `disc_l1` −0.0021.
+
+### Reading
+
+1. **0.01× is worse than 0.1× on both bases**, by 0.0075 (M03: 0.3595 vs 0.3670) and by more
+   against M06's better arms. Going lower did not help.
+2. **⛔ `T02` is the first latent arm to HURT M06.** Every other M06 latent arm measured
+   (Q01–Q08) beat the base; `T02` is −0.0063 below it. So F-latent4's "latent supervision helps
+   M06" has a **lower bound**: the term must be large enough to do something. At 0.01× parity it
+   is not a weak-but-positive signal, it is a perturbation to the optimisation with no
+   compensating benefit.
+3. **The M03 dose-response is non-monotone**: 0.01× 0.3595 → 0.1× 0.3670 → parity 0.3606
+   (`P02`) → 10× 0.3592 (`P03`). A hump at 0.1×, and every point below the 0.3679 base. On M03
+   the best latent weight is still zero.
+4. `disc_l1` is below base in both (−0.0062, −0.0021), consistent with F-latent3's finding that
+   latent supervision costs discrimination on every M03 arm.
+
+⇒ **Neither 0.01× arm is adoptable.** The useful latent range on M06 is around **parity**
+(`Q02` 0.3783, `Q05` 0.3787 at 4/5); below 0.1× the term stops helping and starts hurting.
+
 ## ⭐⭐⭐ F-latent4 — the latent MSE **HELPS on M06 and HURTS on M03**. Setup-dependence again, and `Q02` = **0.3783** is the best arm in the campaign.
 
 ⚠️ **CORRECTION TO MY OWN STATUS REPORT.** I reported "the M06 half finished — all 11 Q-arms at
