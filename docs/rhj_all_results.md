@@ -147,6 +147,29 @@ F-emit6. `pearson_delta` and `overlap_at_N` rank these OPPOSITELY, so it is a tr
 **Still running at time of writing:** `18217040` (26-arm split-reconstruction grid) → `18217067` (its 130 cell-eval tasks); `18215244` (the last M06 latent arms); `18217089` (the orphaned 0.01× arms T01/T02).
 
 
+## 🧭 THE THREE BASES (user direction, 2026-09-20)
+
+Future optimisation starts from one of these, not from `adjmap_s313`. All test, uncalibrated,
+5/5 splits. `mae` is an ERROR: LOWER IS BETTER.
+
+| base | config | `pearson_delta` | `mae` ↓ | `ovl@N` | `disc_l1` | what it is best for |
+|---|---|---|---|---|---|---|
+| **`Q02`** | M06 + latent MSE at 1× parity | **0.3783** ± 0.0027 | 0.0225 | 0.0774 | 0.7029 | **highest `pearson_delta` at 5/5** |
+| **`M06`** | `dcos` 0.5 + `delta_mag` 0.01363 | 0.3681 ± 0.0023 | 0.0232 | 0.0703 | **0.7047** | best `disc_l1` of the three |
+| **`M03`** | `dcos` 0.01 (scale-matched) | 0.3679 ± 0.0017 | **0.0212** | 0.0722 | 0.6715 | best `mae`; the balanced-loss regime |
+
+⚠️ **These are NOT interchangeable starting points, and a result on one does not transfer.**
+Three separate levers have now shown opposite signs between M03 and M06: `delta_mag_weight`
+(F-loss9), the latent losses (F-latent4/F-latent5), and the split reconstruction (F-recon3, M03
+side). The working rule from F-latent4: *a term that repairs a DIRECTION-DOMINATED loss (M06/D03,
+`smooth_l1` at 2.1% of the total) tends to HARM a balanced one (M03, at 51.5%)*. `Q02` inherits
+M06's regime, so expect it to behave like M06, not like M03 — but that is an expectation, not a
+measurement.
+
+⚠️ `Q05` (latent cosine 1×) scores 0.3787, marginally above `Q02`, but on **4/5 splits**. `Q02`
+is the defensible choice until `Q05` completes.
+
+
 ## Split reconstruction — M03 base (job 18217067, PARTIAL: 26 arms, most still scoring)
 
 F-recon3: **F-recon1's prediction is FALSIFIED.** The split is the first lever that touches the control-reconstruction term directly, and `mae` got WORSE in 5/5 arms (+0.0012…+0.0036). The mechanism was right and measured; the prediction from it was wrong.
