@@ -219,6 +219,58 @@ splits and should not be quoted as a gain. ⚠️ The M06 base is untested; F-lo
 `delta_mag_weight` was setup-dependent, so M06 could behave differently and is not predicted by
 this table.
 
+## ⭐⭐⭐ F-latent7 — **the latent is using ~5% of its dimensions.** Effective rank 32.9 / 512 on Q02, 24.6 / 512 on M03.
+
+**Why measured.** VICReg's variance term is a HINGE, `max(0, γ − std_j)` — exactly zero until a
+dimension collapses below γ. With the paper's γ=1 it would be permanently saturated or
+permanently inert depending on our scale, and either way teach nothing. γ has to come from the
+measured per-dim std, as every weight in this campaign has (F-loss5). The measurement then
+answered a larger question than it was asked.
+
+### Measured — 512 real HepG2 perturbations, 512-d latent
+
+| | Q02 | M03 |
+|---|---|---|
+| per-dim std, mean / median | 0.5978 / 0.5514 | 0.5600 / 0.5270 |
+| per-dim std, min / max | 0.0021 / 2.4032 | 0.0018 / 2.5120 |
+| std p1 / p5 / p10 / p25 | 0.023 / 0.056 / 0.162 / 0.340 | 0.019 / 0.042 / 0.095 / 0.243 |
+| dims below std 0.01 / 0.05 / 0.10 | 0.6% / 4.7% / 7.2% | 0.6% / 6.2% / 10.7% |
+| **EFFECTIVE RANK** (cov eigenspectrum) | **32.9 of 512 — 6.4%** | **24.6 of 512 — 4.8%** |
+| mean \|off-diagonal covariance\| | 0.0657 | 0.0651 |
+| VICReg covariance term (Σ off-diag² / d) | 7.050 | 8.518 |
+| VICReg variance term at γ=1 | 0.4346 | 0.4724 |
+| VICReg variance term at γ=median | 0.1171 | 0.1374 |
+
+### Reading
+
+1. **⛔ Severe INFORMATIONAL collapse, which no previous diagnostic would have caught.**
+   Effective rank is ~5–6% of the latent width. F-latent1 measured `delta_z_ratio` 0.160 with
+   98.2% of the movement perturbation-specific and concluded, correctly, that the model has NOT
+   collapsed to the identity and does NOT emit one shared shift. **Both remain true.** They are
+   statements about the MAGNITUDE and the SHARED-vs-SPECIFIC split of the delta; neither
+   constrains how many independent directions the specific part occupies. It occupies ~25–33.
+2. **Dimensional collapse is mild; informational collapse is severe.** Only 0.6% of dims are
+   genuinely dead (std < 0.01) and ~5–7% are below 0.05 — so the variance term has little to
+   fix. The covariance term is the one with a target: the dims are alive but **heavily
+   redundant**, which is exactly what effective rank 33 with 512 live-ish dims means.
+   ⇒ **Expect `cov_weight` to matter and `var_weight` not to.** Pre-registering that now.
+3. **Q02 has a higher effective rank than M03** (32.9 vs 24.6, +34%). Q02 = M06 + latent MSE,
+   and it is the better arm (0.3783 vs 0.3679). Consistent with latent supervision buying
+   representational spread — and a reason to expect VICReg to help most where latent
+   supervision already does, i.e. on M06/Q02 rather than M03 (F-latent4's setup-dependence).
+4. This is a plausible mechanism for **F-cdel2**: if the perturbation-specific signal lives in
+   ~30 directions, the panel-mean delta is not a separable offset but overlaps the same small
+   subspace — so subtracting it removes signal, which is what cdel did on all three bases.
+
+### ⚠️ What this measurement CANNOT distinguish
+
+`delta_z` and `z_hat` come out **bit-identical** in every statistic above. That is an artifact
+of the probe, not a finding: it feeds one control profile per cell line (the HepG2 control
+mean), so `z_hat = z_ctrl + delta_z` differs from `delta_z` by a CONSTANT, and a constant shifts
+neither std nor covariance. In training the control varies per row, so the two genuinely differ
+there. **Nothing here says which of the two is the better VICReg target** — that is what the
+sweep has to answer.
+
 ## ⛔ F-cdel2 — centre-delta is negative on **all three bases**, and `disc_l1` falls on all three. Not bimodal here.
 
 Updates F-cdel1, which had M03 only. `cdel` = `ctrl + (delta − mean_over_perturbations(delta))`.
