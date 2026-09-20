@@ -93,8 +93,14 @@ fi
 # 6th column `delta_mag_weight` is OPTIONAL: rows from the original 5-column grid leave MAGW
 # empty and it defaults to 0, which is the value all 540 runs to date used. Without the
 # default, adding the column would silently pass an empty string to --set.
-read -r ARM LOSS NBW NBS DCW MAGW <<<"$ROW"
+read -r ARM LOSS NBW NBS DCW MAGW LLT LLW LCW LCT <<<"$ROW"
 MAGW="${MAGW:-0.0}"
+# Latent columns 7-10, all OPTIONAL so every earlier grid still parses. Defaults are the
+# no-op values, which is what all 540 runs before 2026-09-20 used.
+LLT="${LLT:-none}"      # latent_loss_type: none | delta_z | projected
+LLW="${LLW:-0.0}"       # latent_loss_weight (scales the MSE latent loss)
+LCW="${LCW:-0.0}"       # latent_cos_weight
+LCT="${LCT:-delta_z}"   # latent_cos_target: delta_z | z_hat -- NOT equivalent
 
 SEED="${SEED:-42}"
 # ⚠️ The suffix must carry EVERY varied axis. It is the run's identity on disk, and two arms
@@ -105,6 +111,15 @@ SUFFIX="${ARM}__${LOSS}_nbw${NBW}_nbs${NBS}_dcos${DCW}"
 if [ "${MAGW}" != "0.0" ] && [ "${MAGW}" != "0" ]; then
     SUFFIX="${SUFFIX}_mag${MAGW}"
 fi
+# Latent axes join the identity only when ON, so every pre-existing run directory name is
+# unchanged and still resolvable. Two arms differing only in a latent knob MUST differ here or
+# the second silently overwrites the first.
+if [ "${LLW}" != "0.0" ] && [ "${LLW}" != "0" ]; then
+    SUFFIX="${SUFFIX}_lmse${LLW}"
+fi
+if [ "${LCW}" != "0.0" ] && [ "${LCW}" != "0" ]; then
+    SUFFIX="${SUFFIX}_lcos${LCW}-${LCT}"
+fi
 SUFFIX="${SUFFIX}_s${SEED}"
 
 echo "=== rhj loss-composition sweep arm ${ARM} ==="
@@ -112,7 +127,8 @@ echo "host    : $(hostname)"
 echo "started : $(date -Is)"
 echo "git sha : $(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
 echo "slurm   : job ${SLURM_ARRAY_JOB_ID:-?} task ${IDX}  qos ${SLURM_JOB_QOS:-?}"
-echo "varied  : loss_type=${LOSS} nb_weight=${NBW} nb_scale=${NBS} delta_cos_weight=${DCW} delta_mag_weight=${MAGW}"
+echo "varied  : loss=${LOSS} nbw=${NBW} nbs=${NBS} dcos=${DCW} dmag=${MAGW}"
+echo "latent  : type=${LLT} mse_w=${LLW} cos_w=${LCW} cos_target=${LCT}"
 echo "frozen  : adjacency_map batch=2048 lr=1e-3 dlr=1e-3 cos=0.5 dpo=false"
 echo "          film=multiplicative_only fh=256 fmf=true epochs=30 seed=${SEED}  (= arm s313)"
 # ⚠️ The real run dir is runs/rhj_fewshot_<suffix>/: the orchestrator derives it from the
@@ -128,6 +144,8 @@ cat > "${RUN_DIR}/slurm_job.json" <<JSON
 {"arm_id": "${ARM}", "kind": "loss", "loss_type": "${LOSS}",
  "nb_weight": "${NBW}", "nb_scale": "${NBS}", "delta_cos_weight": "${DCW}",
  "delta_mag_weight": "${MAGW}",
+ "latent_loss_type": "${LLT}", "latent_loss_weight": "${LLW}",
+ "latent_cos_weight": "${LCW}", "latent_cos_target": "${LCT}",
  "slurm_array_job_id": "${SLURM_ARRAY_JOB_ID:-}", "slurm_task_id": "${IDX}",
  "qos": "${SLURM_JOB_QOS:-}", "host": "$(hostname)", "started": "$(date -Is)"}
 JSON
@@ -144,6 +162,10 @@ python -m occam.train --config "$CONFIG" --stages vcell \
     --set "stages.vcell.loss.nb_scale=${NBS}" \
     --set "stages.vcell.loss.delta_cos_weight=${DCW}" \
     --set "stages.vcell.loss.delta_mag_weight=${MAGW}" \
+    --set "stages.vcell.loss.latent_loss_type=${LLT}" \
+    --set "stages.vcell.loss.latent_loss_weight=${LLW}" \
+    --set "stages.vcell.loss.latent_cos_weight=${LCW}" \
+    --set "stages.vcell.loss.latent_cos_target=${LCT}" \
     --set "stages.vcell.graph.data_perts_only=false" \
     --set "stages.vcell.interaction.interaction_type=film" \
     --set "stages.vcell.interaction.film_mode=multiplicative_only" \

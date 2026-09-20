@@ -1,0 +1,29 @@
+# TEST cell-eval for the latent-space loss sweep (train job 18215222).
+# QUESTION: does latent supervision -- MSE (position), cosine (direction), or both -- improve
+# M03 (P-arms) or M06 (Q-arms), and at what scale? Weights are 0.1x/1x/10x each base's own
+# parity point (F-latent2). P07/Q07 use latent_cos_target=z_hat, the only non-duplicate z_hat arm.
+# READ AGAINST: M03 0.3679/0.0212/0.0722/0.6715 · M06 0.3681/0.0232/0.0703/0.7047.
+# `mae` is an ERROR: LOWER IS BETTER.
+arm_id	kind	tag
+P01	loss	smooth_l1_nbw0_nbs1.0_dcos0.01_lmse0.00157_s42
+P02	loss	smooth_l1_nbw0_nbs1.0_dcos0.01_lmse0.0157_s42
+P03	loss	smooth_l1_nbw0_nbs1.0_dcos0.01_lmse0.157_s42
+P04	loss	smooth_l1_nbw0_nbs1.0_dcos0.01_lcos0.00097-delta_z_s42
+P05	loss	smooth_l1_nbw0_nbs1.0_dcos0.01_lcos0.0097-delta_z_s42
+P06	loss	smooth_l1_nbw0_nbs1.0_dcos0.01_lcos0.097-delta_z_s42
+P07	loss	smooth_l1_nbw0_nbs1.0_dcos0.01_lcos0.179-z_hat_s42
+P08	loss	smooth_l1_nbw0_nbs1.0_dcos0.01_lmse0.0157_lcos0.0097-delta_z_s42
+P09	loss	smooth_l1_nbw0_nbs1.0_dcos0.01_lmse0.157_lcos0.097-delta_z_s42
+P10	loss	smooth_l1_nbw0_nbs1.0_dcos0.01_lmse0.157_lcos0.0097-delta_z_s42
+P11	loss	smooth_l1_nbw0_nbs1.0_dcos0.01_lmse0.00157_lcos0.00097-delta_z_s42
+Q01	loss	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.00044_s42
+Q02	loss	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_s42
+Q03	loss	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.044_s42
+Q04	loss	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lcos0.00059-delta_z_s42
+Q05	loss	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lcos0.0059-delta_z_s42
+Q06	loss	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lcos0.059-delta_z_s42
+Q07	loss	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lcos0.048-z_hat_s42
+Q08	loss	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_lcos0.0059-delta_z_s42
+Q09	loss	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.044_lcos0.059-delta_z_s42
+Q10	loss	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.044_lcos0.0059-delta_z_s42
+Q11	loss	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.00044_lcos0.00059-delta_z_s42
