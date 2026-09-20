@@ -109,6 +109,10 @@ LCW="${LCW:-0.0}"       # latent_cos_weight
 LCT="${LCT:-delta_z}"   # latent_cos_target: delta_z | z_hat -- NOT equivalent
 
 SEED="${SEED:-42}"
+# Optional schedule overrides. Unset = the config's own values (30 epochs, eta_min 1e-7), so
+# every earlier grid reproduces exactly.
+EPOCHS="${EPOCHS:-}"
+ETA_MIN="${ETA_MIN:-}"
 # ⚠️ The suffix must carry EVERY varied axis. It is the run's identity on disk, and two arms
 # differing only in `delta_mag_weight` would otherwise write to the same directory and the
 # second would silently resume/overwrite the first. `_mag` is appended only when the term is
@@ -131,6 +135,10 @@ if [ "${RSP}" = "true" ]; then
     # the delta regresses against are different experiments, not the same run.
     SUFFIX="${SUFFIX}_rsplit${RSM}-${RDT}-${RCW}-${RDW}"
 fi
+# ⚠️ The schedule MUST be in the identity. Without it a 60-epoch arm would write to the same
+# directory as its 30-epoch namesake and silently overwrite it.
+if [ -n "${EPOCHS}" ]; then SUFFIX="${SUFFIX}_e${EPOCHS}"; fi
+if [ -n "${ETA_MIN}" ]; then SUFFIX="${SUFFIX}_em${ETA_MIN}"; fi
 SUFFIX="${SUFFIX}_s${SEED}"
 
 echo "=== rhj loss-composition sweep arm ${ARM} ==="
@@ -140,6 +148,7 @@ echo "git sha : $(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
 echo "slurm   : job ${SLURM_ARRAY_JOB_ID:-?} task ${IDX}  qos ${SLURM_JOB_QOS:-?}"
 echo "varied  : loss=${LOSS} nbw=${NBW} nbs=${NBS} dcos=${DCW} dmag=${MAGW}"
 echo "latent  : type=${LLT} mse_w=${LLW} cos_w=${LCW} cos_target=${LCT}"
+echo "sched   : epochs=${EPOCHS:-<config>} eta_min=${ETA_MIN:-<config>}"
 echo "recon   : split=${RSP} mode=${RSM} delta_target=${RDT} ctrl_w=${RCW} delta_w=${RDW}"
 echo "frozen  : adjacency_map batch=2048 lr=1e-3 dlr=1e-3 cos=0.5 dpo=false"
 echo "          film=multiplicative_only fh=256 fmf=true epochs=30 seed=${SEED}  (= arm s313)"
@@ -190,7 +199,9 @@ python -m occam.train --config "$CONFIG" --stages vcell \
     --set "stages.vcell.interaction.film_mode=multiplicative_only" \
     --set "stages.vcell.interaction.film_hidden_dim=256" \
     --set "stages.vcell.interaction.film_mean_free=true" \
-    --set "seed=${SEED}"
+    --set "seed=${SEED}" \
+    ${EPOCHS:+--set "stages.vcell.optim.epochs=${EPOCHS}"} \
+    ${ETA_MIN:+--set "stages.vcell.optim.eta_min=${ETA_MIN}"}
 
 echo
 echo "finished: $(date -Is)"

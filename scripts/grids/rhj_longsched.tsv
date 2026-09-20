@@ -1,0 +1,34 @@
+# LONGER SCHEDULE on the three bases: 60 epochs (was 30), eta_min 1e-5 (was 1e-7).
+# User direction 2026-09-20: "curious how it would perform in comparison".
+#
+# WHAT IS VARIED: the LR schedule only -- epochs 30 -> 60 and the cosine floor 1e-7 -> 1e-5,
+# both passed as overrides so every loss term is bit-identical to the 30-epoch original.
+# HELD FIXED per arm, exactly as the base: E1 = M03 (dcos 0.01, no mag, no latent);
+# E2 = M06 (dcos 0.5, mag 0.01363); E3 = Q02 (dcos 0.5, mag 0.01363, latent MSE 0.0044).
+# Everything else is arm s313: adjacency_map, batch 2048, lr 1e-3, decoder_lr 1e-3,
+# cosine_loss_weight 0.5, film multiplicative_only, fh 256, mean-free, seed 42.
+#
+# ⚠️ eta_min 1e-5 is 100x HIGHER than the current 1e-7, so the run ends at a much larger
+# learning rate rather than annealing to near-zero. Combined with 2x the epochs this is a
+# genuinely different optimisation, not just "more of the same" -- it may help by escaping a
+# sharp minimum, or hurt by never settling.
+#
+# READ AGAINST (test, uncalibrated, 5/5, 30 epochs / eta_min 1e-7):
+#   Q02  0.3783  mae 0.0225  ovl@N 0.0774  disc_l1 0.7029
+#   M06  0.3681  mae 0.0232  ovl@N 0.0703  disc_l1 0.7047
+#   M03  0.3679  mae 0.0212  ovl@N 0.0722  disc_l1 0.6715
+# ANCHORS: meanpert 0.1324 · transfer 0.2323 · experimental 0.3722 (mae 0.0257).
+# `mae` is an ERROR: LOWER IS BETTER.
+#
+# PRE-REGISTERED. All three improve -> the 30-epoch schedule was undertrained and every prior
+# comparison was made at a suboptimal stopping point. Mixed -> the schedule interacts with the
+# loss composition, so schedule and loss cannot be tuned independently. All three degrade ->
+# 30 epochs with a near-zero floor was already right, and the extra compute buys nothing.
+#
+# ⚠️ Epoch count also changes WHICH checkpoint `best_model.pth` is: these arms select over 60
+# epochs, the originals over 30. A gain could be a better optimum OR simply more chances to
+# catch the validation metric's known +/-0.20 inter-epoch oscillation (F7).
+arm	loss_type	nb_weight	nb_scale	delta_cos_weight	delta_mag_weight	latent_loss_type	latent_loss_weight	latent_cos_weight	latent_cos_target	recon_split	recon_ctrl_weight	recon_delta_weight	recon_split_mode	recon_delta_target
+E1	smooth_l1	0	1.0	0.01	0.0	none	0.0	0.0	delta_z	false	1.0	1.0	cmean	cell
+E2	smooth_l1	0	1.0	0.5	0.01363	none	0.0	0.0	delta_z	false	1.0	1.0	cmean	cell
+E3	smooth_l1	0	1.0	0.5	0.01363	delta_z	0.0044	0.0	delta_z	false	1.0	1.0	cmean	cell
