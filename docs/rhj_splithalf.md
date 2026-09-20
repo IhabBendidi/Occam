@@ -55,6 +55,92 @@ identity floor and the score alone would not distinguish that from a genuinely w
 ⚠️ Step 3 is the pre-registration: **the diagnostic decides whether the sweep is worth running**,
 rather than the sweep being run and the diagnostic quoted afterwards.
 
+## ⭐⭐⭐ F-loss8 — the complete sweep: **`delta_mag_weight` DOES work on test (`mae` −28%)**, and `M03`/`M06` are a two-point Pareto frontier that both beat D03
+
+⚠️ **SECOND CORRECTION TO F-loss6.** F-loss6 predicted `M06` would be a null, because the
+magnitude-ratio probe showed 5.872 vs D03's 5.589 — no improvement. **On the test metric M06
+cuts `mae` by 28%.** The probe was misleading, in exactly the way F-loss6 itself flagged as an
+untested caveat: `scripts/loss_scale.py` feeds the model control MEANS while training feeds
+single CELLS. **The probe's magnitude ratio must not be used to predict `mae` again.**
+
+**Objective.** Best model on SEEN perturbations in an UNSEEN cell line. User's goal for this
+sweep: hold D03's metrics and improve `mae` massively.
+
+**Varied:** `delta_cos_weight` ∈ {0.002 … 0.05} (M01–M05), plus M06 = D03's config +
+`delta_mag_weight` 0.01363. **Held fixed:** arm s313 optimisation, seed 42, 30 epochs.
+Jobs `18186699` (train) → `18187190` (test cell-eval, 30/30 COMPLETED).
+
+### Measured — test cell-eval, UNCALIBRATED, all 5/5 splits
+
+`pearson_delta` ↑ · `mae` **↓ (ERROR)** · `overlap_at_N` ↑ · `disc_l1` ↑ (chance 0.5)
+
+| arm | `dcos` | share | `delta_mag` | `pearson_delta` | `mae` ↓ | `overlap_at_N` | `disc_l1` |
+|---|---|---|---|---|---|---|---|
+| L11 pure smooth_l1 | inert | 0% | 0 | 0.3415 ± 0.0031 | **0.0210** | 0.0642 | 0.6534 |
+| M01 | 0.002 | 15.9% | 0 | 0.3457 ± 0.0022 | 0.0211 | 0.0658 | 0.6522 |
+| M02 | 0.005 | 32.0% | 0 | 0.3553 ± 0.0030 | 0.0212 | 0.0598 | 0.6624 |
+| **M03** ⭐ | **0.01** | 48.5% | 0 | **0.3679 ± 0.0017** | **0.0212** | **0.0722** | 0.6715 |
+| M04 | 0.02 | 65.4% | 0 | 0.3642 ± 0.0026 | 0.0217 | 0.0703 | 0.6704 |
+| M05 | 0.05 | 82.5% | 0 | 0.3624 ± 0.0021 | 0.0228 | 0.0693 | 0.6921 |
+| D02 | 0.25 | 96.3% | 0 | 0.3661 ± 0.0023 | 0.0277 | 0.0568 | 0.7180 |
+| D03 | 0.5 | 97.9% | 0 | **0.3686 ± 0.0021** | 0.0321 | 0.0718 | **0.7263** |
+| **M06** ⭐ | 0.5 | 97.9% | **0.01363** | **0.3681 ± 0.0023** | **0.0232** | 0.0703 | **0.7047** |
+
+### M06's deltas — the magnitude term in isolation
+
+M06 differs from D03 by ONE setting, `delta_mag_weight` 0 → 0.01363:
+
+| metric | M06 − D03 | reads as |
+|---|---|---|
+| `pearson_delta` ↑ | **−0.0005** | tie (sd 0.0021–0.0023) |
+| `mae` ↓ | **−0.0090 = 28% BETTER** | **the objective, delivered** |
+| `overlap_at_N` ↑ | −0.0016 | tie |
+| `disc_l1` ↑ | −0.0216 | small real loss (0.7263 → 0.7047) |
+
+**`delta_mag_weight` does what F-loss5 said it should**, on its first use in 541 runs: it buys a
+28% `mae` reduction for a 0.0216 `disc_l1` cost, at no cost in `pearson_delta` or
+`overlap_at_N`.
+
+### The frontier — three non-dominated arms, and the choice is `mae` vs `disc_l1`
+
+`pearson_delta` for M03 (0.3679), M06 (0.3681) and D03 (0.3686) is a **three-way statistical
+tie** — the spread 0.0007 sits inside every arm's sd. So `pearson_delta` does not choose between
+them, and the real axis is:
+
+| arm | `mae` ↓ | `disc_l1` ↑ | what it is |
+|---|---|---|---|
+| **M03** | **0.0212** (best of the three) | 0.6715 (worst) | cheapest error, weakest identity |
+| **M06** | 0.0232 | **0.7047** | **the balanced point** |
+| D03 | 0.0321 (worst) | **0.7263** (best) | strongest identity, 51% worse error |
+
+**M06 recovers 61% of D03's `disc_l1` advantage over M03 (0.0332 of 0.0548) while giving up only
+0.0020 of `mae`.** On a joint reading it is the best single arm in the campaign.
+
+### Reading
+
+1. **`mae` is flat up to ~48% dcos share, then collapses**: 0.0210 → 0.0211 → 0.0212 → 0.0212 →
+   0.0217 → 0.0228 → 0.0277 → 0.0321. It was never necessary to pay it; D03 paid 51% extra error
+   for `disc_l1` alone.
+2. **`disc_l1` rises monotonically with dcos share** (0.6522 → 0.7263) and is the ONLY metric
+   that wants a dominant direction term. `delta_mag_weight` is the cheaper way to buy it back.
+3. **`pearson_delta` peaks at the scale-match point and is then flat/slightly declining**
+   (0.3679 at 48.5%, 0.3642, 0.3624, 0.3661, 0.3686). F-loss5's arithmetic
+   (0.008443 / 0.796206 = 0.01060) predicted the peak before the sweep ran.
+4. **Calibrated results agree that calibration still loses**, for all 9 arms: best calibrated
+   `pearson_delta` is D02's 0.2993 vs 0.3686 uncalibrated, and every calibrated `mae` is
+   0.089–0.112 against 0.021–0.032. Extends F-loss3 to the M-series.
+   ⚠️ M06 is the WORST calibrated arm on `pearson_delta` (0.2711) despite being near-best
+   uncalibrated — calibration and the magnitude term are doing the same job and conflict.
+
+### Every anchor, for reading the above
+
+`ctrlcell` −0.0018 · `ctrlmean` 0.0016 · `meanpert` 0.1324 · `transfer` 0.2323 ·
+**best competitor TxPert 0.3463** · `experimental` 0.3722 (`mae` 0.0257, `ovl@N` 0.1942,
+`disc_l1` 0.7821).
+
+**M03 and M06 both beat every competitor**, and both now have a `mae` (0.0212 / 0.0232) BETTER
+than `experimental`'s 0.0257 while `pearson_delta` sits 0.004 below it.
+
 ## ⭐⭐⭐ F-loss7 — **CORRECTION TO F-loss6.** On TEST, the scale-matched arm `M03` holds D03's `pearson_delta` and cuts `mae` by **34%**. Validation ranked these arms BACKWARDS.
 
 ⚠️ **THIS OVERTURNS F-loss6's CONCLUSION, WHICH WAS MINE AND WAS WRONG.** F-loss6 read
