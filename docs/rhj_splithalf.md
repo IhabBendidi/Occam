@@ -219,6 +219,88 @@ splits and should not be quoted as a gain. ⚠️ The M06 base is untested; F-lo
 `delta_mag_weight` was setup-dependent, so M06 could behave differently and is not predicted by
 this table.
 
+## ⛔ F-cdel2 — centre-delta is negative on **all three bases**, and `disc_l1` falls on all three. Not bimodal here.
+
+Updates F-cdel1, which had M03 only. `cdel` = `ctrl + (delta − mean_over_perturbations(delta))`.
+Every row below is the SAME checkpoint, SAME drawn controls, SAME split, ONE forward pass — the
+only difference is the transform.
+
+| base | arm | n | `pearson_delta` | `mae` ↓ | `ovl@N` | `disc_l1` |
+|---|---|---|---|---|---|---|
+| M03 | nocal | 5/5 | **0.3679 ± 0.0017** | **0.0212** | **0.0722** | **0.6715** |
+| M03 | +cdel | 5/5 | 0.2956 ± 0.0029 | 0.0220 | 0.0692 | 0.6504 |
+| M06 | nocal | 5/5 | **0.3681 ± 0.0023** | **0.0232** | 0.0703 | **0.7047** |
+| M06 | +cdel | 5/5 | 0.3081 ± 0.0020 | 0.0234 | **0.0750** | 0.6886 |
+| Q02 | nocal | 5/5 | **0.3783 ± 0.0027** | **0.0225** | 0.0774 | **0.7029** |
+| Q02 | +cdel | 4/5 ⚠️ | 0.3144 ± 0.0015 | 0.0228 | **0.0778** | 0.6825 |
+
+| base | Δ `pearson_delta` | Δ `mae` | Δ `ovl@N` | Δ `disc_l1` |
+|---|---|---|---|---|
+| M03 | **−0.0723** | +0.0008 | −0.0030 | **−0.0211** |
+| M06 | **−0.0600** | +0.0002 | **+0.0047** | **−0.0161** |
+| Q02 | **−0.0638** | +0.0004 | +0.0004 | **−0.0204** |
+
+**Reading.** `pearson_delta` loses 0.060–0.072 on every base, and **`disc_l1` falls on every
+base** — the transform's own pre-registered signature was discrimination UP. It is wrong here,
+consistently, not bimodally as on H1 (+0.1394 / −0.3335 across checkpoints there). The only
+positive is `ovl@N` on M06 (+0.0047), which is small and not reproduced on M03.
+
+⇒ **The perturbation-common component is load-bearing signal on this panel, not a removable
+offset.** Consistent with `meanpert` scoring 0.1324. **cdel is not adoptable on any base.** The
+H1 winner was `model_cal_cdel` — CALIBRATED — and calibration is off by user direction, so that
+recipe is unreachable here by construction.
+
+## ⭐ F-latent6 — `Q05` completes at 5/5 and **ties `Q02`**. The latent cosine and MSE are interchangeable on M06.
+
+| arm | what | n | `pearson_delta` | `mae` ↓ | `ovl@N` | `disc_l1` |
+|---|---|---|---|---|---|---|
+| **`Q05`** | latent **cosine** 1× | 5/5 | **0.3786 ± 0.0028** | 0.0226 | 0.0761 | **0.7078** |
+| **`Q02`** | latent **MSE** 1× | 5/5 | **0.3783 ± 0.0027** | **0.0225** | **0.0774** | 0.7029 |
+| M06 | base | 5/5 | 0.3681 ± 0.0023 | 0.0232 | 0.0703 | 0.7047 |
+
+**0.0003 apart on `pearson_delta`**, an order of magnitude inside their sds. Q05 takes `disc_l1`
+(+0.0049), Q02 takes `ovl@N` (+0.0013) and `mae` (−0.0001). **Two different latent losses — one
+position, one direction — reach the same place.** Combined with F-latent3's finding that the
+cosine TARGET does not matter once the weight is scale-matched, the picture is that M06's
+direction-dominated loss benefits from *any* latent supervision at roughly parity weight, and
+the specific form is second-order.
+
+## ⛔ F-recon4 — the split-reconstruction grid: **no arm beats its base on `pearson_delta`, on either base.** But `disc_l1` reaches its campaign maximum.
+
+| arm | base | mode / delta target | n | `pearson_delta` | `mae` ↓ | `ovl@N` | `disc_l1` |
+|---|---|---|---|---|---|---|---|
+| — | M06 | **base** | 5/5 | **0.3681** | 0.0232 | 0.0703 | 0.7047 |
+| — | M03 | **base** | 5/5 | **0.3679** | **0.0212** | **0.0722** | 0.6715 |
+| `G10` | M06 | `delta_only` | 5/5 | 0.3607 ± 0.0026 | 0.0247 | 0.0691 | **0.7138** ⭐ |
+| `G05` | M03 | `delta_only` | 5/5 | 0.3582 ± 0.0025 | 0.0227 | 0.0711 | 0.6979 |
+| `G03` | M03 | `cmean` / cell | 5/5 | 0.3575 ± 0.0023 | 0.0224 | 0.0663 | 0.6871 |
+| `G04` | M03 | `cmean` / group_mean | 5/5 | 0.3540 ± 0.0022 | 0.0225 | 0.0689 | 0.6931 |
+| `G09` | M06 | `cmean` / group_mean | 4/5 ⚠️ | 0.3517 ± 0.0028 | 0.0249 | 0.0601 | 0.7039 |
+| `G08` | M06 | `cmean` / cell | 5/5 | 0.3511 ± 0.0027 | 0.0247 | 0.0636 | **0.7127** |
+| `G06` | M06 | `raw` / cell | 5/5 | 0.3499 ± 0.0025 | 0.0242 | 0.0653 | **0.7129** |
+| `G07` | M06 | `raw` / group_mean | 4/5 ⚠️ | 0.3456 ± 0.0019 | 0.0237 | 0.0634 | 0.7020 |
+| `G01` | M03 | `raw` / cell | 5/5 | 0.3424 ± 0.0033 | 0.0248 | 0.0632 | 0.6932 |
+| `G02` | M03 | `raw` / group_mean | 5/5 | 0.3282 ± 0.0024 | 0.0240 | 0.0590 | 0.6922 |
+| `G11` | M03 | `raw`/cell `w_delta` 3 | 4/5 ⚠️ | 0.3236 ± 0.0033 | 0.0248 | 0.0556 | 0.6778 |
+| `G12` | M03 | `raw`/cell `w_delta` 10 | 4/5 ⚠️ | 0.2933 ± 0.0040 | 0.0304 | 0.0577 | 0.6110 |
+| `G13` | M03 | `raw`/cell `w_delta` 30 | 2/5 ⚠️ | 0.2706 ± 0.0066 | 0.0371 | 0.0501 | 0.5730 |
+
+**Reading.**
+1. **Setup-dependence does NOT appear here** — unusually. The split hurts `pearson_delta` on
+   both bases by a similar margin (M06 −0.0074 at best, M03 −0.0097 at best), unlike
+   `delta_mag_weight` and the latent losses which flipped sign between them.
+2. **`disc_l1` reaches its campaign maximum in the split arms**: `G10` **0.7138**, `G06` 0.7129,
+   `G08` 0.7127 — all above every non-split arm including D03's 0.7263… ⚠️ correction: D03 is
+   0.7263 and remains the maximum. The split arms are the best on the M06 base specifically.
+3. **`delta_only` is the best split mode on BOTH bases** (G10, G05) — dropping `L_ctrl` entirely
+   beats every weighting of it. The control-reconstruction term is not merely mis-weighted; it
+   is not wanted.
+4. **The ratio ladder is monotonically destructive**, and steeply: 0.3424 → 0.3236 → 0.2933 →
+   0.2706 as `w_delta` goes 1 → 3 → 10 → 30, with `mae` degrading in lockstep (0.0248 → 0.0371).
+
+⇒ **No split arm is adoptable.** F-recon1's decomposition was real and measured; every
+intervention built on it has cost `pearson_delta`.
+
 ## ⛔ F-cdel1 — centre-delta on M03: **all four metrics worse**, including `disc_l1`, which its own documentation predicted would RISE
 
 **First cdel measurement ever on this panel.** `cdel` does not exist in the Occam repo; it was
