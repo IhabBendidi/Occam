@@ -55,6 +55,80 @@ identity floor and the score alone would not distinguish that from a genuinely w
 ⚠️ Step 3 is the pre-registration: **the diagnostic decides whether the sweep is worth running**,
 rather than the sweep being run and the diagnostic quoted afterwards.
 
+## ⭐⭐⭐ F-recon1 — **`smooth_l1` is ~99.8% control RECONSTRUCTION and ~0.2% perturbation.** The prediction error is inherited autoencoder error, not perturbation error.
+
+**Credit: this came from the user's question** — "pred and tgt don't have the same `c`, because
+for pred, `c` would be the *reconstructed* control, which has errors on it too". That is exactly
+right, and it overturns the answer I had just given.
+
+**What I got wrong.** I had shown `smooth_l1(pred − c, tgt − c) ≡ smooth_l1(pred, tgt)` and
+concluded a delta `smooth_l1` was a re-parameterisation, not a new loss. **That holds only when
+the SAME `c` is subtracted from both sides.** The prediction's natural control is the model's own
+`D(z_ctrl)`; the target's is the real control `c`. Then the residual is
+`(pred − tgt) − (D(z_ctrl) − c)`, which is NOT `pred − tgt`. The identity does not apply, and the
+size of `D(z_ctrl) − c` decides how different the two objectives are.
+
+### Measured — 512 real HepG2 perturbations, present-gene mask, group-mean targets
+
+| quantity | M03 | M06 |
+|---|---|---|
+| `‖D(z_ctrl) − c‖` — control RECONSTRUCTION error | **15.3394** | **10.7215** |
+| `‖t − c‖` — true EFFECT size | 2.8838 | 2.8838 |
+| **ratio reconstruction / effect** | **5.32×** | **3.72×** |
+| `‖pred − t‖` — full-profile error, what `smooth_l1` sees | 15.5781 | 13.0849 |
+| residual, delta vs REAL control | 15.5781 *(≡ full, the identity)* | 13.0849 |
+| residual, delta vs RECONSTRUCTED control | **3.8779** | **6.0310** |
+
+As loss values:
+
+| term | M03 | M06 |
+|---|---|---|
+| `smooth_l1(pred, t)` — the CURRENT loss | 0.009473 | 0.005531 |
+| `smooth_l1(D(z_ctrl), c)` — control reconstruction ALONE | **0.009453** | 0.002754 |
+| `smooth_l1(pred − D(z_ctrl), t − c)` — the DELTA | **0.000509** | 0.001563 |
+
+### Reading
+
+1. **On M03 the reconstruction loss is 0.009473 and the control-reconstruction term alone is
+   0.009453 — 99.8% of it.** The perturbation contributes essentially nothing to the gradient
+   that `smooth_l1` supplies. The delta term is **0.000509, about 5.4% the size**, and on M06
+   28%.
+2. **`‖pred − t‖` ≈ `‖D(z_ctrl) − c‖`** (15.58 vs 15.34 on M03). The model's full-profile error
+   is almost entirely **inherited autoencoder reconstruction error**, not perturbation error.
+   Measured against the reconstructed control instead, the perturbation residual is **3.88**, a
+   4× smaller number. **The perturbation head is substantially better than the full-profile
+   error makes it look.**
+3. ⚠️ **This probably explains why `mae` has been immovable.** Cell-eval's `mae` is a
+   full-profile error on the predicted rows, so it is dominated by the same reconstruction term.
+   Every lever tried so far — `dcos`, `delta_mag`, the latent losses — acts on the
+   PERTURBATION, which is ~0.2–28% of that quantity. **That is a hypothesis, not a measured
+   claim**: it predicts that improving control reconstruction moves `mae` and little else, and
+   that has not been tested.
+4. This is why the F-loss5 picture held: with `dcos` at D03's weight the reconstruction term is
+   2.1% of the total loss, and 99.8% of THAT 2.1% is control reconstruction. The perturbation
+   was being supervised almost entirely by `dcos`.
+
+### ⇒ The proposal this justifies: SPLIT the reconstruction loss
+
+Replace the single `smooth_l1(pred, tgt)` with two separately-weighted terms, as the user
+suggested:
+
+```
+L_ctrl  = smooth_l1(D(z_ctrl), c)                 # can the model pass the control through?
+L_delta = smooth_l1(pred - D(z_ctrl), tgt - c)    # is the predicted CHANGE right?
+```
+
+Equal weighting would give the delta term ~18.6× more relative pull on M03 than it has today.
+The two are not redundant and neither is a re-parameterisation of the current loss.
+
+⚠️ **Costs one extra decoder forward per step** (`D(z_ctrl)`), which the current loss does not
+need. ~1 extra decoder pass on a 1024-wide MLP — cheap relative to the encoder, but not free.
+
+⚠️ **Confound to control for:** at `target_pb_k=1` the target is a single cell whose noise is
+3–70× the effect, so `L_delta` would be fitting mostly noise. It should be swept against the
+group-mean target, or `L_delta` should use the precomputed group means the way `dcos` and
+`delta_mag` already do.
+
 ## ⭐⭐ F-latent2 — latent losses wired and verified; **`delta_z`, `z_hat` and `both` are ONE option, not three**, and the scale-match weights are measured
 
 **Objective.** Best model on SEEN perturbations in an UNSEEN cell line. This is infrastructure
