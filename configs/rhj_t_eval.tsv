@@ -1,0 +1,10 @@
+# TEST cell-eval for the 0.01x latent arms (T01/T02), orphaned when 18216433 was
+# CANCELLED by its afterok dependency after 10/12 split arms crashed. The checkpoints
+# trained fine (30 epochs); only the scoring was lost.
+# T01 = M03 base + latent both at 0.01x parity (lmse 0.000157, lcos 0.000097)
+# T02 = M06 base + latent both at 0.01x parity (lmse 0.000044, lcos 0.000059)
+# Follows P11/Q11 (0.1x); P11 was the best combination arm on M03 (ovl@N 0.0738).
+# READ AGAINST: M03 0.3679/0.0212/0.0722/0.6715 · M06 0.3681/0.0232/0.0703/0.7047.
+arm_id	kind	tag
+T01	loss	smooth_l1_nbw0_nbs1.0_dcos0.01_lmse0.000157_lcos0.000097-delta_z_s42
+T02	loss	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.000044_lcos0.000059-delta_z_s42
