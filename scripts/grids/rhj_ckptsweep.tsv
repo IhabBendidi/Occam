@@ -1,0 +1,22 @@
+# CHECKPOINT SWEEP: retrain the three bases saving EVERY epoch, so every checkpoint can be
+# scored by cell-eval and compared against the one `val_pearson_delta` selects.
+# User direction 2026-09-20.
+#
+# WHY. pipeline.py's own comment on the selection criterion: "This criterion was MEASURED to
+# rank checkpoints wrongly on the real panel in the research tree: it picked one arm and put
+# the eventual bake-off winner last ... cell-eval v1 takes ~60 min per evaluation, far too slow
+# to run every few epochs." Only best/final are kept, so the 29 discarded checkpoints per run
+# have never been examined. Independently, validation has misranked FOUR sweeps in this
+# campaign (F-loss7, F-loss9, F-latent4, F-recon3).
+#
+# C1 = M03's loss, C2 = M06's, C3 = Q02's. Loss terms bit-identical to the bases; the ONLY
+# change is save_every_epochs=1, passed as an override.
+#
+# ⚠️ 2.13 GB per checkpoint, 30 epochs, 3 runs = ~192 GB. Disk has 3.2 P free.
+# ⚠️ A retrain will NOT reproduce the originals bit-for-bit (GPU nondeterminism), so these
+# arms' best_metric picks may differ from the existing M03/M06/Q02 checkpoints. The comparison
+# is valid because it is WITHIN each new run; the retrained arms are not drop-in replacements.
+arm	loss_type	nb_weight	nb_scale	delta_cos_weight	delta_mag_weight	latent_loss_type	latent_loss_weight	latent_cos_weight	latent_cos_target	recon_split	recon_ctrl_weight	recon_delta_weight	recon_split_mode	recon_delta_target
+C1	smooth_l1	0	1.0	0.01	0.0	none	0.0	0.0	delta_z	false	1.0	1.0	cmean	cell
+C2	smooth_l1	0	1.0	0.5	0.01363	none	0.0	0.0	delta_z	false	1.0	1.0	cmean	cell
+C3	smooth_l1	0	1.0	0.5	0.01363	delta_z	0.0044	0.0	delta_z	false	1.0	1.0	cmean	cell

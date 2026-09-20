@@ -4330,6 +4330,23 @@ class VirtualCellTrainer:
                         val_score = val_metrics["pearson_delta_mean"]
                         sel_name = "val_pearson_delta"
 
+                        # ---- PER-EPOCH CHECKPOINTS (opt-in) --------------------------
+                        # `best_model.pth` is selected on validation per-cell
+                        # pearson_delta, a criterion this file already records as having
+                        # "MEASURED to rank checkpoints wrongly on the real panel" (see the
+                        # comment above). Testing that claim needs every epoch's weights,
+                        # which are otherwise discarded -- only best/final survive.
+                        #
+                        # ⚠️ 2.13 GB per checkpoint. At stride 1 over 30 epochs that is
+                        # 64 GB per run, so this is OFF by default and the stride is
+                        # configurable.
+                        _se = int(getattr(self.config, "save_every_epochs", 0) or 0)
+                        if _se > 0 and (epoch % _se == 0):
+                            _ep_path = ckpt_dir / f"epoch_{epoch:03d}.pth"
+                            self.save_checkpoint(str(_ep_path), split_info)
+                            print(f"  [ckpt-sweep] saved {_ep_path.name} "
+                                  f"(val_pearson_delta={val_score:.4f})", flush=True)
+
                         if val_score > self.best_metric and self._ok_to_save_best():
                             self.best_metric = val_score
                             self.save_checkpoint(

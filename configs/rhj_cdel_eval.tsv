@@ -8,7 +8,7 @@
 # virtual_cell/h1_eval.py::_center_delta, mean over PERTURBATIONS not rows.
 #
 # ⛔ NEVER TRIED ON THIS PANEL. `cdel` does not exist anywhere in the Occam repo; zero arms
-# have ever been scored with it here. It lives only in the older scMAE-main H1 path, where it
+# have ever been scored with it here. It lives only in the research tree's older H1 path, where it
 # is part of the shipping recipe (`model_cal_cdel_a1`, F294).
 #
 # ⚠️ ON H1 IT SPLIT THE CHECKPOINTS: `model_nocal_cdel` was +0.1394 overall on one checkpoint

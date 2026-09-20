@@ -399,6 +399,9 @@ class VirtualCellConfig:
 
     # --- Evaluation ---
     eval_freq: int = 5  # epochs between evaluations
+    # Save a checkpoint every N epochs, IN ADDITION to best/final. 0 = off.
+    # 2.13 GB each; stride 1 over 30 epochs is ~64 GB per run.
+    save_every_epochs: int = 0
     run_baselines: bool = False
 
     # --- Wandb ---

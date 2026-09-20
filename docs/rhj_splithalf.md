@@ -304,7 +304,7 @@ intervention built on it has cost `pearson_delta`.
 ## ⛔ F-cdel1 — centre-delta on M03: **all four metrics worse**, including `disc_l1`, which its own documentation predicted would RISE
 
 **First cdel measurement ever on this panel.** `cdel` does not exist in the Occam repo; it was
-ported for this test from `scMAE-main/virtual_cell/h1_eval.py::_center_delta`, where it is part
+ported for this test from the research tree's `virtual_cell/h1_eval.py::_center_delta`, where it is part
 of the H1 shipping recipe (`model_cal_cdel_a1`, F294).
 
 **What it does.** `ctrl + (delta − mean_over_perturbations(delta))` — removes the component of

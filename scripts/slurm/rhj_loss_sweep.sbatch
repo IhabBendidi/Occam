@@ -113,6 +113,7 @@ SEED="${SEED:-42}"
 # every earlier grid reproduces exactly.
 EPOCHS="${EPOCHS:-}"
 ETA_MIN="${ETA_MIN:-}"
+SAVE_EVERY="${SAVE_EVERY:-}"   # >0 also writes epoch_NNN.pth every N epochs (2.13 GB each)
 # ⚠️ The suffix must carry EVERY varied axis. It is the run's identity on disk, and two arms
 # differing only in `delta_mag_weight` would otherwise write to the same directory and the
 # second would silently resume/overwrite the first. `_mag` is appended only when the term is
@@ -148,7 +149,7 @@ echo "git sha : $(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
 echo "slurm   : job ${SLURM_ARRAY_JOB_ID:-?} task ${IDX}  qos ${SLURM_JOB_QOS:-?}"
 echo "varied  : loss=${LOSS} nbw=${NBW} nbs=${NBS} dcos=${DCW} dmag=${MAGW}"
 echo "latent  : type=${LLT} mse_w=${LLW} cos_w=${LCW} cos_target=${LCT}"
-echo "sched   : epochs=${EPOCHS:-<config>} eta_min=${ETA_MIN:-<config>}"
+echo "sched   : epochs=${EPOCHS:-<config>} eta_min=${ETA_MIN:-<config>} save_every=${SAVE_EVERY:-0}"
 echo "recon   : split=${RSP} mode=${RSM} delta_target=${RDT} ctrl_w=${RCW} delta_w=${RDW}"
 echo "frozen  : adjacency_map batch=2048 lr=1e-3 dlr=1e-3 cos=0.5 dpo=false"
 echo "          film=multiplicative_only fh=256 fmf=true epochs=30 seed=${SEED}  (= arm s313)"
@@ -201,7 +202,8 @@ python -m occam.train --config "$CONFIG" --stages vcell \
     --set "stages.vcell.interaction.film_mean_free=true" \
     --set "seed=${SEED}" \
     ${EPOCHS:+--set "stages.vcell.optim.epochs=${EPOCHS}"} \
-    ${ETA_MIN:+--set "stages.vcell.optim.eta_min=${ETA_MIN}"}
+    ${ETA_MIN:+--set "stages.vcell.optim.eta_min=${ETA_MIN}"} \
+    ${SAVE_EVERY:+--set "stages.vcell.optim.save_every_epochs=${SAVE_EVERY}"}
 
 echo
 echo "finished: $(date -Is)"

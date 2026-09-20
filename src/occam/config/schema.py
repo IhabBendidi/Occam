@@ -333,6 +333,7 @@ VCELL_SCHEMA: Dict[str, Dict[str, Optional[str]]] = {
         "lr": "lr", "decoder_lr": "decoder_lr", "weight_decay": "weight_decay",
         "batch_size": "batch_size", "epochs": "epochs",
         "warmup_epochs": "warmup_epochs", "eta_min": "eta_min",
+        "save_every_epochs": "save_every_epochs",
         "gradient_clip": "gradient_clip",
         "decoder_lr_warmup_epochs": "decoder_lr_warmup_epochs",
     },
