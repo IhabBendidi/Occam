@@ -1,0 +1,39 @@
+# CENTRE-DELTA (`cdel`) on the three bases. UNCALIBRATED ONLY (user direction 2026-09-20:
+# "stop evaluating on calibrated mode, ever").
+#
+# WHAT cdel IS. `ctrl + (delta - mean_over_perturbations(delta))`. It removes the component of
+# the predicted effect that is IDENTICAL for every perturbation -- which is exactly the
+# quantity the `meanpert` baseline scores (0.1324 on this panel) -- leaving only what
+# distinguishes one perturbation from another. Ported verbatim from the research tree's
+# virtual_cell/h1_eval.py::_center_delta, mean over PERTURBATIONS not rows.
+#
+# ⛔ NEVER TRIED ON THIS PANEL. `cdel` does not exist anywhere in the Occam repo; zero arms
+# have ever been scored with it here. It lives only in the older scMAE-main H1 path, where it
+# is part of the shipping recipe (`model_cal_cdel_a1`, F294).
+#
+# ⚠️ ON H1 IT SPLIT THE CHECKPOINTS: `model_nocal_cdel` was +0.1394 overall on one checkpoint
+# and -0.3335 on others. A result on one base says nothing about the others -- which is exactly
+# why all three bases are run, and why M03 vs M06 disagreeing would be unsurprising (three
+# levers have already shown opposite signs between them: F-loss9, F-latent4, F-recon3).
+#
+# EACH TASK EMITS BOTH `model_nocal` AND `model_nocal_cdel` from the SAME prediction, so the
+# comparison is exact -- same checkpoint, same drawn controls, same split, one forward pass.
+# No cdel-vs-nocal difference can come from anything but the transform.
+#
+# THE THREE BASES (test, uncalibrated, 5/5):
+#   Q02  M06 + latent MSE 1x parity   pearson_delta 0.3783  mae 0.0225  ovl@N 0.0774  disc_l1 0.7029
+#   M06  dcos 0.5 + delta_mag         0.3681  mae 0.0232  ovl@N 0.0703  disc_l1 0.7047
+#   M03  dcos 0.01 (scale-matched)    0.3679  mae 0.0212  ovl@N 0.0722  disc_l1 0.6715
+# ANCHORS: meanpert 0.1324 · transfer 0.2323 · experimental 0.3722 (mae 0.0257).
+# `mae` is an ERROR: LOWER IS BETTER.
+#
+# PRE-REGISTERED. The transform's own documented signature is discrimination UP, mae/mse DOWN.
+#   disc_l1 up AND pearson_delta up  -> the shared component was noise the metrics penalised.
+#   disc_l1 up, pearson_delta DOWN   -> the shared component is real signal (meanpert 0.1324
+#                                       says it should be), and cdel trades one for the other.
+#   nothing moves                    -> these models emit little shared component, i.e. they
+#                                       were already perturbation-specific.
+arm_id	kind	tag
+M03	loss	smooth_l1_nbw0_nbs1.0_dcos0.01_s42
+M06	loss	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_s42
+Q02	loss	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_s42

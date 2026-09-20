@@ -1,0 +1,10 @@
+# Q05 backfill: split 4, BOTH modes, lost to the pdex shared-memory race (F-infra1).
+#
+# WHY THIS ONE. Q05 (M06 + latent cosine at 1x parity) scores 0.3787 on 4/5 splits -- the
+# highest number in the campaign -- but Q02 at 0.3783 on 5/5 is the defensible best precisely
+# because Q05 is short a split. This closes that gap so the two are comparable.
+#
+# `calibrate=both` because BOTH modes are missing for this split, and re-running a mode that
+# already succeeded would risk replacing a good score with a freshly raced one.
+arm_id	tag	split	calibrate	missing_modes
+Q05	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lcos0.0059-delta_z_s42	4	both	nocal,cal

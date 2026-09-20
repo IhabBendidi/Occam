@@ -103,7 +103,8 @@ def run_split(
     transfer_deltas: Optional[Mapping[str, np.ndarray]] = None,
     transfer_info: Optional[Mapping[str, object]] = None,
     predict_fn=None,
-    calibrate: str = "both",
+    calibrate: str = "none",
+    center_delta: bool = False,
     seed: int = 42,
     eval_control: str = "single",
     ctrl_avg_k: int = 1,
@@ -205,7 +206,7 @@ def run_split(
         transfer_meta = dict(transfer_info or {})
         transfer_meta["clipped_fraction"] = tclip
 
-    arms = build_arms(pred, arm_labels, ctrl_used, panel,
+    arms = build_arms(pred, arm_labels, ctrl_used, panel, center_delta=center_delta,
                       calibrate=calibrate,
                       calibrated=calibrated, extra=extra)
     anchor_tags, ref_tags, model_tags = split_arms(arms)

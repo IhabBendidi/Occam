@@ -219,6 +219,54 @@ splits and should not be quoted as a gain. ⚠️ The M06 base is untested; F-lo
 `delta_mag_weight` was setup-dependent, so M06 could behave differently and is not predicted by
 this table.
 
+## ⛔ F-cdel1 — centre-delta on M03: **all four metrics worse**, including `disc_l1`, which its own documentation predicted would RISE
+
+**First cdel measurement ever on this panel.** `cdel` does not exist in the Occam repo; it was
+ported for this test from `scMAE-main/virtual_cell/h1_eval.py::_center_delta`, where it is part
+of the H1 shipping recipe (`model_cal_cdel_a1`, F294).
+
+**What it does.** `ctrl + (delta − mean_over_perturbations(delta))` — removes the component of
+the predicted effect identical across every perturbation, leaving only what distinguishes them.
+Verified before use: shared component removed (‖panel-mean delta‖ 19.62 → 8.4e-07),
+perturbation-specific part preserved (max diff 7.75e-07), <5-perturbation guard returns input
+unchanged, and the mean is over PERTURBATIONS not rows (an abundant perturbation cannot define
+the centre).
+
+**Pre-registered signature**, from the research tree's own note: *"`pds` UP, `nmae`/`mse` DOWN"*
+— i.e. discrimination should improve at the cost of magnitude accuracy.
+
+### Measured — M03, test, uncalibrated, 5/5. Same checkpoint, same drawn controls, same split, ONE forward pass
+
+| arm | n | `pearson_delta` | `mae` ↓ | `overlap_at_N` | `disc_l1` |
+|---|---|---|---|---|---|
+| `M03` `model_nocal` | 5/5 | **0.3679 ± 0.0017** | **0.0212** | **0.0722** | **0.6715** |
+| `M03` `model_nocal_cdel` | 5/5 | **0.2956 ± 0.0029** | 0.0220 | 0.0692 | 0.6504 |
+| **Δ** | | **−0.0723** | **+0.0008** | **−0.0030** | **−0.0211** |
+
+### Reading
+
+1. **All four metrics degrade.** `pearson_delta` loses **0.0723** — the largest single-transform
+   drop measured in this campaign, and more than the entire gap between M03 and the previous
+   best L11 (0.0264).
+2. **⛔ `disc_l1` FALLS (−0.0211), which falsifies the pre-registered signature.** The transform
+   exists to strip the perturbation-common component so that only the discriminative part
+   remains; discrimination was the one thing it should have bought. It did not.
+3. **What that implies about the model.** If removing the panel-mean delta destroys
+   discrimination as well as correlation, the shared component is not a constant offset sitting
+   on top of perturbation-specific signal — the predictions are closer to *shared-component
+   plus noise*, and the part that distinguishes perturbations does not survive on its own. That
+   is consistent with `meanpert` scoring 0.1324 on this panel: the common component is a large
+   fraction of what the model gets right.
+4. **Why H1 differed.** There `model_nocal_cdel` was **+0.1394** on one checkpoint and
+   **−0.3335** on others. This is the same bimodality, landing on the negative side. The H1
+   winner was `model_cal_cdel` — **calibrated** — and calibration is now off by user direction,
+   so the H1 recipe is not reproducible here by construction.
+
+⚠️ **M03 only.** M06 and Q02 are still scoring. Three levers have already shown opposite signs
+between M03 and M06 (F-loss9, F-latent4, F-recon3), so this does NOT predict them — and M06/Q02
+carry a much larger `dcos` weight, which is the term that makes predictions perturbation-specific
+in the first place.
+
 ## ⛔ F-recon3 — **F-recon1's PREDICTION IS FALSIFIED.** Splitting the reconstruction makes `mae` WORSE, not better, in every arm. Phase 2 is worse than phase 1.
 
 ⚠️ **This overturns a pre-registration that was mine.** F-recon1 measured that `smooth_l1` is

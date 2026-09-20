@@ -223,7 +223,14 @@ def main() -> int:
                     help="required unless the checkpoint records one; the wrong value "
                          "loads strict=True and emits ~99%% exact zeros")
     ap.add_argument("--device", default="cuda")
-    ap.add_argument("--calibrate", default="quantile",
+    ap.add_argument("--center-delta", action="store_true",
+                    help="also emit `model_nocal_cdel`: ctrl + (delta - panel-mean delta). "
+                         "Removes the component of the predicted effect common to EVERY "
+                         "perturbation -- the quantity `meanpert` scores. Expected signature: "
+                         "discrimination UP, mae/mse DOWN. On H1 it SPLIT the checkpoints "
+                         "(+0.1394 on one, -0.3335 on others), so a single-base result says "
+                         "nothing about the others.")
+    ap.add_argument("--calibrate", default="none",
                     choices=["none", "quantile", "both"],
                     help="control-fit quantile calibration is worth ~0.37 pearson_delta "
                          "against ~0.02 for the head/loss choice, so 'none' measures "
@@ -332,6 +339,8 @@ def main() -> int:
         score_only = {"quantile": ["model_cal"],
                       "none": ["model_nocal"],
                       "both": ["model_cal", "model_nocal"]}[calibrate]
+        if args.center_delta and calibrate in ("none", "both"):
+            score_only = list(score_only) + ["model_nocal_cdel"]
 
     t0 = time.time()
     rec = run_split(
@@ -339,7 +348,8 @@ def main() -> int:
         model=model, pert2id=pert2id, device=device, predict_fn=predict_fn,
         grand_mean=grand, grand_mean_info=man.get("train_grand_mean"),
         transfer_deltas=transfer, transfer_info=man.get("transfer"),
-        calibrate=calibrate, batch_size=batch_size, seed=args.seed,
+        calibrate=calibrate, center_delta=bool(args.center_delta),
+        batch_size=batch_size, seed=args.seed,
         probe=args.probe,
         celleval_kwargs={"num_threads": args.num_threads,
                          "de_batch_size": args.de_batch_size,

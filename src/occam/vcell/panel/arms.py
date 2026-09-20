@@ -48,6 +48,30 @@ def _tag(base: str, alpha: float) -> str:
     return base if alpha == 1.0 else f"{base}_a{alpha:g}".replace("0.", "")
 
 
+
+def _centre_delta(arr: np.ndarray, labels: np.ndarray, ctrl_used: np.ndarray) -> np.ndarray:
+    """``ctrl + (delta - mean_over_perturbations(delta))``.
+
+    Removes the component of the predicted effect that is COMMON to every perturbation, which
+    is exactly the quantity the `meanpert` baseline scores. What remains is only what
+    distinguishes one perturbation from another.
+
+    Verbatim port of `virtual_cell/h1_eval.py::_center_delta` from the research tree, including
+    its two load-bearing details:
+      * the mean is over PERTURBATIONS, not rows -- a row-mean would let an abundant
+        perturbation define the centre;
+      * with fewer than 5 perturbations the centre is not estimable and the input is returned
+        UNCHANGED rather than silently centred on noise.
+    """
+    d = np.asarray(arr, dtype=np.float32) - ctrl_used
+    lab = np.asarray(labels, dtype=str)
+    ps = [q for q in np.unique(lab) if q != "non-targeting"]
+    if len(ps) < 5:
+        return arr
+    cmode = np.mean(np.stack([d[lab == q].mean(0) for q in ps]), axis=0)
+    return (ctrl_used + (d - cmode[None, :])).astype(np.float32)
+
+
 def build_arms(
     pred: np.ndarray,
     labels: np.ndarray,
@@ -59,6 +83,7 @@ def build_arms(
     anchors: Sequence[str] = ANCHOR_TAGS,
     extra: Optional[Mapping[str, np.ndarray]] = None,
     calibrated: Optional[np.ndarray] = None,
+    center_delta: bool = False,
 ) -> List[Arm]:
     """Assemble the arms to score.
 
@@ -160,6 +185,24 @@ def build_arms(
     if want in ("none", "both"):
         for alpha in shrinks:
             arms.append((_tag("model_nocal", alpha), shrink(pred, alpha), labels))
+        if center_delta:
+            # ---- CENTRE-DELTA (`cdel`), ported verbatim from the research tree's
+            # virtual_cell/h1_eval.py::_center_delta. Subtracts the PANEL-MEAN DELTA -- the
+            # component of the predicted effect that is identical for every perturbation --
+            # leaving only what distinguishes one perturbation from another.
+            #
+            # ⚠️ The mean is over PERTURBATIONS, not over rows. A row-mean would weight by
+            # cells-per-perturbation, so an abundant perturbation would define the centre.
+            #
+            # ⚠️ Expected signature (the research tree's own note): `pds`/discrimination UP,
+            # `nmae`/`mse` DOWN. The shared component is real signal on this panel --
+            # `meanpert` scores 0.1324 -- so removing it is NOT free.
+            #
+            # ⚠️ On H1 this SPLIT the checkpoints: +0.1394 overall on one, -0.3335 on others.
+            # Treat a single-base result as uninformative about the others.
+            cd = _centre_delta(pred, labels, ctrl_used)
+            for alpha in shrinks:
+                arms.append((_tag("model_nocal_cdel", alpha), shrink(cd, alpha), labels))
 
     if want in ("quantile", "both"):
         for alpha in shrinks:

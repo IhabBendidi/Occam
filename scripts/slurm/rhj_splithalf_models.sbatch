@@ -105,7 +105,7 @@ echo "started : $(date -Is)"
 echo "git sha : $(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
 echo "slurm   : job ${SLURM_ARRAY_JOB_ID:-?} task ${IDX} -> arm ${ARM_I}, split ${SPLIT}"
 echo "ckpt    : $CKPT"
-echo "calib   : ${CALIBRATE:-quantile}"
+echo "calib   : ${CALIBRATE:-none}   center_delta=${CENTER_DELTA:-0}"
 echo "de cache: $CACHE"
 echo "out     : $OUT/split_$(printf %02d "$SPLIT")"
 echo
@@ -123,7 +123,8 @@ python scripts/eval_splithalf.py \
     --split "$SPLIT" \
     --out-root "$OUT" \
     --de-real-cache-dir "$CACHE" \
-    --calibrate "${CALIBRATE:-quantile}" \
+    --calibrate "${CALIBRATE:-none}" \
+    ${CENTER_DELTA:+--center-delta} \
     --num-threads 16
 
 echo
