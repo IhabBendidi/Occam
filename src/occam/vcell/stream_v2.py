@@ -716,12 +716,18 @@ def build_control_embedding_pool(
                 pools.setdefault(cl, []).append(blob["emb"][m])
                 sums[cl] = sums.get(cl, torch.zeros(num_genes, dtype=torch.float64)) + blob["sum"][cl].to(torch.float64)
                 counts[cl] = counts.get(cl, 0) + int(m.sum())
+            if keep_raw:
+                raise RuntimeError(
+                    f"keep_raw: {Path(path).name} was served from the embedding cache, which "
+                    f"stores embeddings only -- the dense gene-space rows do not exist in it. "
+                    f"Pass cache_dir=None for this run.")
             print(f"  [ctrl-cache] {Path(path).name}: {len(rows_all):,} controls from cache", flush=True)
             continue
         # chunk spans that contain at least one control
         chunk_ids = np.unique(rows_all // chunk_size)
         spans = [(int(c) * chunk_size, min(fm.n_obs, (int(c) + 1) * chunk_size)) for c in chunk_ids]
         file_emb: List[torch.Tensor] = []
+        file_raw: List[torch.Tensor] = []     # keep_raw: dense gene-space rows, same order
         file_rows: List[np.ndarray] = []
         file_sum: Dict[str, torch.Tensor] = {}
 
@@ -739,6 +745,8 @@ def build_control_embedding_pool(
                 with torch.no_grad():
                     emb = encode_fn(dense).float()
                 file_emb.append(emb.cpu()); file_rows.append(sel)
+                if keep_raw:
+                    file_raw.append(dense.float().cpu())
                 cls_here = cl_of_row[np.searchsorted(rows_all, sel)]
                 for cl in np.unique(cls_here):
                     m = torch.from_numpy(cls_here == cl).to(device)
@@ -746,9 +754,13 @@ def build_control_embedding_pool(
                 del dense
         emb_all = torch.cat(file_emb, 0); rows_done = np.concatenate(file_rows)
         assert np.array_equal(rows_done, rows_all), "control scan returned rows out of order"
+        raw_all = torch.cat(file_raw, 0) if keep_raw else None
         for cl in np.unique(cl_of_row):
             m = torch.from_numpy(cl_of_row == cl)
             pools.setdefault(cl, []).append(emb_all[m])
+            if keep_raw:
+                # SAME mask, SAME order as the embedding slice above.
+                raws.setdefault(cl, []).append(raw_all[m])
             sums[cl] = sums.get(cl, torch.zeros(num_genes, dtype=torch.float64)) + file_sum[cl].cpu()
             counts[cl] = counts.get(cl, 0) + int(m.sum())
         if cpath:
@@ -787,9 +799,11 @@ def build_control_embedding_pool(
             # never materialised. Returning a short pool would misalign every ctrl_idx and
             # produce a plausible wrong number -- refuse, and say how to fix it.
             raise RuntimeError(
-                f"keep_raw: raw control rows missing/short for {_bad}. The embedding cache was "
-                f"hit, so the dense rows were never materialised. Clear control_cache_dir (or "
-                f"set it to None) for this run.")
+                f"keep_raw: raw control rows missing/short for {_bad} "
+                f"(raw={{k: v.shape[0] for k, v in out_raw.items()}}, "
+                f"emb={{k: v.shape[0] for k, v in out_pools.items()}}). Some code path filled "
+                f"`pools` without filling `raws`; every such path must do both or ctrl_idx "
+                f"misaligns.")
         print(f"  [stream_v2] RAW control pool kept: "
               f"{sum(v.shape[0] for v in out_raw.values()):,} cells, "
               f"{sum(v.numel() * 4 for v in out_raw.values()) / 2**30:.2f} GB (CPU)", flush=True)

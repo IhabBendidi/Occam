@@ -174,6 +174,56 @@ splits and should not be quoted as a gain. ⚠️ The M06 base is untested; F-lo
 `delta_mag_weight` was setup-dependent, so M06 could behave differently and is not predicted by
 this table.
 
+## ⭐⭐ F-recon2 — three split modes, all verified on the real streaming path. **Each gives a different `L_ctrl`/`L_delta` balance, and only `raw` is stable.**
+
+**Why three.** The streaming path encodes every control cell ONCE into a pool and serves 512-d
+embeddings, so there is no per-cell gene-space control. `L_ctrl = recon(D(z_ctrl), ctrl)` compared
+44,728 genes to 512 latents and killed 10/12 arms of `18216421`. Three ways to supply a
+gene-space reference, run separately at the user's direction.
+
+### Measured — real config (`rhj_fewshot`, streaming, 3 epochs, weights 1:1, UNWEIGHTED terms)
+
+| mode | control reference | ep1 `L_ctrl` / `L_delta` | ep3 | `L_ctrl` share | stable? |
+|---|---|---|---|---|---|
+| **`raw`** | per-cell control expression (5 GB pool) | 0.004643 / 0.009641 | 0.004457 / 0.009468 | **32.5% → 32.0%** | **yes, flat** |
+| **`cmean`** | line control MEAN | 0.001566 / 0.005208 | 0.000352 / 0.005099 | **23.1% → 6.4%** | no, decays 4.4× |
+| **`delta_only`** | none; denoised group-mean delta | — / 0.000384 | — / 0.000282 | 0% by construction | n/a |
+| *(paired, smoke only)* | paired control cell | 1.847 / 0.139 | 0.265 / 0.166 | 93.0% → 61.5% | no, decays 7× |
+
+### Reading
+
+1. **`raw` is the only mode whose balance holds still** — 32/68 across all three epochs, ratio
+   0.47 throughout. Reconstructing a SPECIFIC control cell stays hard, because the cell's own
+   noise never becomes learnable. That makes it the only mode where a fixed weight means a fixed
+   balance, and therefore **the only one where a ratio sweep does what a ratio sweep is for**.
+2. **`cmean` self-balances to the delta.** `L_ctrl` decays 4.4× (0.001566 → 0.000352) while
+   `L_delta` is flat, so the delta term rises 77% → 94% of the loss with no weight tuning.
+   Decoding `z_ctrl` to the LINE MEAN is an easy target that the model solves early. This is the
+   weighting F-recon1 wanted, obtained structurally rather than by a hyperparameter.
+3. **The three modes are not variants of one experiment** — they impose 32/68, 6/94 and 0/100.
+   Running them separately was the right call; a single "the split" result would have been an
+   artifact of whichever reference was chosen.
+4. `delta_only`'s `L_delta` is **13× smaller** than `cmean`'s (0.00038 vs 0.0051) because the
+   group-mean target removes the single-cell noise the other modes fit.
+
+### ⛔ Three wiring faults found by verifying, each of which would have produced a plausible wrong number
+
+1. **The gate.** `cmean`/`delta_only` read `cmeans`/`gmeans`, loaded only when
+   `_needs_group_means` fires — and `recon_split` was not in it. Both terms would have been
+   SILENTLY ZERO. That is F-loss1 exactly. Now gated and in the refusal list.
+2. **Wrong internal path.** I added raw collection to `_accumulate`, which serves ONLY
+   `extra_dense` (the H1 pool). The main per-file scan appends to `pools` at the bottom of its
+   loop and never calls it, so raw stayed empty for all three corpora. Caught by the row-count
+   assertion, not by inspection. **All three `pools.setdefault` sites are now enumerated and
+   covered**: `_accumulate`, the cache-hit branch (which REFUSES, since cached blobs hold
+   embeddings only), and the main scan.
+3. **An error message that asserted an unverified cause.** The first failure printed "the
+   embedding cache was hit", which I had not established and which was false — the real cause
+   was (2). Rewritten to report the actual row counts on both sides and name the invariant.
+
+⚠️ `raw` costs a full re-scan of all 28,474 control cells (~75s) because the embedding disk cache
+cannot serve dense rows, plus 4.74 GB CPU. `cmean` and `delta_only` are free.
+
 ## ⭐⭐⭐ F-recon1 — **`smooth_l1` is ~99.8% control RECONSTRUCTION and ~0.2% perturbation.** The prediction error is inherited autoencoder error, not perturbation error.
 
 **Credit: this came from the user's question** — "pred and tgt don't have the same `c`, because
