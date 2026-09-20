@@ -342,6 +342,22 @@ VCELL_SCHEMA: Dict[str, Dict[str, Optional[str]]] = {
         "recon_loss_scale": "recon_loss_scale",
         "loss_norm": "loss_norm", "source_weight": "source_weight",
         "latent_loss_type": "latent_loss_type", "delta_reg_type": "delta_reg_type",
+        # ⚠️ LATENT-SPACE LOSSES. `latent_loss_type` alone was routable; its WEIGHT was not,
+        # so the term could be switched on and never scaled -- the F-loss1 shape. All of them
+        # are routed now.
+        #   latent_loss_weight : scales the MSE latent loss. Default in config.py is 1.0, which
+        #                        the measured scales (F-latent2) put at ~99.5% of the total
+        #                        loss -- never use it unexamined.
+        #   latent_loss_alpha  : INERT. It blends `delta_z` and `z_hat`, which are the SAME
+        #                        function (F-latent2), so any alpha gives the same number.
+        #   latent_cos_weight  : 1 - cos(...) in latent space, the direction-only counterpart.
+        #   latent_cos_target  : delta_z (effect direction) | z_hat (absolute state). Unlike
+        #                        the MSE these are NOT equivalent -- cosine is not
+        #                        translation-invariant.
+        "latent_loss_weight": "latent_loss_weight",
+        "latent_loss_alpha": "latent_loss_alpha",
+        "latent_cos_weight": "latent_cos_weight",
+        "latent_cos_target": "latent_cos_target",
         "expression_loss_mode": "expression_loss_mode",
         "delta_mag_weight": "delta_mag_weight",
         # DCOS -- the direction of the EFFECT, not of the profile. Distinct from

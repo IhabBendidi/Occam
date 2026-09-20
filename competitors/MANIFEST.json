@@ -1,7 +1,7 @@
 {
   "arms": {
     "CellFlow": {
-      "bytes": 1427058,
+      "bytes": 1427326,
       "files": {
         ".python-version": {
           "bytes": 5,
@@ -204,8 +204,8 @@
           "sha256": "c2a5afe4ad61aaf212208623989d0660e08d804efbefd50cd852c046205a2e50"
         },
         "export_occam.py": {
-          "bytes": 12347,
-          "sha256": "b8e9017921ef2eabb95ff82a783da2a1570251e877ee62152c594ee97f5ecb70"
+          "bytes": 12615,
+          "sha256": "ee1d30c6e1b1a8bf053e87b650db92e768620f010b943a89ae679ce68d9abd73"
         },
         "occam_bridge/__init__.py": {
           "bytes": 1267,

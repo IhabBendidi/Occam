@@ -1361,8 +1361,9 @@ class VirtualCellTrainer:
         Returns:
             (loss_tensor, metrics_dict). loss is 0 if latent_loss_type == "none".
         """
-        if self.latent_loss_type == "none":
-            return torch.tensor(0.0, device=self.device), {}
+        _wlc = float(getattr(self.config, "latent_cos_weight", 0.0))
+        if self.latent_loss_type == "none" and _wlc <= 0:
+            return torch.tensor(0.0, device=self.device), torch.tensor(0.0, device=self.device), {}
 
         delta_z = model_output["delta_z"]
         z_hat = model_output["z_hat"]
@@ -1388,8 +1389,42 @@ class VirtualCellTrainer:
             z_hat_proj = self.latent_proj_head(z_hat)
             z_target_proj = self.latent_proj_head(z_target).detach()
             loss = F.mse_loss(z_hat_proj, z_target_proj)
+        elif self.latent_loss_type == "none":
+            # reachable only when latent_cos_weight > 0: the cosine is wanted without the MSE
+            loss = torch.tensor(0.0, device=self.device)
         else:
             raise ValueError(f"Unknown latent_loss_type: {self.latent_loss_type}")
+
+        # ─── LATENT COSINE: the DIRECTION of the perturbation in latent space ──────────────
+        # The existing latent losses above are all MSE, i.e. purely magnitude-and-position.
+        # This is their direction-only counterpart, and the latent analogue of the gene-space
+        # `delta_cos_weight` that produced M03 (F-loss7): 1 - cos(delta_z, delta_z_target).
+        #
+        # ⚠️ Scale is NOT comparable to the MSE terms and must be measured, never assumed --
+        # `1 - cos` is bounded [0,2] and dimensionless, while the latent MSE scales with
+        # ||z||^2. F-loss5 found the gene-space pair differed by ~100x, and reading the
+        # configured weight as a blend was the single most costly mistake in this campaign.
+        #
+        # ⚠️ UNLIKE THE MSE, THE TARGET CHOICE MATTERS HERE. MSE(delta_z, delta_z_target) and
+        # MSE(z_hat, z_target) are the SAME function (F-latent2): the residuals are the same
+        # tensor. Cosine is NOT translation-invariant, so the two are genuinely different:
+        #   `delta_z` -> the direction of the perturbation EFFECT
+        #   `z_hat`   -> the direction of the absolute latent STATE, which is dominated by the
+        #                shared control baseline. Expect it near 0 (i.e. cos near 1) for every
+        #                perturbation, the same way the gene-space `cosine_loss_weight` on the
+        #                absolute profile scores ~0.99 regardless of what was predicted.
+        # `delta_z` is the default for that reason; `z_hat` exists to MEASURE the difference.
+        cos_loss = torch.tensor(0.0, device=self.device)
+        _ct = str(getattr(self.config, "latent_cos_target", "delta_z"))
+        if _wlc > 0:
+            if _ct == "delta_z":
+                cos_loss = (1 - F.cosine_similarity(delta_z, delta_z_target, dim=-1)).mean()
+            elif _ct == "z_hat":
+                cos_loss = (1 - F.cosine_similarity(z_hat, z_target, dim=-1)).mean()
+            else:
+                raise ValueError(
+                    f"Unknown latent_cos_target: {_ct!r}. Use 'delta_z' (effect direction) "
+                    f"or 'z_hat' (absolute state direction).")
 
         # Diagnostic metrics (always computed when latent loss is active)
         with torch.no_grad():
@@ -1402,9 +1437,15 @@ class VirtualCellTrainer:
                     delta_z, delta_z_target, dim=-1
                 ).mean().item(),
                 "z_hat_mse_w_target": F.mse_loss(z_hat, z_target).item(),
+                "latent_cos_loss": float(cos_loss),
+                "latent_cos_delta_z": (1 - F.cosine_similarity(
+                    delta_z, delta_z_target, dim=-1)).mean().item(),
+                "latent_cos_z_hat": (1 - F.cosine_similarity(
+                    z_hat, z_target, dim=-1)).mean().item(),
+                "latent_mse_loss": float(loss),
             }
 
-        return loss, metrics
+        return loss, cos_loss, metrics
 
     def _compute_latent_diagnostics(
         self, model_output: Dict[str, torch.Tensor]
@@ -2155,7 +2196,7 @@ class VirtualCellTrainer:
                             epoch_hurdle_n += sc_mask.sum().item()
 
                 # v2: Latent loss (supervise delta_z or z_hat)
-                latent_loss, latent_metrics = self._compute_latent_loss(
+                latent_loss, latent_cos_loss, latent_metrics = self._compute_latent_loss(
                     model_output, target,
                 )
                 # Health checks that must run even when there is no latent loss — the arms
@@ -2172,6 +2213,9 @@ class VirtualCellTrainer:
 
                 # v2: Total loss
                 loss = expr_loss + self.latent_loss_weight * latent_loss + delta_reg
+                _wlc = float(getattr(self.config, "latent_cos_weight", 0.0))
+                if _wlc > 0:
+                    loss = loss + _wlc * latent_cos_loss
                 if _mw > 0:
                     loss = loss + _mw * mag_loss
                 if _wc > 0:

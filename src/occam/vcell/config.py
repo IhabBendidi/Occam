@@ -471,6 +471,11 @@ class VirtualCellConfig:
     latent_loss_type: str = "none"  # none, delta_z, z_hat, both, projected
     latent_loss_weight: float = 1.0  # weight of latent loss (ignored when type=none)
     latent_loss_alpha: float = 0.5  # balance for "both" mode (alpha*delta_z + (1-alpha)*z_hat)
+    latent_cos_target: str = "delta_z"  # delta_z (effect direction) | z_hat (absolute state);
+                                     # unlike the MSE, these are NOT the same loss
+    latent_cos_weight: float = 0.0   # weight of 1-cos(delta_z, delta_z_target);
+                                     # direction-only counterpart of the MSE latent losses.
+                                     # Works with latent_loss_type="none" (cosine alone).
     latent_proj_dim: int = 256  # projection head output dim for "projected" mode
 
     # --- v2: Delta regularization ---

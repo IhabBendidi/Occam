@@ -55,6 +55,109 @@ identity floor and the score alone would not distinguish that from a genuinely w
 ⚠️ Step 3 is the pre-registration: **the diagnostic decides whether the sweep is worth running**,
 rather than the sweep being run and the diagnostic quoted afterwards.
 
+## ⭐⭐ F-latent2 — latent losses wired and verified; **`delta_z`, `z_hat` and `both` are ONE option, not three**, and the scale-match weights are measured
+
+**Objective.** Best model on SEEN perturbations in an UNSEEN cell line. This is infrastructure
+for sweeping latent-space losses on the two preferred arms, **M03** (`pearson_delta` 0.3679,
+`mae` 0.0212, `ovl@N` 0.0722, `disc_l1` 0.6715) and **M06** (0.3681 / 0.0232 / 0.0703 / 0.7047).
+
+**What was done.** (1) Added `latent_cos_weight` — `1 − cos(delta_z, delta_z_target)`, the
+direction-only counterpart of the existing MSE latent losses and the latent analogue of the
+gene-space `delta_cos_weight` that produced M03 (F-loss7). (2) DECLARED `latent_loss_type`,
+`latent_loss_weight`, `latent_loss_alpha` and `latent_cos_weight` in `configs/rhj_fewshot.yaml`.
+(3) Verified the wiring on a real checkpoint with real data. (4) Measured the term scales.
+
+### ⛔ `latent_loss_type` has FOUR names and TWO behaviours
+
+`delta_z`, `z_hat` and `both` (at ANY `alpha`) are **the same loss**:
+
+```
+delta_z − delta_z_target = delta_z − (z_target − z_ctrl) = (z_ctrl + delta_z) − z_target
+                         = z_hat − z_target
+```
+
+The residuals are the same tensor, so the MSEs are the same function. Confirmed numerically:
+`MSE(delta_z, delta_z_target)` = 3.0075335503, `MSE(z_hat, z_target)` = 3.0075333118,
+`allclose` True, residual 2.4e−07 (float noise). Confirmed again on a trained checkpoint: M03
+gives **0.600705 for both**.
+
+⇒ **Sweeping `latent_loss_type` over {`delta_z`, `z_hat`, `both`} would burn three GPUs to
+produce one number**, exactly the shape of F-loss1. Only **`projected`** is genuinely different
+(it applies `latent_proj_head`). `latent_loss_alpha` is **inert** for the same reason — it
+interpolates between two identical quantities.
+
+### Wiring verification — on M03's checkpoint, 256 real HepG2 perturbations
+
+| `latent_loss_type` | `latent_cos_weight` | MSE term | cosine term | verdict |
+|---|---|---|---|---|
+| `none` | 0.0 | 0.000000 | 0.000000 | ✅ both off |
+| `none` | 1.0 | 0.000000 | **0.973322** | ✅ cosine works WITHOUT the MSE |
+| `delta_z` | 0.0 | **0.600705** | 0.000000 | ✅ MSE alone |
+| `delta_z` | 1.0 | 0.600705 | 0.973322 | ✅ independent |
+| `z_hat` | 1.0 | 0.600705 | 0.973322 | ⚠️ identical to `delta_z`, see above |
+
+Each term is zero exactly when its knob is off and non-zero exactly when on, and the cosine
+moves the total loss by `w × 0.973322`. **This is the check F-loss1 did not have.**
+
+### Measured scales — what the sweep weights must be built from
+
+`smooth_l1` here is the unmasked gene-space term, used as the common yardstick.
+
+| base | gene `smooth_l1` | latent MSE | latent cos | `latent_loss_weight` for parity | `latent_cos_weight` for parity |
+|---|---|---|---|---|---|
+| **M03** | 0.009436 | 0.6007 | 0.9733 | **0.0157** | **0.0097** |
+| **M06** | 0.005708 | 1.2942 | 0.9654 | **0.0044** | **0.0059** |
+
+### The cosine TARGET matters — and unlike the MSE, the two are genuinely different
+
+Cosine is not translation-invariant, so `cos(delta_z, delta_z_target)` and `cos(z_hat, z_target)`
+are NOT the same loss (whereas their MSEs are). Added `latent_cos_target` ∈
+{`delta_z`, `z_hat`}, default `delta_z`. Measured:
+
+| base | `1−cos` on `delta_z` | on `z_hat` | ratio |
+|---|---|---|---|
+| M03 | **0.973322** | 0.052802 | 18.4× |
+| M06 | **0.965420** | 0.118391 | 8.2× |
+
+`z_hat` cosine sits at 0.05–0.12, i.e. `cos ≈ 0.9`, compressed by the control baseline every
+perturbation shares — the same reason gene-space `cosine_loss_weight` on the absolute profile is
+near-useless. It is not fully degenerate, so it is worth ONE arm, but `delta_z` carries far more
+signal per unit weight.
+
+### Full wiring matrix — 14/14 OK, both bases, 256 real HepG2 perturbations
+
+Every term is zero exactly when its knob is off, non-zero exactly when on, the two knobs are
+independent, and the ACTIVE `latent_cos_target` is the one that reaches the loss (asserted
+against the per-target diagnostics, not assumed).
+
+### ⛔ TWO WIRING FAULTS FOUND BY CHECKING, both fixed
+
+1. **The knobs were NOT reachable.** Declaring them in `config.py` and `rhj_fewshot.yaml` was
+   not enough: the config loader has its OWN routing table (`src/occam/config/schema.py`) which
+   knew only `latent_loss_type`. `latent_loss_weight`, `latent_loss_alpha` and
+   `latent_cos_weight` were rejected as unknown keys and the config would not load at all. The
+   test suite caught it (3 failures). **This is the third distinct layer at which a loss term
+   can be silently unreachable** — dataclass, YAML, loader schema — and F-loss1 was only the
+   first of them. Verified by differencing a loaded config with and without `--set`:
+
+   | key | default | after `--set` |
+   |---|---|---|
+   | `latent_loss_type` | none | delta_z |
+   | `latent_loss_weight` | 0.0 | 0.016 |
+   | `latent_cos_weight` | 0.0 | 0.01 |
+   | `latent_cos_target` | delta_z | z_hat |
+
+2. The CellFlow `emission_note` fix changed a vendored file without refreshing
+   `competitors/MANIFEST.json`, the integrity baseline. Refreshed. **220 tests pass.**
+
+Two things to carry into the sweep:
+1. **The latent MSE is ~64–227× the gene `smooth_l1`**, and the latent cosine ~103–169×. A
+   weight of 1.0 — the CURRENT DEFAULT for `latent_loss_weight` in `config.py` — would make the
+   latent term ~99.5% of the loss. Nobody has ever run it, which is fortunate.
+2. **M06's latent MSE is 2.15× M03's** (1.2942 vs 0.6007): its latent sits further from the
+   encoded target. The parity weights therefore differ between bases by ~3.6×, so **a single
+   weight grid cannot serve both** — each base needs its own.
+
 ## ⛔ F-loss9 — `delta_mag_weight` on M03's setup is **strictly harmful on all four metrics**. The M06 win was SETUP-driven, not weight-driven.
 
 **Objective.** Best model on SEEN perturbations in an UNSEEN cell line. User's goal: hold M03's
