@@ -322,8 +322,21 @@ continuing, so the task fails loudly and the arm-split is re-runnable. Opt out w
 `OCCAM_ALLOW_EMPTY_CELLEVAL=1` for the case where a genuinely degenerate arm is expected to
 produce nothing.
 
-**Not yet done:** re-running the 31 missing scores. Cheap (~10 min each, embarrassingly
-parallel) but not launched — it was not requested.
+**✅ RESOLVED 2026-09-19.** All 31 missing scores were re-run (job `18182488`, 21 tasks at
+`%5`, then `18190848` for the one that lost the race again). **16/16 arms are now complete on
+both calibration modes**, and `docs/rhj_scoreboard.md` has no `PARTIAL` model rows left (the
+four that remain are the n=1 emission arms, which are single-split by deferral, not by this bug).
+
+**The partial means were not materially wrong**, which is worth recording against the instinct
+to distrust every earlier number: `L07`, the worst-affected uncalibrated arm at 4/5, moved
+0.3098 → **0.3094** on completion (−0.0004), and its calibrated mean 0.2619 → **0.2612**. The
+across-split sd of ~0.003 was a good guide to the error. The bug was still serious — it was
+silent, and it made `D03` unreportable — but no ordering in F-loss3 changed.
+
+**Two fixes shipped so it cannot recur silently:** `run.py` RAISES on an empty cell-eval result
+instead of printing "skipping" and exiting 0; and it RETRIES up to 3 times first, since the race
+is transient and each attempt draws a fresh segment name. The retry demonstrably works — a
+backfill task logged `cell-eval succeeded on attempt 2/3` and completed.
 
 ## ⭐⭐⭐ F-loss4 — DCOS CONFIRMED ON TEST: **`pearson_delta` +0.0246 AND `disc_l1` +0.0646**, at the cost of `mae` and `overlap_at_N`
 
