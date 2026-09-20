@@ -187,6 +187,9 @@ stages:
       latent_loss_alpha: 0.5
       latent_cos_weight: 0.0
       latent_cos_target: delta_z   # delta_z | z_hat -- NOT equivalent, unlike the MSE
+      recon_split: false           # F-recon1: split recon into ctrl-passthrough + delta
+      recon_ctrl_weight: 1.0
+      recon_delta_weight: 1.0
       # DCOS -- 1 - cos(pred - ctrl_mean, group_mean - ctrl_mean): the direction of the
       # EFFECT. ⚠️ NOT the same as `cosine_loss_weight` above, which is cos(prediction,
       # target) on the PROFILE and is dominated by the baseline expression every

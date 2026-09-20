@@ -55,6 +55,70 @@ identity floor and the score alone would not distinguish that from a genuinely w
 ⚠️ Step 3 is the pre-registration: **the diagnostic decides whether the sweep is worth running**,
 rather than the sweep being run and the diagnostic quoted afterwards.
 
+## ⛔ F-latent3 — latent-space losses do NOT improve M03. 11/11 arms, no arm better on any metric that matters.
+
+**Objective.** Best model on SEEN perturbations in an UNSEEN cell line. **M03 reference**
+(test, uncalibrated, 5/5): `pearson_delta` 0.3679 · `mae` 0.0212 · `overlap_at_N` 0.0722 ·
+`disc_l1` 0.6715.
+
+**Question.** Does supervising the latent delta — by MSE (position), cosine (direction), or both
+— improve M03, and at what scale? Weights at 0.1× / 1× / 10× M03's own measured parity point
+(F-latent2: MSE 0.0157, cos 0.0097, cos(`z_hat`) 0.179).
+
+**Status.** M03 base (P-arms) complete, 11/11 arms scored. **M06 base (Q-arms) barely started**
+(Q01 1/5, the rest 0/5) — job `18215244` still running, 5 tasks FAILED to the pdex shm race.
+
+### Measured — test cell-eval, uncalibrated
+
+| arm | what | n | `pearson_delta` | Δ pΔ | `mae` ↓ | Δ mae | `ovl@N` | `disc_l1` |
+|---|---|---|---|---|---|---|---|---|
+| — | **M03 reference** | 5/5 | **0.3679** | — | **0.0212** | — | **0.0722** | **0.6715** |
+| P01 | MSE 0.1× | 5/5 | 0.3600 ± 0.0019 | −0.0079 | 0.0213 | +0.0001 | 0.0693 | 0.6589 |
+| P02 | MSE 1× | 5/5 | 0.3606 ± 0.0032 | −0.0073 | 0.0213 | +0.0001 | 0.0710 | 0.6612 |
+| P03 | MSE 10× | 4/5 ⚠️ | 0.3592 ± 0.0033 | −0.0087 | 0.0215 | +0.0003 | 0.0687 | 0.6571 |
+| P04 | cos(`delta_z`) 0.1× | 4/5 ⚠️ | 0.3551 ± 0.0025 | −0.0128 | 0.0216 | +0.0004 | 0.0673 | 0.6663 |
+| P05 | cos(`delta_z`) 1× | 5/5 | 0.3578 ± 0.0015 | −0.0101 | 0.0212 | −0.0000 | 0.0675 | 0.6637 |
+| **P06** | cos(`delta_z`) 10× | 4/5 ⚠️ | **0.3692 ± 0.0033** | **+0.0013** | 0.0213 | +0.0001 | 0.0720 | 0.6655 |
+| P07 | cos(`z_hat`) 1× | 5/5 | 0.3570 ± 0.0030 | −0.0109 | 0.0214 | +0.0002 | 0.0702 | 0.6547 |
+| P08 | both 1× | 5/5 | 0.3640 ± 0.0019 | −0.0039 | 0.0211 | −0.0001 | 0.0660 | 0.6521 |
+| P09 | both 10× | 5/5 | 0.3633 ± 0.0022 | −0.0046 | 0.0212 | −0.0000 | 0.0667 | 0.6568 |
+| P10 | MSE 10× + cos 1× | 4/5 ⚠️ | 0.3643 ± 0.0033 | −0.0036 | 0.0212 | +0.0000 | **0.0723** | 0.6599 |
+| **P11** | both 0.1× | 5/5 | 0.3670 ± 0.0023 | −0.0009 | **0.0211** | −0.0001 | **0.0738** | 0.6653 |
+
+### Reading
+
+1. **No arm improves M03 on `pearson_delta`.** The only positive is P06 at **+0.0013**, which
+   sits inside M03's own ±0.0017 sd and is measured on 4/5 splits. A tie, not a gain.
+2. **⛔ `disc_l1` is LOWER in all 11 arms** (0.6521–0.6663 vs 0.6715). Latent supervision costs
+   discrimination uniformly — the one unambiguous, consistent effect in the table.
+3. **`mae` is inert.** Every arm lands in 0.0211–0.0216, a total range of **0.0005**, against a
+   0.0109 gap between M03 and D03. **The latent losses do not touch `mae` at all**, which is
+   consistent with F-recon1: `mae` is a full-profile error dominated by control reconstruction,
+   and every term swept here acts on the perturbation.
+4. **Two dose-responses that point OPPOSITE ways**, the most interesting structure here:
+   - **cosine alone RISES with weight**: 0.3551 → 0.3578 → 0.3692 (0.1× → 1× → 10×).
+   - **cosine+MSE FALLS with weight**: 0.3670 → 0.3640 → 0.3633 (0.1× → 1× → 10×).
+   So the cosine wants more weight when alone and less when the MSE is present. The MSE is not
+   merely neutral; it changes the sign of the cosine's dose-response.
+5. **✅ PRE-REGISTERED OUTCOME CONFIRMED: the weight absorbs the scale, and the cosine TARGET
+   does not matter.** P07 (`z_hat`, 1× parity) = 0.3570 and P05 (`delta_z`, 1× parity) = 0.3578
+   — a 0.0008 difference, inside the sds — *despite the raw terms differing by 18.4×*
+   (0.9733 vs 0.0528). Scale-matching the weight fully neutralised an 18× scale gap. **That
+   generalises the F-loss5/F-loss7 scale-match heuristic beyond gene space** and is the most
+   transferable result in this sweep.
+6. **P11, the user-added `both 0.1×` arm, is the best combination arm**: closest to M03 on
+   `pearson_delta` (−0.0009), best `mae` of any arm (0.0211), and **the best `overlap_at_N` in
+   the table (0.0738, above M03's 0.0722)**. It was not in my proposed grid.
+
+⇒ **M03 stands. No latent arm replaces it.** The honest summary is that latent supervision is
+mildly harmful across the board, with one tie (P06) and one `overlap_at_N` win (P11) that are
+within or near noise.
+
+⚠️ Four arms are 4/5 splits (P03, P04, P06, P10) — P06's +0.0013 in particular rests on 4
+splits and should not be quoted as a gain. ⚠️ The M06 base is untested; F-loss9 showed
+`delta_mag_weight` was setup-dependent, so M06 could behave differently and is not predicted by
+this table.
+
 ## ⭐⭐⭐ F-recon1 — **`smooth_l1` is ~99.8% control RECONSTRUCTION and ~0.2% perturbation.** The prediction error is inherited autoencoder error, not perturbation error.
 
 **Credit: this came from the user's question** — "pred and tgt don't have the same `c`, because

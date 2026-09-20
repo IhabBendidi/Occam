@@ -718,6 +718,18 @@ class VirtualCellTrainer:
             self.gpl_fn = None
 
         # v2: Latent loss and regularization config
+        if bool(getattr(config, "recon_split", False)):
+            # ⚠️ The delta term feeds NEGATIVE values to the reconstruction loss. That is fine
+            # for smooth_l1/mse/log_cosh, which are functions of a residual, and meaningless
+            # for nb/zinb/poisson, which model COUNTS and assume a non-negative argument.
+            # Refuse at construction rather than producing NaNs or a silently wrong number.
+            _ok = ("smooth_l1", "mse", "log_cosh")
+            if str(config.loss_type) not in _ok:
+                raise ValueError(
+                    f"recon_split=True requires loss_type in {_ok}, got "
+                    f"{config.loss_type!r}. The delta term recon(pred - D(z_ctrl), "
+                    f"target - ctrl) is negative by construction, which count likelihoods "
+                    f"cannot represent.")
         self.latent_loss_type = config.latent_loss_type
         self.latent_loss_weight = config.latent_loss_weight
         self.latent_loss_alpha = config.latent_loss_alpha
@@ -1946,6 +1958,8 @@ class VirtualCellTrainer:
         epoch_ranking_loss = 0.0
         epoch_hurdle_loss = 0.0
         epoch_mag_loss = 0.0
+        epoch_recon_ctrl = 0.0
+        epoch_recon_delta = 0.0
         epoch_hurdle_pi_sum = 0.0
         epoch_hurdle_n = 0
         epoch_latent_metrics: Dict[str, float] = {}
@@ -2082,6 +2096,36 @@ class VirtualCellTrainer:
                         ww = gmf if w is None else gmf * w.unsqueeze(1)
                         recon_loss = (per_elem * ww).sum() / ww.sum().clamp(min=1e-8)
                     del per_elem, gmf
+                elif bool(getattr(self.config, "recon_split", False)):
+                    # ─── SPLIT RECONSTRUCTION (F-recon1) ──────────────────────────────────
+                    # `smooth_l1(pred, target)` is ~99.8% CONTROL RECONSTRUCTION on M03:
+                    # ||D(z_ctrl) - c|| = 15.34 against a true effect size of 2.88, and the
+                    # full-profile error ||pred - t|| = 15.58 is almost all inherited
+                    # autoencoder error rather than perturbation error. The perturbation is
+                    # therefore supervised by ~0.2% of this term's gradient.
+                    #
+                    # Splitting it lets the two be weighted independently:
+                    #     L_ctrl  = recon(D(z_ctrl), ctrl)         pass the control through
+                    #     L_delta = recon(pred - D(z_ctrl), target - ctrl)   predict the CHANGE
+                    #
+                    # ⚠️ NOT a re-parameterisation. recon(a-c, b-c) == recon(a,b) only when the
+                    # SAME c is subtracted from both; here the prediction's control is the
+                    # model's own D(z_ctrl) and the target's is the real c, so the residual
+                    # carries the extra term (D(z_ctrl) - c). That is the whole point.
+                    #
+                    # ⚠️ Costs one EXTRA DECODER FORWARD per step, which the unsplit loss does
+                    # not need.
+                    _fwd = self.model.module if hasattr(self.model, "module") else self.model
+                    _dec = _fwd.decoder(model_output["z_ctrl"])
+                    recon_ctrl = _dec["prediction"] if isinstance(_dec, dict) else _dec
+                    L_ctrl = self._recon_loss(recon_ctrl, ctrl, gene_mask)
+                    L_delta = self._recon_loss(prediction - recon_ctrl, target - ctrl, gene_mask)
+                    _wc = float(getattr(self.config, "recon_ctrl_weight", 1.0))
+                    _wd = float(getattr(self.config, "recon_delta_weight", 1.0))
+                    recon_loss = _wc * L_ctrl + _wd * L_delta
+                    self._last_recon_split = (float(L_ctrl), float(L_delta))
+                    epoch_recon_ctrl += float(L_ctrl)
+                    epoch_recon_delta += float(L_delta)
                 else:
                     recon_loss = self._recon_loss(prediction, target, gene_mask)
 
@@ -2624,6 +2668,8 @@ class VirtualCellTrainer:
             "n_grad_norm_batches": n_grad_norm,
             "n_bad_gradnorm": n_bad_gradnorm,
             "mag_loss": (epoch_mag_loss / max(n_batches, 1)),
+            "recon_ctrl_loss": (epoch_recon_ctrl / max(n_batches, 1)),
+            "recon_delta_loss": (epoch_recon_delta / max(n_batches, 1)),
         }
 
         # v2: Add latent metrics to result
@@ -4067,6 +4113,31 @@ class VirtualCellTrainer:
                                            f"per_source/{s_}/gnorm": d["gnorm"]/n,
                                            f"per_source/{s_}/n": d["n"], "epoch": epoch})
 
+                # ⚠️ THESE PRINTS MUST NOT SIT INSIDE `if wandb_run:`. Both of them did, which made
+                # every diagnostic here invisible in offline runs -- and competitor/sweep runs set
+                # WANDB_MODE=offline by default. That is the wandb-only-diagnostics failure F-latent1
+                # recorded, and a term that is ON and unmeasured is how DCOS burned three GPUs
+                # (F-loss1). They print unconditionally.
+                _rs = {k: metrics[k] for k in ("recon_ctrl_loss", "recon_delta_loss") if k in metrics}
+                if _rs and (_rs.get("recon_ctrl_loss", 0) or _rs.get("recon_delta_loss", 0)):
+                    _rc = _rs.get("recon_ctrl_loss", 0.0)
+                    _rd = _rs.get("recon_delta_loss", 0.0)
+                    _tot = _rc + _rd
+                    print("  [recon-split] L_ctrl %.6f (%.1f%%)  L_delta %.6f (%.1f%%)  ratio %.2fx"
+                          "   (UNWEIGHTED; configured weights apply on top)"
+                          % (_rc, 100*_rc/max(_tot,1e-12), _rd, 100*_rd/max(_tot,1e-12),
+                             _rc/max(_rd,1e-12)), flush=True)
+                _diag = {k: metrics[k] for k in
+                         ("delta_z_ratio", "offmanifold_ratio",
+                          "delta_z_cosine_w_target", "gate_active_dims")
+                         if k in metrics}
+                if _diag:
+                    print("  [latent] " + "  ".join(
+                        f"{k}={v:.4f}" if isinstance(v, float) else f"{k}={v}"
+                        for k, v in _diag.items())
+                        + "   (delta_z_ratio ~0 = COLLAPSED to identity; "
+                          "offmanifold_ratio ~1 = healthy, >>1 = decoder extrapolation)",
+                        flush=True)
                 if wandb_run:
                     train_log = {
                         "epoch": epoch,
@@ -4114,17 +4185,6 @@ class VirtualCellTrainer:
                     # (`offmanifold_ratio` >> 1) -- both read as "a weak model" in the score
                     # alone, so a silent diagnostic is the same as no diagnostic. See
                     # F-latent1. wandb is `offline` for competitor runs anyway.
-                    _diag = {k: metrics[k] for k in
-                             ("delta_z_ratio", "offmanifold_ratio",
-                              "delta_z_cosine_w_target", "gate_active_dims")
-                             if k in metrics}
-                    if _diag:
-                        print("  [latent] " + "  ".join(
-                            f"{k}={v:.4f}" if isinstance(v, float) else f"{k}={v}"
-                            for k, v in _diag.items())
-                            + "   (delta_z_ratio ~0 = COLLAPSED to identity; "
-                              "offmanifold_ratio ~1 = healthy, >>1 = decoder extrapolation)",
-                            flush=True)
                     # Decoder warmup LR
                     if (
                         self.decoder_lr_warmup_epochs > 0

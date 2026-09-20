@@ -471,6 +471,11 @@ class VirtualCellConfig:
     latent_loss_type: str = "none"  # none, delta_z, z_hat, both, projected
     latent_loss_weight: float = 1.0  # weight of latent loss (ignored when type=none)
     latent_loss_alpha: float = 0.5  # balance for "both" mode (alpha*delta_z + (1-alpha)*z_hat)
+    # F-recon1: split the reconstruction into control-passthrough and perturbation-delta,
+    # separately weighted. Off by default = today's single recon(pred, target).
+    recon_split: bool = False
+    recon_ctrl_weight: float = 1.0    # weight of recon(D(z_ctrl), ctrl)
+    recon_delta_weight: float = 1.0   # weight of recon(pred - D(z_ctrl), target - ctrl)
     latent_cos_target: str = "delta_z"  # delta_z (effect direction) | z_hat (absolute state);
                                      # unlike the MSE, these are NOT the same loss
     latent_cos_weight: float = 0.0   # weight of 1-cos(delta_z, delta_z_target);

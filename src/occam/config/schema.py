@@ -358,6 +358,11 @@ VCELL_SCHEMA: Dict[str, Dict[str, Optional[str]]] = {
         "latent_loss_alpha": "latent_loss_alpha",
         "latent_cos_weight": "latent_cos_weight",
         "latent_cos_target": "latent_cos_target",
+        # F-recon1 split reconstruction. Routed here too, or --set cannot reach them:
+        # dataclass + YAML + THIS TABLE are three independent layers.
+        "recon_split": "recon_split",
+        "recon_ctrl_weight": "recon_ctrl_weight",
+        "recon_delta_weight": "recon_delta_weight",
         "expression_loss_mode": "expression_loss_mode",
         "delta_mag_weight": "delta_mag_weight",
         # DCOS -- the direction of the EFFECT, not of the profile. Distinct from
