@@ -55,7 +55,79 @@ identity floor and the score alone would not distinguish that from a genuinely w
 ⚠️ Step 3 is the pre-registration: **the diagnostic decides whether the sweep is worth running**,
 rather than the sweep being run and the diagnostic quoted afterwards.
 
-## ⛔ F-loss6 — the scale-match sweep and the first `delta_mag` run: **neither reduces the 5.6× over-shoot**, and validation gets no better
+## ⭐⭐⭐ F-loss7 — **CORRECTION TO F-loss6.** On TEST, the scale-matched arm `M03` holds D03's `pearson_delta` and cuts `mae` by **34%**. Validation ranked these arms BACKWARDS.
+
+⚠️ **THIS OVERTURNS F-loss6's CONCLUSION, WHICH WAS MINE AND WAS WRONG.** F-loss6 read
+validation `best_metric` only, saw M03 (0.4031) below D03 (0.4108), and concluded "no hump —
+the scale-matched arms are all worse, the direction term wants to dominate." On the test metric
+the ordering is reversed and the sweep has a clear optimum at the scale-match point. This is
+the documented failure mode of this project — validation and cell-eval ranking models
+oppositely — and I walked into it after quoting it as a risk two findings earlier.
+
+**Objective.** Best model on SEEN perturbations in an UNSEEN cell line. The user's stated goal
+for this sweep: *keep D03's performance on all metrics and improve `mae` massively*.
+
+**Question.** With `dcos` brought down to `smooth_l1`'s scale, is there a weight holding D03's
+`pearson_delta` 0.3686 while `mae` falls from 0.0321 toward L11's 0.0210?
+
+**Answer: yes, at `delta_cos_weight` 0.01 — the exact scale-match point predicted by F-loss5.**
+
+### Measured — test cell-eval, uncalibrated, job `18187190`
+
+`pearson_delta` ↑ · `mae` **↓ (ERROR)** · `overlap_at_N` ↑ · `disc_l1` ↑ (chance 0.5)
+
+| arm | `delta_cos_weight` | dcos share | n | `pearson_delta` | `mae` ↓ | `overlap_at_N` | `disc_l1` |
+|---|---|---|---|---|---|---|---|
+| L11 pure smooth_l1 | inert | 0% | 5/5 | 0.3415 ± 0.0031 | **0.0210** | 0.0642 | 0.6534 |
+| M01 | 0.002 | 15.9% | 5/5 | 0.3457 ± 0.0022 | 0.0211 | 0.0658 | 0.6522 |
+| M02 | 0.005 | 32.0% | 5/5 | 0.3553 ± 0.0030 | 0.0212 | 0.0598 | 0.6624 |
+| **M03** | **0.01 (matched)** | **48.5%** | 5/5 | **0.3679 ± 0.0017** | **0.0212** | **0.0722** | 0.6715 |
+| M04 | 0.02 | 65.4% | 4/5 ⚠️ | 0.3646 ± 0.0028 | 0.0217 | 0.0703 | 0.6705 |
+| M05 | 0.05 | 82.5% | — | pending | | | |
+| D02 | 0.25 | 96.3% | 5/5 | 0.3661 ± 0.0023 | 0.0277 | 0.0568 | 0.7180 |
+| D03 | 0.5 | 97.9% | 5/5 | 0.3686 ± 0.0021 | 0.0321 | 0.0718 | **0.7263** |
+| M06 = D03 + `delta_mag` | 0.5 | 97.9% | — | pending | | | |
+
+### `M03` vs the two arms it has to beat
+
+| metric | vs **D03** (0.3686 / 0.0321 / 0.0718 / 0.7263) | vs **L11** (0.3415 / 0.0210 / 0.0642 / 0.6534) |
+|---|---|---|
+| `pearson_delta` ↑ | **−0.0007** — a tie, inside the 0.0017–0.0021 sd | **+0.0264** |
+| `mae` ↓ | **−0.0109, a 34% REDUCTION** | +0.0002 — a tie |
+| `overlap_at_N` ↑ | **+0.0004** — a tie | **+0.0080** |
+| `disc_l1` ↑ | **−0.0548** — the one real loss | **+0.0181** |
+
+**`M03` strictly dominates `L11`** (better or tied on all four). **Against `D03` it converts a
+0.0548 `disc_l1` loss into a 34% `mae` win**, holding `pearson_delta` and `overlap_at_N` level.
+That is the stated objective, achieved on three of four metrics.
+
+### Reading
+
+1. **The optimum is interior and at the predicted place.** `pearson_delta` rises 0.3415 →
+   0.3457 → 0.3553 → **0.3679** → 0.3646 across dcos shares 0% → 15.9% → 32% → 48.5% → 65.4%,
+   peaking at the 50/50 scale-match point F-loss5 computed from the raw term magnitudes
+   (0.008443 / 0.796206 = 0.01060). The arithmetic predicted the optimum before it was run.
+2. **`mae` is flat at ~0.0210–0.0212 for every arm up to 48.5% dcos, then degrades sharply**
+   (0.0217 at 65%, 0.0277 at 96%, 0.0321 at 98%). So `mae` is not traded away gradually — it
+   survives intact until the direction term starts dominating, and then collapses. There was
+   never a reason to pay it.
+3. **`disc_l1` is the only quantity that genuinely wants a dominant direction term**
+   (0.6534 → 0.6715 → 0.7180 → 0.7263, monotone in dcos share). If `disc_l1` is what a
+   submission is scored on, D03 remains the arm; for every other metric M03 is at least as good.
+4. **Validation `best_metric` ranked these backwards.** It put D03 (0.4108) above M03 (0.4031)
+   and M01 (0.3771) level with L11 (0.3769), while test says M03 ≈ D03 ≫ M02 > M01 > L11.
+   ⚠️ **Do not select DCOS arms on `best_metric`.** It tracks `disc_l1`-like direction quality,
+   which is exactly the axis that keeps rising with dcos share.
+
+⚠️ **M04 is 4/5 splits** and M05/M06 are still scoring. M06 is the arm that matters next: if
+`delta_mag_weight` recovers `mae` while KEEPING D03's `disc_l1` 0.7263, it beats M03 outright.
+F-loss6 measured M06's magnitude ratio as 5.872 (no better than D03's 5.589) and predicted a
+null — **that prediction now carries the same validation-only weakness that F-loss6 itself
+did**, so it should be checked against the test number, not trusted.
+
+## ⛔ F-loss6 — ⚠️ **SUPERSEDED ON `pearson_delta`/`mae` BY F-loss7 — read that first.** The scale-match sweep and the first `delta_mag` run: neither reduces the 5.6× over-shoot, and VALIDATION gets no better
+
+⚠️ **F-loss6's headline conclusion — "no hump, the scale-matched arms are all worse" — is WRONG.** It rested on validation `best_metric`, which ranks these arms BACKWARDS (F-loss7). On the test metric `M03` ties D03 on `pearson_delta` and cuts `mae` 34%. What survives from F-loss6: the magnitude-ratio measurements, and the fact that `delta_mag_weight` did not move the ratio.
 
 **Objective.** Best model on SEEN perturbations in an UNSEEN cell line; headline split-half
 paired `pearson_delta`. Anchors: `transfer` 0.2323 · L11 0.3415 (`mae` 0.0210) · D02 0.3661
