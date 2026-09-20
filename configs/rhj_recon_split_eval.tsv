@@ -1,0 +1,23 @@
+# TEST cell-eval for the split-reconstruction sweep (train job 18216421).
+# R-arms: ratio sweep, recon_ctrl_weight=1 and recon_delta_weight in {1,3,10,30}.
+# S-arms: scale-matched constants (0.813/1.298) -- equal contribution at the measured
+#         converged point, TOTAL recon contribution held fixed. Not in the (1,k) family.
+# T-arms: latent both at 0.01x parity, the order-of-magnitude-lower P11.
+# R01-R04/S01/T01 are on the M03 base; R05-R08/S02/T02 on M06.
+# READ AGAINST: M03 0.3679/0.0212/0.0722/0.6715 · M06 0.3681/0.0232/0.0703/0.7047.
+# `mae` is an ERROR: LOWER IS BETTER. The pre-registered question is whether mae finally
+# moves below 0.0212 -- F-recon1 predicts it should, since mae is dominated by control
+# reconstruction and this is the first lever that touches it.
+arm_id	kind	tag
+R01	loss	smooth_l1_nbw0_nbs1.0_dcos0.01_rsplit1.0-1.0_s42
+R02	loss	smooth_l1_nbw0_nbs1.0_dcos0.01_rsplit1.0-3.0_s42
+R03	loss	smooth_l1_nbw0_nbs1.0_dcos0.01_rsplit1.0-10.0_s42
+R04	loss	smooth_l1_nbw0_nbs1.0_dcos0.01_rsplit1.0-30.0_s42
+S01	loss	smooth_l1_nbw0_nbs1.0_dcos0.01_rsplit0.813-1.298_s42
+R05	loss	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_rsplit1.0-1.0_s42
+R06	loss	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_rsplit1.0-3.0_s42
+R07	loss	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_rsplit1.0-10.0_s42
+R08	loss	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_rsplit1.0-30.0_s42
+S02	loss	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_rsplit0.813-1.298_s42
+T01	loss	smooth_l1_nbw0_nbs1.0_dcos0.01_lmse0.000157_lcos0.000097-delta_z_s42
+T02	loss	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.000044_lcos0.000059-delta_z_s42
