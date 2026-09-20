@@ -161,6 +161,7 @@ stages:
       latent_cos_weight: 0.0
       latent_cos_target: delta_z
       recon_split: false
+      recon_split_mode: cmean
       recon_ctrl_weight: 1.0
       recon_delta_weight: 1.0
       # The released checkpoint carries a trained per-gene log_theta; warm-starting it

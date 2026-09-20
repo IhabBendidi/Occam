@@ -645,7 +645,8 @@ def build_control_embedding_pool(
     device, cache_dir: Optional[str], enc_key: str, chunk_size: int = 8192, threads: int = 6,
     extra_dense: Optional[Dict[str, torch.Tensor]] = None,
     axis_sha256: str = "", axis_scope: str = "",
-) -> Tuple[Dict[str, torch.Tensor], Dict[str, np.ndarray]]:
+    keep_raw: bool = False,
+) -> Tuple[Dict[str, torch.Tensor], Dict[str, np.ndarray], Optional[Dict[str, torch.Tensor]]]:
     """Encode every control cell once (chunk-wise scan) -> {line: (n, hidden)} + {line: mean log1p row}.
 
     `pending` = {cell_line: [(file_meta, sorted control row indices), ...]}, i.e. exactly the
@@ -660,9 +661,16 @@ def build_control_embedding_pool(
     if cache:
         cache.mkdir(parents=True, exist_ok=True)
 
+    raws: Dict[str, List[torch.Tensor]] = {}
+
     def _accumulate(cl: str, dense_gpu: torch.Tensor):
         emb = encode_fn(dense_gpu).float().cpu()
         pools.setdefault(cl, []).append(emb)
+        if keep_raw:
+            # ⚠️ recon_split_mode='raw' needs the per-cell GENE-SPACE control, which this
+            # function otherwise discards the moment it is encoded. Kept on CPU: ~5 GB at
+            # 44,728 genes for a typical pool; the per-batch gather is small.
+            raws.setdefault(cl, []).append(dense_gpu.float().cpu())
         sums[cl] = sums.get(cl, torch.zeros(num_genes, dtype=torch.float64, device=dense_gpu.device)) + dense_gpu.double().sum(0)
         counts[cl] = counts.get(cl, 0) + int(dense_gpu.shape[0])
 
@@ -769,7 +777,23 @@ def build_control_embedding_pool(
     tot = sum(p.shape[0] for p in out_pools.values())
     print(f"  Control-embedding pools: {len(out_pools)} lines, {tot:,} cells, "
           f"{sum(p.numel() * 4 for p in out_pools.values()) / 1e9:.2f} GB, {time.time() - t0:.0f}s", flush=True)
-    return out_pools, means
+    out_raw = None
+    if keep_raw:
+        out_raw = {cl: torch.cat(v, 0) for cl, v in raws.items()}
+        _bad = [cl for cl in out_pools
+                if cl not in out_raw or out_raw[cl].shape[0] != out_pools[cl].shape[0]]
+        if _bad:
+            # A DISK-CACHED embedding skips _accumulate entirely, so that file's raw rows were
+            # never materialised. Returning a short pool would misalign every ctrl_idx and
+            # produce a plausible wrong number -- refuse, and say how to fix it.
+            raise RuntimeError(
+                f"keep_raw: raw control rows missing/short for {_bad}. The embedding cache was "
+                f"hit, so the dense rows were never materialised. Clear control_cache_dir (or "
+                f"set it to None) for this run.")
+        print(f"  [stream_v2] RAW control pool kept: "
+              f"{sum(v.shape[0] for v in out_raw.values()):,} cells, "
+              f"{sum(v.numel() * 4 for v in out_raw.values()) / 2**30:.2f} GB (CPU)", flush=True)
+    return out_pools, means, out_raw
 
 
 def load_group_means(mean_dir: str, device, dtype=torch.float32, sources: Optional[set] = None):

@@ -361,6 +361,7 @@ VCELL_SCHEMA: Dict[str, Dict[str, Optional[str]]] = {
         # F-recon1 split reconstruction. Routed here too, or --set cannot reach them:
         # dataclass + YAML + THIS TABLE are three independent layers.
         "recon_split": "recon_split",
+        "recon_split_mode": "recon_split_mode",
         "recon_ctrl_weight": "recon_ctrl_weight",
         "recon_delta_weight": "recon_delta_weight",
         "expression_loss_mode": "expression_loss_mode",

@@ -474,6 +474,13 @@ class VirtualCellConfig:
     # F-recon1: split the reconstruction into control-passthrough and perturbation-delta,
     # separately weighted. Off by default = today's single recon(pred, target).
     recon_split: bool = False
+    # Which gene-space CONTROL reference the split uses. The streaming path serves
+    # controls as 512-d pool embeddings, so there is no per-cell gene-space control
+    # unless one is materialised -- see F-recon2.
+    #   cmean      : the line control MEAN (already in _stream_v2_state, free)
+    #   raw        : the per-cell control expression (needs the raw pool, ~5 GB)
+    #   delta_only : no L_ctrl; L_delta against the DENOISED group-mean delta
+    recon_split_mode: str = "cmean"
     recon_ctrl_weight: float = 1.0    # weight of recon(D(z_ctrl), ctrl)
     recon_delta_weight: float = 1.0   # weight of recon(pred - D(z_ctrl), target - ctrl)
     latent_cos_target: str = "delta_z"  # delta_z (effect direction) | z_hat (absolute state);

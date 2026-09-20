@@ -1651,6 +1651,7 @@ class VirtualCellTrainer:
                 target = torch.where(has.unsqueeze(1), new, target)
                 del base, sfac, new
         ctrl_idx = batch.ctrl_idx.to(dev, non_blocking=True)
+        self._last_ctrl_idx = ctrl_idx   # recon_split_mode='raw' indexes the raw pool with it
         if ctrl_idx.dim() == 2:                     # k control cells, averaged in EMBEDDING space
             ident = ctrl_idx[:, 0] < 0
             ctrl = st["pool"][ctrl_idx.clamp(min=0)].mean(dim=1)
@@ -1694,17 +1695,28 @@ class VirtualCellTrainer:
         if extra is not None:
             e_ctrl, e_tgt, _e_names, _e_pidx, _e_cts, e_mask = extra
             extra_dense = {"H1": e_ctrl}
-        pools, means = build_control_embedding_pool(
+        # keep_raw only when recon_split_mode='raw' asks for it: it costs ~5 GB of CPU RAM,
+        # and every other mode uses the gene-space control MEANS already in _stream_v2_state.
+        _keep_raw = (bool(getattr(config, "recon_split", False))
+                     and str(getattr(config, "recon_split_mode", "cmean")) == "raw")
+        if _keep_raw and getattr(config, "control_cache_dir", None):
+            # The embedding cache short-circuits the dense scan, so the raw rows would never
+            # be materialised and the pool would misalign. Bypass it for this run only.
+            print("  [stream_v2] recon_split_mode='raw': bypassing the control-embedding disk "
+                  "cache so the dense rows are materialised.", flush=True)
+        pools, means, raw_pools = build_control_embedding_pool(
             control_matcher.pending_pools, encode_fn, n_enc, self.target_sum,
             self.skip_normalize, self.skip_log1p, self.device,
-            cache_dir=getattr(config, "control_cache_dir", None), enc_key=key,
+            cache_dir=(None if _keep_raw else getattr(config, "control_cache_dir", None)),
+            enc_key=key,
             chunk_size=config.optim_chunk_size,
             threads=int(getattr(config, "control_scan_threads", 6)),
             extra_dense=extra_dense,
             # The gene axis is part of the cache identity: embeddings computed under a
             # different axis are a different input, not the same input cached.
             axis_sha256=str(getattr(config, "bench_axis_sha256", "") or ""),
-            axis_scope=str(getattr(config, "bench_axis_scope", "") or ""))
+            axis_scope=str(getattr(config, "bench_axis_scope", "") or ""),
+            keep_raw=_keep_raw)
         control_matcher.control_pool = pools
         control_matcher.set_control_embeddings(pools)
         self._v2_control_means = means
@@ -1716,6 +1728,19 @@ class VirtualCellTrainer:
         pool_gpu = torch.cat([pools[k] for k in order], 0).to(self.device)
         print(f"  [stream_v2] control-embedding pool on GPU: {tuple(pool_gpu.shape)} "
               f"({pool_gpu.numel() * 4 / 1e9:.2f} GB), {len(order)} lines")
+        # ⚠️ SAME `order`, or every ctrl_idx points at the wrong cell. Concatenating these two
+        # independently is the single way this feature can produce a plausible wrong number,
+        # so the row counts are asserted rather than trusted.
+        raw_pool_cpu = None
+        if raw_pools is not None:
+            raw_pool_cpu = torch.cat([raw_pools[k] for k in order], 0)
+            if raw_pool_cpu.shape[0] != pool_gpu.shape[0]:
+                raise RuntimeError(
+                    f"raw control pool has {raw_pool_cpu.shape[0]} rows but the embedding pool "
+                    f"has {pool_gpu.shape[0]}; ctrl_idx would index the wrong cells.")
+            print(f"  [stream_v2] raw control pool: {tuple(raw_pool_cpu.shape)} "
+                  f"({raw_pool_cpu.numel() * 4 / 2**30:.2f} GB, CPU), aligned to the "
+                  f"embedding pool", flush=True)
         extras_csr = None
         if extra is not None:
             ev, ec, erp = dense_to_csr(e_tgt)
@@ -1738,6 +1763,12 @@ class VirtualCellTrainer:
             (getattr(config, "target_pb_k", 1) != 1)
             or float(getattr(config, "delta_mag_weight", 0.0)) > 0
             or float(getattr(config, "delta_cos_weight", 0.0)) > 0
+            # ⚠️ recon_split in cmean/delta_only mode reads `cmeans`/`gmeans` from
+            # _stream_v2_state. Omitting it here is precisely how delta_cos_weight ran
+            # silently zero for three arms (F-loss1) -- the guard below then REFUSES rather
+            # than degrading, so a missing table stops the run instead of faking a result.
+            or (bool(getattr(config, "recon_split", False))
+                and str(getattr(config, "recon_split_mode", "cmean")) in ("cmean", "delta_only"))
         )
         if _needs_group_means:
             # ⚠️ REFUSE, DO NOT DEGRADE. A weight that is set and has no effect is worse than
@@ -1750,6 +1781,8 @@ class VirtualCellTrainer:
                     ("target_pb_k", getattr(config, "target_pb_k", 1) != 1),
                     ("delta_mag_weight", float(getattr(config, "delta_mag_weight", 0.0)) > 0),
                     ("delta_cos_weight", float(getattr(config, "delta_cos_weight", 0.0)) > 0),
+                    ("recon_split(%s)" % getattr(config, "recon_split_mode", "cmean"),
+                     bool(getattr(config, "recon_split", False))),
                 ) if v]
                 raise FileNotFoundError(
                     f"{_asked} require the per-(cell line, perturbation) mean table, but "
@@ -1806,6 +1839,7 @@ class VirtualCellTrainer:
             "target_sum": self.target_sum, "skip_normalize": self.skip_normalize,
             "skip_log1p": self.skip_log1p,
             "gmeans": _gmeans, "cmeans": _cmeans, "gline": _gline,
+            "raw_pool": raw_pool_cpu,
             "target_pb_k": int(getattr(config, "target_pb_k", 1)),
         }
         if _gmeans is not None:
@@ -2118,15 +2152,52 @@ class VirtualCellTrainer:
                     _fwd = self.model.module if hasattr(self.model, "module") else self.model
                     _dec = _fwd.decoder(model_output["z_ctrl"])
                     recon_ctrl = _dec["prediction"] if isinstance(_dec, dict) else _dec
-                    if ctrl.shape[-1] != recon_ctrl.shape[-1]:
+                    _mode = str(getattr(self.config, "recon_split_mode", "cmean"))
+                    _st = self._stream_v2_state
+                    _gid = getattr(self, "_last_group_id", None)
+
+                    if _mode == "raw":
+                        # ⚠️ Per-cell gene-space control. The streaming path serves 512-d pool
+                        # embeddings, so this needs the RAW pool (~5 GB) built alongside it.
+                        _raw = _st.get("raw_pool") if _st else None
+                        if _raw is None:
+                            raise RuntimeError(
+                                "recon_split_mode='raw' needs the raw gene-space control pool, "
+                                "which was not built. The streaming path keeps only the 512-d "
+                                "embedding pool. Set stages.vcell.data.keep_raw_control_pool=true, "
+                                "or use recon_split_mode='cmean'/'delta_only'.")
+                        # The raw pool is CPU-resident (~5 GB); gather the batch's rows
+                        # there and move only those to GPU.
+                        _ci = self._last_ctrl_idx.clamp(min=0).cpu()
+                        _cref = (_raw[_ci].mean(dim=1) if _ci.dim() == 2 else _raw[_ci])
+                        _cref = _cref.to(self.device, non_blocking=True)
+                    else:
+                        # cmean / delta_only: the LINE CONTROL MEAN, the same gene-space
+                        # reference `dcos` and `delta_mag` are defined against.
+                        if _gid is None or _st is None or _st.get("cmeans") is None:
+                            raise RuntimeError(
+                                f"recon_split_mode={_mode!r} needs the control-mean table, but "
+                                f"_stream_v2_state has no 'cmeans' (or no group ids). This is a "
+                                f"GATE failure: _needs_group_means must include recon_split.")
+                        _g = _gid.clamp(min=0)
+                        _cref = _st["cmeans"][_st["gline"][_g]]
+
+                    if _cref.shape[-1] != recon_ctrl.shape[-1]:
                         raise RuntimeError(
-                            f"recon_split needs gene-space controls, but `ctrl` is "
-                            f"{tuple(ctrl.shape)} while the decoder emits "
-                            f"{tuple(recon_ctrl.shape)}. The control was replaced by its "
-                            f"embedding (precompute_paired_control_embeddings). Set "
-                            f"precompute_paired_embeddings=false, or disable recon_split.")
-                    L_ctrl = self._recon_loss(recon_ctrl, ctrl, gene_mask)
-                    L_delta = self._recon_loss(prediction - recon_ctrl, target - ctrl, gene_mask)
+                            f"recon_split needs gene-space controls, but the reference is "
+                            f"{tuple(_cref.shape)} while the decoder emits "
+                            f"{tuple(recon_ctrl.shape)}.")
+
+                    if _mode == "delta_only":
+                        # No L_ctrl. L_delta against the DENOISED group-mean delta, so the
+                        # single cell's noise (3-70x the effect) never enters the target.
+                        _gm = _st["gmeans"][_gid.clamp(min=0)]
+                        L_ctrl = torch.zeros((), device=self.device)
+                        L_delta = self._recon_loss(prediction - recon_ctrl, _gm - _cref, gene_mask)
+                    else:
+                        L_ctrl = self._recon_loss(recon_ctrl, _cref, gene_mask)
+                        L_delta = self._recon_loss(prediction - recon_ctrl, target - _cref, gene_mask)
+
                     _wc = float(getattr(self.config, "recon_ctrl_weight", 1.0))
                     _wd = float(getattr(self.config, "recon_delta_weight", 1.0))
                     recon_loss = _wc * L_ctrl + _wd * L_delta
