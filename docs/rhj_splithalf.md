@@ -55,6 +55,61 @@ identity floor and the score alone would not distinguish that from a genuinely w
 ⚠️ Step 3 is the pre-registration: **the diagnostic decides whether the sweep is worth running**,
 rather than the sweep being run and the diagnostic quoted afterwards.
 
+## ⭐⭐⭐ F-latent4 — the latent MSE **HELPS on M06 and HURTS on M03**. Setup-dependence again, and `Q02` = **0.3783** is the best arm in the campaign.
+
+⚠️ **CORRECTION TO MY OWN STATUS REPORT.** I reported "the M06 half finished — all 11 Q-arms at
+5/5". That was false. The shell check wrote `Q$i__*`, which bash parses as the variable `i__`
+(underscores are legal in identifiers); it was undefined, so the glob collapsed to `Q*` and
+matched `Q01` on every iteration, reporting its 5/5 eleven times. **Only Q01–Q03 are scored.**
+
+**Objective.** Best model on SEEN perturbations in an UNSEEN cell line.
+**M03 reference** 0.3679 / 0.0212 / 0.0722 / 0.6715 · **M06 reference** 0.3681 / 0.0232 /
+0.0703 / 0.7047 (test, uncalibrated, 5/5). `mae` is an ERROR: LOWER IS BETTER.
+
+### M06 base — latent MSE arms only (Q04–Q11 still scoring)
+
+| arm | what | n | `pearson_delta` | Δ pΔ | `mae` ↓ | Δ mae | `ovl@N` | Δ ovl | `disc_l1` | Δ disc |
+|---|---|---|---|---|---|---|---|---|---|---|
+| — | **M06 reference** | 5/5 | **0.3681** | — | **0.0232** | — | **0.0703** | — | **0.7047** | — |
+| Q01 | MSE 0.1× | 5/5 | 0.3725 ± 0.0024 | **+0.0044** | 0.0227 | **−0.0005** | **0.0794** | **+0.0091** | 0.7008 | −0.0039 |
+| **Q02** | **MSE 1× (parity)** | 5/5 | **0.3783 ± 0.0027** | **+0.0102** | **0.0225** | **−0.0007** | 0.0774 | **+0.0071** | 0.7029 | −0.0018 |
+| Q03 | MSE 10× | 4/5 ⚠️ | 0.3721 ± 0.0028 | +0.0040 | 0.0229 | −0.0003 | 0.0755 | +0.0052 | 0.6968 | −0.0079 |
+
+**All three MSE arms beat M06 on `pearson_delta`, `mae` AND `overlap_at_N` simultaneously.**
+Only `disc_l1` is (marginally) down, −0.0018 to −0.0079.
+
+### The same three arms on M03 — opposite sign
+
+| arm | `pearson_delta` vs base | | arm | `pearson_delta` vs base |
+|---|---|---|---|---|
+| P01 MSE 0.1× | 0.3600 (**−0.0079**) | | Q01 MSE 0.1× | 0.3725 (**+0.0044**) |
+| P02 MSE 1× | 0.3606 (**−0.0073**) | | Q02 MSE 1× | 0.3783 (**+0.0102**) |
+| P03 MSE 10× | 0.3592 (**−0.0087**) | | Q03 MSE 10× | 0.3721 (**+0.0040**) |
+
+**Identical intervention, opposite sign, 3/3 on each base.** Not noise: the M03 deficits
+(−0.007…−0.009) and M06 gains (+0.004…+0.010) are each several times the ±0.002–0.003 sds.
+
+### Reading
+
+1. **`Q02` at 0.3783 is the best arm this campaign has produced** — above M03 (0.3679), D03
+   (0.3686) and M06 (0.3681), and **above `experimental` 0.3722**. ⚠️ `experimental` is replicate
+   agreement, not a ceiling: a model can pass it via the two-sided noise asymmetry. It is NOT a
+   claim of super-experimental accuracy.
+2. **⛔ The third setup-dependent lever, after `delta_mag_weight` (F-loss9).** The pattern is
+   now consistent enough to state as a working rule: **a term that repairs a
+   direction-dominated loss (D03/M06, where `smooth_l1` is 2.1% of the total) tends to harm a
+   balanced one (M03, where it is 51.5%).** `delta_mag_weight` did exactly this; the latent MSE
+   does it again. **Stop generalising any loss-term result across bases without testing both.**
+3. **The optimum is at parity (1×), interior.** 0.1× and 10× both underperform 1× on every
+   metric. That is the fourth time the scale-match point has been the optimum (F-loss7 `dcos`,
+   F-latent3's target-invariance, and now this) — the heuristic keeps paying.
+4. **`mae` moved, slightly** (0.0232 → 0.0225). Small, but this is the first perturbation-side
+   lever to move `mae` at all, against F-recon1's prediction that it could not. ⚠️ It is −0.0007
+   against an M03-vs-D03 gap of 0.0109, so it does not overturn F-recon1 — it bounds it.
+
+⚠️ Q03 is 4/5 splits. ⚠️ **Q04–Q11 (all cosine and combination arms) are unscored**, so nothing
+is known about the cosine on M06 — and on M03 the cosine behaved differently from the MSE.
+
 ## ⛔ F-latent3 — latent-space losses do NOT improve M03. 11/11 arms, no arm better on any metric that matters.
 
 **Objective.** Best model on SEEN perturbations in an UNSEEN cell line. **M03 reference**

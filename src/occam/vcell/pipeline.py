@@ -2118,6 +2118,13 @@ class VirtualCellTrainer:
                     _fwd = self.model.module if hasattr(self.model, "module") else self.model
                     _dec = _fwd.decoder(model_output["z_ctrl"])
                     recon_ctrl = _dec["prediction"] if isinstance(_dec, dict) else _dec
+                    if ctrl.shape[-1] != recon_ctrl.shape[-1]:
+                        raise RuntimeError(
+                            f"recon_split needs gene-space controls, but `ctrl` is "
+                            f"{tuple(ctrl.shape)} while the decoder emits "
+                            f"{tuple(recon_ctrl.shape)}. The control was replaced by its "
+                            f"embedding (precompute_paired_control_embeddings). Set "
+                            f"precompute_paired_embeddings=false, or disable recon_split.")
                     L_ctrl = self._recon_loss(recon_ctrl, ctrl, gene_mask)
                     L_delta = self._recon_loss(prediction - recon_ctrl, target - ctrl, gene_mask)
                     _wc = float(getattr(self.config, "recon_ctrl_weight", 1.0))
@@ -3710,7 +3717,19 @@ class VirtualCellTrainer:
                 # Frozen encoder + fixed pairs => the control embedding is recomputed
                 # identically every epoch. Cache it once. Exact, not an approximation:
                 # the encoder is dropout=0 Linear/LayerNorm/Mish, hence deterministic.
+                # ⚠️ recon_split needs the RAW control EXPRESSION. The precompute replaces
+                # each control with its 512-d embedding, after which `ctrl` is a latent and
+                # `L_ctrl = recon(D(z_ctrl), ctrl)` compares 44,728 genes to 512 latents.
+                # That is what killed 10/12 arms of job 18216421 with an IndexError deep
+                # inside _recon_loss. The smoke test missed it because the smoke config takes
+                # the streaming path, which skips the precompute for its own reasons -- so the
+                # ONE configuration I verified was the one that could not hit the bug.
+                if config.freeze_encoder and bool(getattr(config, "recon_split", False)):
+                    print("Disabling paired control-embedding precompute: recon_split needs "
+                          "the RAW control expression (L_ctrl reconstructs it). Costs one "
+                          "encoder forward per batch.", flush=True)
                 if config.freeze_encoder and \
+                        not bool(getattr(config, "recon_split", False)) and \
                         getattr(config, "precompute_paired_embeddings", True):
                     train_dataset = precompute_paired_control_embeddings(
                         train_dataset, self.encoder, self.hidden_size, self.device)
