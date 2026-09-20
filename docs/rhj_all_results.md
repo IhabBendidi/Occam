@@ -146,3 +146,51 @@ F-emit6. `pearson_delta` and `overlap_at_N` rank these OPPOSITELY, so it is a tr
 
 **Still running at time of writing:** `18217040` (26-arm split-reconstruction grid) → `18217067` (its 130 cell-eval tasks); `18215244` (the last M06 latent arms); `18217089` (the orphaned 0.01× arms T01/T02).
 
+
+## Split reconstruction — M03 base (job 18217067, PARTIAL: 26 arms, most still scoring)
+
+F-recon3: **F-recon1's prediction is FALSIFIED.** The split is the first lever that touches the control-reconstruction term directly, and `mae` got WORSE in 5/5 arms (+0.0012…+0.0036). The mechanism was right and measured; the prediction from it was wrong.
+
+**Phase 2 loses to phase 1 on both modes** — `raw` 0.3282 vs 0.3424, `cmean` 0.3540 vs 0.3575. Denoising the delta target HURTS: the single-cell target's noise was not the binding constraint. `raw` is the WORST mode despite being the most faithful, because reconstructing a specific control cell is dominated by that cell's own unlearnable noise — which is why its balance stayed FLAT at 32% while `cmean`'s decayed. **The flat balance was the warning sign, not the feature.**
+
+✅ The one thing the split buys: **`disc_l1` rises in all five arms** (+0.016…+0.027).
+
+| arm | n | `pearson_delta` ↑ | `mae` ↓ | `overlap_at_N` ↑ | `disc_l1` ↑ | note |
+|---|---|---|---|---|---|---|
+| `G05` `delta_only` / group_mean | 2/5 ⚠️ | **0.3601** ± 0.0016 | 0.0226 | 0.0718 | 0.6985 | 2/5 — partial |
+| `G03` `cmean` / cell | 5/5 | **0.3575** ± 0.0023 | 0.0224 | 0.0663 | 0.6871 | phase 1 |
+| `G04` `cmean` / group_mean | 5/5 | **0.3540** ± 0.0022 | 0.0225 | 0.0689 | 0.6931 | **PHASE 2 PROPER** |
+| `G01` `raw` / cell | 5/5 | **0.3424** ± 0.0033 | 0.0248 | 0.0632 | 0.6932 | phase 1 |
+| `G02` `raw` / group_mean | 5/5 | **0.3282** ± 0.0024 | 0.0240 | 0.0590 | 0.6922 | phase 2 |
+
+## Latent-space losses — M06 base, COMPLETE (job 18215244)
+
+F-latent4 / F-latent5: **all 11 arms beat the M06 base**, and the same interventions HURT M03 — identical change, opposite sign, several times the sds. Third setup-dependent lever after `delta_mag_weight`. The useful range is around **parity**; at 0.01× (`T02`) the term stops helping and starts hurting, which is the lower bound.
+
+| arm | n | `pearson_delta` ↑ | `mae` ↓ | `overlap_at_N` ↑ | `disc_l1` ↑ | note |
+|---|---|---|---|---|---|---|
+| `Q05` latcos(delta_z) 1× | 4/5 ⚠️ | **0.3787** ± 0.0032 | 0.0225 | 0.0763 | 0.7078 | highest number, but 4/5 |
+| **`Q02` latMSE 1×** | 5/5 | **0.3783** ± 0.0027 | 0.0225 | 0.0774 | 0.7029 | **best 5/5 arm in the campaign** |
+| `Q10` latMSE 10× + cos 1× | 5/5 | **0.3772** ± 0.0017 | 0.0223 | 0.0768 | 0.6961 |  |
+| `Q04` latcos(delta_z) 0.1× | 4/5 ⚠️ | **0.3764** ± 0.0023 | 0.0223 | 0.0693 | 0.6921 | best `mae` of the family |
+| `Q09` both 10× | 5/5 | **0.3755** ± 0.0015 | 0.0221 | 0.0683 | 0.6931 |  |
+| `Q01` latMSE 0.1× | 5/5 | **0.3725** ± 0.0024 | 0.0227 | 0.0794 | 0.7008 | best `ovl@N` of the family |
+| `Q03` latMSE 10× | 4/5 ⚠️ | **0.3721** ± 0.0028 | 0.0229 | 0.0755 | 0.6968 |  |
+| `Q08` both 1× | 5/5 | **0.3717** ± 0.0018 | 0.0227 | 0.0742 | 0.6992 |  |
+| `Q11` both 0.1× | 5/5 | **0.3708** ± 0.0024 | 0.0226 | 0.0697 | 0.7016 |  |
+| `Q06` latcos(delta_z) 10× | 4/5 ⚠️ | **0.3690** ± 0.0023 | 0.0230 | 0.0720 | 0.7022 |  |
+| `Q07` latcos(z_hat) 1× | 4/5 ⚠️ | **0.3681** ± 0.0020 | 0.0225 | 0.0663 | 0.6890 | the one z_hat arm |
+| `T02` both 0.01× | 5/5 | **0.3617** ± 0.0023 | 0.0235 | 0.0714 | 0.7026 | ⛔ only latent arm to HURT M06 |
+
+## Adjacency-map hyperparameter arms (earlier sweep)
+
+The pre-DCOS population. `adjmap_s313` is the arm every later base descends from; its 0.3415 is L11's number and was the campaign headline before DCOS.
+
+| arm | n | `pearson_delta` ↑ | `mae` ↓ | `overlap_at_N` ↑ | `disc_l1` ↑ | note |
+|---|---|---|---|---|---|---|
+| `adjmap_s313` | 5/5 | **0.3415** ± 0.0031 | 0.0210 | 0.0642 | 0.6534 | s313 = the ancestor of M03/M06 |
+| `adjmap_s145` | 5/5 | **0.3405** ± 0.0029 | 0.0210 | 0.0666 | 0.6506 |  |
+| `adjmap_s306` | 5/5 | **0.3396** ± 0.0029 | 0.0209 | 0.0657 | 0.6543 |  |
+| `adjmap_s469` | 5/5 | **0.3392** ± 0.0034 | 0.0210 | 0.0669 | 0.6533 |  |
+| `adjmap_s321` | 5/5 | **0.3373** ± 0.0038 | 0.0209 | 0.0656 | 0.6489 |  |
+| `adjmap_s129` | 5/5 | **0.3348** ± 0.0032 | 0.0210 | 0.0618 | 0.6479 |  |
