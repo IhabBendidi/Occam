@@ -188,6 +188,49 @@ The two are not redundant and neither is a re-parameterisation of the current lo
 ⚠️ **Costs one extra decoder forward per step** (`D(z_ctrl)`), which the current loss does not
 need. ~1 extra decoder pass on a 1024-wide MLP — cheap relative to the encoder, but not free.
 
+### ⭐ MEASURED on the REAL training path, single-cell targets — and the ratio MOVES
+
+Split implemented and smoke-verified end to end (`recon_split=true`, both weights 1.0, 3 epochs,
+`rhj_smoke`). The two terms, UNWEIGHTED, per epoch:
+
+| epoch | `L_ctrl` | share | `L_delta` | share | **ratio `L_ctrl`/`L_delta`** |
+|---|---|---|---|---|---|
+| 1 | 1.847306 | 93.0% | 0.138828 | 7.0% | **13.31×** |
+| 2 | 1.458650 | 91.1% | 0.141990 | 8.9% | **10.27×** |
+| 3 | 0.264932 | 61.5% | 0.165586 | 38.5% | **1.60×** |
+
+**⚠️ THIS BREAKS THE FIXED-WEIGHT SCALE-MATCHING RECIPE.** Every scale-matched weight in this
+campaign (`nb_scale`, `dcos` 0.01, `delta_mag` 0.01363, the latent parity weights) was a
+CONSTANT chosen from a one-off measurement, and that was sound because those ratios were stable.
+Here the ratio moves **8×** in three epochs: `L_ctrl` falls 1.85 → 0.26 as the autoencoder learns
+to pass the control through, while `L_delta` is roughly flat (0.139 → 0.166). A weight that
+balances the two at epoch 1 leaves the delta term 8× over-weighted by epoch 3.
+
+Two readings, and they imply different designs:
+1. **The split self-balances.** Because `L_ctrl` decays and `L_delta` does not, equal weights
+   (1.0 / 1.0) automatically hand the delta term more influence as training proceeds — which is
+   the schedule one would want. Then no scale-matching is needed and the sweep should be over
+   the RATIO of weights, anchored at 1:1.
+2. **It needs a schedule.** If the end-state balance is what matters, the weight should be set
+   from the CONVERGED ratio, not the initial one.
+
+⚠️ These numbers are from the `rhj_smoke` config — 720 cells/epoch over 3 epochs, tiny — so the
+absolute values and the convergence point will differ on the real corpus at 30 epochs. **The
+trend (L_ctrl decaying toward L_delta) is the transferable part; the 1.60× endpoint is not.**
+The first real arm should be read for its own trajectory before any weight is fixed.
+
+⚠️ The same run reports `delta_z_ratio=0.0002`, i.e. a latent collapsed to the identity. Expected
+for 3 epochs on 720 cells; noted so it is not mistaken for a finding.
+
+### ⛔ A REPORTING FAULT FOUND WHILE VERIFYING THIS
+
+The first split smoke ran clean and printed NOTHING, because the `[recon-split]` print — and the
+`[latent]` print added earlier the same session — both sat inside `if wandb_run:`. Sweep and
+competitor runs set `WANDB_MODE=offline`, so **every latent diagnostic reported as "now printed
+to stdout" was in fact invisible in every run since**. Both now print unconditionally, verified
+by comparing their indentation against the enclosing `wandb_run` block rather than by eye. This
+is the same wandb-only-diagnostics failure F-latent1 recorded, reintroduced by me.
+
 ⚠️ **Confound to control for:** at `target_pb_k=1` the target is a single cell whose noise is
 3–70× the effect, so `L_delta` would be fitting mostly noise. It should be swept against the
 group-mean target, or `L_delta` should use the precomputed group means the way `dcos` and
