@@ -219,6 +219,53 @@ splits and should not be quoted as a gain. ⚠️ The M06 base is untested; F-lo
 `delta_mag_weight` was setup-dependent, so M06 could behave differently and is not predicted by
 this table.
 
+## ⛔ F-recon3 — **F-recon1's PREDICTION IS FALSIFIED.** Splitting the reconstruction makes `mae` WORSE, not better, in every arm. Phase 2 is worse than phase 1.
+
+⚠️ **This overturns a pre-registration that was mine.** F-recon1 measured that `smooth_l1` is
+~99.8% control reconstruction on M03 and hypothesised: *"this is why `mae` has been immovable —
+`mae` is a full-profile error dominated by the same term, while every lever tried acts on the
+perturbation. It predicts that improving control reconstruction moves `mae`."* The split is the
+first lever that touches that term directly. **`mae` moved the WRONG WAY in 5/5 arms.**
+
+**M03 base reference:** `pearson_delta` 0.3679 · `mae` 0.0212 · `ovl@N` 0.0722 · `disc_l1` 0.6715.
+
+### Measured — test cell-eval, uncalibrated, job `18217067`
+
+| arm | mode / delta target | n | `pearson_delta` | Δ pΔ | `mae` ↓ | Δ `mae` | `ovl@N` | `disc_l1` |
+|---|---|---|---|---|---|---|---|---|
+| — | **M03 base (no split)** | 5/5 | **0.3679** | — | **0.0212** | — | **0.0722** | 0.6715 |
+| `G05` | `delta_only` / group_mean | 2/5 ⚠️ | 0.3601 ± 0.0016 | −0.0078 | 0.0226 | **+0.0014** | 0.0718 | **0.6985** |
+| `G03` | `cmean` / **cell** (phase 1) | 5/5 | 0.3575 ± 0.0023 | −0.0104 | **0.0224** | **+0.0012** | 0.0663 | 0.6871 |
+| `G04` | `cmean` / **group_mean** (PHASE 2 PROPER) | 5/5 | 0.3540 ± 0.0022 | −0.0139 | 0.0225 | +0.0013 | 0.0689 | 0.6931 |
+| `G01` | `raw` / **cell** (phase 1) | 5/5 | 0.3424 ± 0.0033 | −0.0255 | 0.0248 | +0.0036 | 0.0632 | 0.6932 |
+| `G02` | `raw` / **group_mean** (phase 2) | 5/5 | 0.3282 ± 0.0024 | −0.0397 | 0.0240 | +0.0028 | 0.0590 | 0.6922 |
+
+### Reading
+
+1. **⛔ `mae` is worse in every arm**, by +0.0012 to +0.0036. The split gives the control term an
+   explicit, separately-weighted gradient and `mae` still degrades. **F-recon1's mechanism was
+   right — the decomposition is real and measured — but its PREDICTION was wrong.** Knowing
+   which term dominates a loss does not mean re-weighting that term improves the metric it
+   dominates.
+2. **⛔ Phase 2 is WORSE than phase 1, on both modes**: `raw` 0.3282 vs 0.3424 (−0.0142),
+   `cmean` 0.3540 vs 0.3575 (−0.0035). **Denoising the delta target HURTS.** This is the clean
+   answer to the phase-2 question and it is negative — the single-cell target's noise was not
+   the binding constraint, and removing it costs signal the model was using.
+3. **`raw` is the worst mode despite being the most faithful.** Per-cell controls (−0.0255) lose
+   to line means (−0.0104). Reconstructing a specific control cell is dominated by that cell's
+   own noise, so `L_ctrl` spends its gradient on unlearnable variation — which is exactly why
+   its balance was FLAT at 32% in F-recon2 while `cmean`'s decayed. **The flat balance was the
+   warning sign, not the feature.**
+4. **✅ One thing the split DOES buy: `disc_l1` rises in all five arms** (0.6871–0.6985 vs
+   0.6715), +0.016 to +0.027. Separating control reconstruction from delta prediction improves
+   perturbation IDENTIFIABILITY even as it costs correlation and magnitude accuracy.
+5. The ordering is the reverse of validation, which put `delta_only` and `cmean`/`group_mean`
+   top. Validation misranked again — the fourth instance (F-loss7, F-loss9, F-latent4).
+
+⇒ **No split arm is adoptable on M03. The M03 base stands.** ⚠️ G05 is 2/5, the M06 arms
+(G06–G10) and every ratio arm are still scoring, and F-loss9/F-latent4 both showed
+setup-dependence — so M06 may differ and is NOT predicted by this table.
+
 ## ⭐⭐ F-recon2 — three split modes, all verified on the real streaming path. **Each gives a different `L_ctrl`/`L_delta` balance, and only `raw` is stable.**
 
 **Why three.** The streaming path encodes every control cell ONCE into a pool and serves 512-d
