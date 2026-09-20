@@ -1,0 +1,33 @@
+# TEST cell-eval for the split-reconstruction grid (train job 18217040).
+# 26 arms: 3 modes x 2 delta targets x 2 bases, + per-mode ratio ladders + scale-matched.
+# recon_delta_target=group_mean is the PHASE-2 axis; G04/G09 are phase 2 PROPER.
+# G01-05,G11-13,G17-18,G21-22,G25 = M03 base. G06-10,G14-16,G19-20,G23-24,G26 = M06.
+# READ AGAINST: M03 0.3679/0.0212/0.0722/0.6715 · M06 0.3681/0.0232/0.0703/0.7047 ·
+#               campaign best Q02 0.3783. `mae` is an ERROR: LOWER IS BETTER.
+arm_id	kind	tag
+G01	loss	smooth_l1_nbw0_nbs1.0_dcos0.01_rsplitraw-cell-1.0-1.0_s42
+G02	loss	smooth_l1_nbw0_nbs1.0_dcos0.01_rsplitraw-group_mean-1.0-1.0_s42
+G03	loss	smooth_l1_nbw0_nbs1.0_dcos0.01_rsplitcmean-cell-1.0-1.0_s42
+G04	loss	smooth_l1_nbw0_nbs1.0_dcos0.01_rsplitcmean-group_mean-1.0-1.0_s42
+G05	loss	smooth_l1_nbw0_nbs1.0_dcos0.01_rsplitdelta_only-group_mean-1.0-1.0_s42
+G06	loss	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_rsplitraw-cell-1.0-1.0_s42
+G07	loss	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_rsplitraw-group_mean-1.0-1.0_s42
+G08	loss	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_rsplitcmean-cell-1.0-1.0_s42
+G09	loss	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_rsplitcmean-group_mean-1.0-1.0_s42
+G10	loss	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_rsplitdelta_only-group_mean-1.0-1.0_s42
+G11	loss	smooth_l1_nbw0_nbs1.0_dcos0.01_rsplitraw-cell-1.0-3.0_s42
+G12	loss	smooth_l1_nbw0_nbs1.0_dcos0.01_rsplitraw-cell-1.0-10.0_s42
+G13	loss	smooth_l1_nbw0_nbs1.0_dcos0.01_rsplitraw-cell-1.0-30.0_s42
+G14	loss	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_rsplitraw-cell-1.0-3.0_s42
+G15	loss	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_rsplitraw-cell-1.0-10.0_s42
+G16	loss	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_rsplitraw-cell-1.0-30.0_s42
+G17	loss	smooth_l1_nbw0_nbs1.0_dcos0.01_rsplitcmean-cell-1.0-3.0_s42
+G18	loss	smooth_l1_nbw0_nbs1.0_dcos0.01_rsplitcmean-cell-1.0-10.0_s42
+G19	loss	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_rsplitcmean-cell-1.0-3.0_s42
+G20	loss	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_rsplitcmean-cell-1.0-10.0_s42
+G21	loss	smooth_l1_nbw0_nbs1.0_dcos0.01_rsplitdelta_only-group_mean-1.0-3.0_s42
+G22	loss	smooth_l1_nbw0_nbs1.0_dcos0.01_rsplitdelta_only-group_mean-1.0-10.0_s42
+G23	loss	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_rsplitdelta_only-group_mean-1.0-3.0_s42
+G24	loss	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_rsplitdelta_only-group_mean-1.0-10.0_s42
+G25	loss	smooth_l1_nbw0_nbs1.0_dcos0.01_rsplitraw-cell-1.562-0.735_s42
+G26	loss	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_rsplitraw-cell-1.562-0.735_s42

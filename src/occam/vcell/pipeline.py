@@ -1768,7 +1768,8 @@ class VirtualCellTrainer:
             # silently zero for three arms (F-loss1) -- the guard below then REFUSES rather
             # than degrading, so a missing table stops the run instead of faking a result.
             or (bool(getattr(config, "recon_split", False))
-                and str(getattr(config, "recon_split_mode", "cmean")) in ("cmean", "delta_only"))
+                and (str(getattr(config, "recon_split_mode", "cmean")) in ("cmean", "delta_only")
+                     or str(getattr(config, "recon_delta_target", "cell")) == "group_mean"))
         )
         if _needs_group_means:
             # ⚠️ REFUSE, DO NOT DEGRADE. A weight that is set and has no effect is worse than
@@ -2188,15 +2189,31 @@ class VirtualCellTrainer:
                             f"{tuple(_cref.shape)} while the decoder emits "
                             f"{tuple(recon_ctrl.shape)}.")
 
+                    # ⚠️ The DELTA TARGET is orthogonal to the control reference, and it is
+                    # the PHASE-2 axis. `cell` uses this row's single-cell target, whose noise
+                    # is 3-70x the effect size; `group_mean` uses the denoised group mean, the
+                    # same target `dcos` and `delta_mag` already use.
+                    #   `delta_only` is NOT phase 2: it is phase 2's DELTA term with L_ctrl
+                    #   dropped. Phase 2 proper is (cmean|raw) + delta_target=group_mean, which
+                    #   keeps BOTH terms and denoises only the delta.
+                    _dtgt = str(getattr(self.config, "recon_delta_target", "cell"))
+                    if _dtgt == "group_mean" or _mode == "delta_only":
+                        if _st.get("gmeans") is None or _gid is None:
+                            raise RuntimeError(
+                                "recon_delta_target='group_mean' needs the group-mean table; "
+                                "_stream_v2_state has no 'gmeans'. GATE failure.")
+                        _dref = _st["gmeans"][_gid.clamp(min=0)] - _cref
+                    elif _dtgt == "cell":
+                        _dref = target - _cref
+                    else:
+                        raise ValueError(
+                            f"Unknown recon_delta_target: {_dtgt!r}. Use 'cell' or 'group_mean'.")
+
+                    L_delta = self._recon_loss(prediction - recon_ctrl, _dref, gene_mask)
                     if _mode == "delta_only":
-                        # No L_ctrl. L_delta against the DENOISED group-mean delta, so the
-                        # single cell's noise (3-70x the effect) never enters the target.
-                        _gm = _st["gmeans"][_gid.clamp(min=0)]
                         L_ctrl = torch.zeros((), device=self.device)
-                        L_delta = self._recon_loss(prediction - recon_ctrl, _gm - _cref, gene_mask)
                     else:
                         L_ctrl = self._recon_loss(recon_ctrl, _cref, gene_mask)
-                        L_delta = self._recon_loss(prediction - recon_ctrl, target - _cref, gene_mask)
 
                     _wc = float(getattr(self.config, "recon_ctrl_weight", 1.0))
                     _wd = float(getattr(self.config, "recon_delta_weight", 1.0))

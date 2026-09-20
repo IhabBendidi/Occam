@@ -481,6 +481,10 @@ class VirtualCellConfig:
     #   raw        : the per-cell control expression (needs the raw pool, ~5 GB)
     #   delta_only : no L_ctrl; L_delta against the DENOISED group-mean delta
     recon_split_mode: str = "cmean"
+    # PHASE-2 axis, orthogonal to the control reference: which target the DELTA term
+    # regresses against. cell = this row's single cell (noise 3-70x the effect);
+    # group_mean = the denoised group mean. `delta_only` forces group_mean.
+    recon_delta_target: str = "cell"
     recon_ctrl_weight: float = 1.0    # weight of recon(D(z_ctrl), ctrl)
     recon_delta_weight: float = 1.0   # weight of recon(pred - D(z_ctrl), target - ctrl)
     latent_cos_target: str = "delta_z"  # delta_z (effect direction) | z_hat (absolute state);

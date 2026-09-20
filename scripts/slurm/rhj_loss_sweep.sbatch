@@ -93,7 +93,9 @@ fi
 # 6th column `delta_mag_weight` is OPTIONAL: rows from the original 5-column grid leave MAGW
 # empty and it defaults to 0, which is the value all 540 runs to date used. Without the
 # default, adding the column would silently pass an empty string to --set.
-read -r ARM LOSS NBW NBS DCW MAGW LLT LLW LCW LCT RSP RCW RDW <<<"$ROW"
+read -r ARM LOSS NBW NBS DCW MAGW LLT LLW LCW LCT RSP RCW RDW RSM RDT <<<"$ROW"
+RSM="${RSM:-cmean}"   # recon_split_mode:   raw | cmean | delta_only
+RDT="${RDT:-cell}"    # recon_delta_target: cell | group_mean  (group_mean = PHASE 2)
 # Columns 11-13, OPTIONAL like 7-10, so every earlier grid still parses unchanged.
 RSP="${RSP:-false}"   # recon_split
 RCW="${RCW:-1.0}"     # recon_ctrl_weight
@@ -125,7 +127,9 @@ if [ "${LCW}" != "0.0" ] && [ "${LCW}" != "0" ]; then
     SUFFIX="${SUFFIX}_lcos${LCW}-${LCT}"
 fi
 if [ "${RSP}" = "true" ]; then
-    SUFFIX="${SUFFIX}_rsplit${RCW}-${RDW}"
+    # mode AND delta target must be in the identity: two arms differing only in which target
+    # the delta regresses against are different experiments, not the same run.
+    SUFFIX="${SUFFIX}_rsplit${RSM}-${RDT}-${RCW}-${RDW}"
 fi
 SUFFIX="${SUFFIX}_s${SEED}"
 
@@ -136,7 +140,7 @@ echo "git sha : $(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
 echo "slurm   : job ${SLURM_ARRAY_JOB_ID:-?} task ${IDX}  qos ${SLURM_JOB_QOS:-?}"
 echo "varied  : loss=${LOSS} nbw=${NBW} nbs=${NBS} dcos=${DCW} dmag=${MAGW}"
 echo "latent  : type=${LLT} mse_w=${LLW} cos_w=${LCW} cos_target=${LCT}"
-echo "recon   : split=${RSP} ctrl_w=${RCW} delta_w=${RDW}"
+echo "recon   : split=${RSP} mode=${RSM} delta_target=${RDT} ctrl_w=${RCW} delta_w=${RDW}"
 echo "frozen  : adjacency_map batch=2048 lr=1e-3 dlr=1e-3 cos=0.5 dpo=false"
 echo "          film=multiplicative_only fh=256 fmf=true epochs=30 seed=${SEED}  (= arm s313)"
 # ⚠️ The real run dir is runs/rhj_fewshot_<suffix>/: the orchestrator derives it from the
@@ -154,7 +158,8 @@ cat > "${RUN_DIR}/slurm_job.json" <<JSON
  "delta_mag_weight": "${MAGW}",
  "latent_loss_type": "${LLT}", "latent_loss_weight": "${LLW}",
  "latent_cos_weight": "${LCW}", "latent_cos_target": "${LCT}",
- "recon_split": "${RSP}", "recon_ctrl_weight": "${RCW}", "recon_delta_weight": "${RDW}",
+ "recon_split": "${RSP}", "recon_split_mode": "${RSM}", "recon_delta_target": "${RDT}",
+ "recon_ctrl_weight": "${RCW}", "recon_delta_weight": "${RDW}",
  "slurm_array_job_id": "${SLURM_ARRAY_JOB_ID:-}", "slurm_task_id": "${IDX}",
  "qos": "${SLURM_JOB_QOS:-}", "host": "$(hostname)", "started": "$(date -Is)"}
 JSON
@@ -178,6 +183,8 @@ python -m occam.train --config "$CONFIG" --stages vcell \
     --set "stages.vcell.loss.recon_split=${RSP}" \
     --set "stages.vcell.loss.recon_ctrl_weight=${RCW}" \
     --set "stages.vcell.loss.recon_delta_weight=${RDW}" \
+    --set "stages.vcell.loss.recon_split_mode=${RSM}" \
+    --set "stages.vcell.loss.recon_delta_target=${RDT}" \
     --set "stages.vcell.graph.data_perts_only=false" \
     --set "stages.vcell.interaction.interaction_type=film" \
     --set "stages.vcell.interaction.film_mode=multiplicative_only" \

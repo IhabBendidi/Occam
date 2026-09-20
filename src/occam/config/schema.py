@@ -362,6 +362,7 @@ VCELL_SCHEMA: Dict[str, Dict[str, Optional[str]]] = {
         # dataclass + YAML + THIS TABLE are three independent layers.
         "recon_split": "recon_split",
         "recon_split_mode": "recon_split_mode",
+        "recon_delta_target": "recon_delta_target",
         "recon_ctrl_weight": "recon_ctrl_weight",
         "recon_delta_weight": "recon_delta_weight",
         "expression_loss_mode": "expression_loss_mode",
