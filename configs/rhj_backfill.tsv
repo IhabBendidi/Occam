@@ -2,4 +2,3 @@
 # `calibrate` is EXACTLY the missing modes -- never re-run a mode that worked.
 # Regenerate with scripts/build_backfill_grid.py; do not hand-edit.
 arm_id	tag	split	calibrate	missing_modes
-L07	nb_smooth_l1_nbw0.25_nbs6.5_dcos0.0_s42	4	quantile	cal

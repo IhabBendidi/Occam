@@ -93,7 +93,7 @@ fi
 # 6th column `delta_mag_weight` is OPTIONAL: rows from the original 5-column grid leave MAGW
 # empty and it defaults to 0, which is the value all 540 runs to date used. Without the
 # default, adding the column would silently pass an empty string to --set.
-read -r ARM LOSS NBW NBS DCW MAGW LLT LLW LCW LCT RSP RCW RDW RSM RDT VVW VCW VGA VTG <<<"$ROW"
+read -r ARM LOSS NBW NBS DCW MAGW LLT LLW LCW LCT RSP RCW RDW RSM RDT VVW VCW VGA VTG REP RETA <<<"$ROW"
 VVW="${VVW:-0.0}"      # vicreg_var_weight
 VCW="${VCW:-0.0}"      # vicreg_cov_weight
 VGA="${VGA:-0.0}"      # vicreg_gamma -- a var weight without it REFUSES, by design
@@ -115,8 +115,12 @@ LCT="${LCT:-delta_z}"   # latent_cos_target: delta_z | z_hat -- NOT equivalent
 SEED="${SEED:-42}"
 # Optional schedule overrides. Unset = the config's own values (30 epochs, eta_min 1e-7), so
 # every earlier grid reproduces exactly.
-EPOCHS="${EPOCHS:-}"
-ETA_MIN="${ETA_MIN:-}"
+# Schedule overrides. PER-ROW (grid columns 20-21) takes precedence over the env vars, because
+# a sweep that VARIES epochs or eta_min across arms cannot express that with an env var -- those
+# are global to the job. Env vars remain for the case where one value applies to every arm.
+# Unset in both -> the config's own values, so every earlier grid reproduces exactly.
+EPOCHS="${REP:-${EPOCHS:-}}"
+ETA_MIN="${RETA:-${ETA_MIN:-}}"
 SAVE_EVERY="${SAVE_EVERY:-}"   # >0 also writes epoch_NNN.pth every N epochs (2.13 GB each)
 # ⚠️ The suffix must carry EVERY varied axis. It is the run's identity on disk, and two arms
 # differing only in `delta_mag_weight` would otherwise write to the same directory and the

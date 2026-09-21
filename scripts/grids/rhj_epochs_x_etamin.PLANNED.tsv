@@ -1,0 +1,60 @@
+# EPOCHS x MIN-LR 2D sweep on the M03 and Q02 bases. NOT YET LAUNCHED.
+#
+# ⛔ BLOCKED ON THE CHECKPOINT SWEEP (18241798), DELIBERATELY. An epochs sweep judged on
+# `best_model.pth` is STRUCTURALLY BIASED toward more epochs: selection is val_pearson_delta,
+# which oscillates +/-0.20 between consecutive epochs (F7), so a 90-epoch arm gets 3x the draws
+# against that noise independent of model quality. It would measure "more lottery tickets" and
+# read as "longer training is better". The checkpoint sweep decides the measurement protocol:
+#   cell-eval picks a DIFFERENT, BETTER checkpoint -> select every arm on cell-eval
+#   SAME checkpoint                                -> best_metric is fine, sweep as normal
+#   different but NOT better                       -> selection is noise; judge at final_model.pth
+#
+# WHY 2D. F-sched1 moved epochs 30->60 AND eta_min 1e-7->1e-5 TOGETHER and gained +0.0073
+# (M03), +0.0186 (M06), +0.0150 (Q02) -- the largest win of the campaign and the only
+# intervention to improve all four metrics at once. But nothing in it says WHICH knob did the
+# work. Crossing them separates that, and the INTERACTION is the interesting cell: a high floor
+# may pay off only with long training, or only with short.
+#
+# VARIED: epochs {30, 60, 90} x eta_min {1e-7, 1e-6, 1e-5, 1e-4}. 30 and 1e-7 are the current
+# defaults; 60 and 1e-5 are F-sched1's combination; the grid spans two decades either side.
+# HELD FIXED per base: M03 = dcos 0.01, no mag, no latent. Q02 = dcos 0.5, mag 0.01363,
+# latent MSE 0.0044. Everything else arm s313, seed 42.
+#
+# READ AGAINST (test, uncalibrated, 5/5): Q02 0.3783/0.0225/0.0774/0.7029 ·
+# M03 0.3679/0.0212/0.0722/0.6715 · E3 (Q02 @60ep/1e-5) 0.3933 · E1 (M03 @60ep/1e-5) 0.3752 (4/5).
+# ANCHORS: meanpert 0.1324 · transfer 0.2323 · experimental 0.3722 (mae 0.0257).
+# `mae` is an ERROR: LOWER IS BETTER.
+#
+# PRE-REGISTERED. Gain tracks epochs at every floor -> it is training length, and eta_min is
+# incidental. Gain tracks eta_min at every length -> it is the floor, and F-sched1's extra
+# epochs were wasted compute. Only the (long, high-floor) corner wins -> genuine interaction and
+# neither knob can be tuned alone. 90 no better than 60 -> 60 is the plateau.
+#
+# ⚠️ EPOCHS AND ETA_MIN ARE PASSED PER-ROW, via the last two columns, NOT via the EPOCHS/ETA_MIN
+# env vars the launcher also supports -- those are global to a job and cannot vary across a grid.
+# The launcher needs a small change to read them per row before this can run.
+arm	loss_type	nb_weight	nb_scale	delta_cos_weight	delta_mag_weight	latent_loss_type	latent_loss_weight	latent_cos_weight	latent_cos_target	recon_split	recon_ctrl_weight	recon_delta_weight	recon_split_mode	recon_delta_target	vicreg_var_weight	vicreg_cov_weight	vicreg_gamma	vicreg_target	epochs	eta_min	base
+W01	smooth_l1	0	1.0	0.01	0.0	none	0.0	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	30	1e-7	M03
+W02	smooth_l1	0	1.0	0.01	0.0	none	0.0	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	30	1e-6	M03
+W03	smooth_l1	0	1.0	0.01	0.0	none	0.0	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	30	1e-5	M03
+W04	smooth_l1	0	1.0	0.01	0.0	none	0.0	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	30	1e-4	M03
+W05	smooth_l1	0	1.0	0.01	0.0	none	0.0	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	60	1e-7	M03
+W06	smooth_l1	0	1.0	0.01	0.0	none	0.0	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	60	1e-6	M03
+W07	smooth_l1	0	1.0	0.01	0.0	none	0.0	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	60	1e-5	M03
+W08	smooth_l1	0	1.0	0.01	0.0	none	0.0	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	60	1e-4	M03
+W09	smooth_l1	0	1.0	0.01	0.0	none	0.0	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	90	1e-7	M03
+W10	smooth_l1	0	1.0	0.01	0.0	none	0.0	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	90	1e-6	M03
+W11	smooth_l1	0	1.0	0.01	0.0	none	0.0	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	90	1e-5	M03
+W12	smooth_l1	0	1.0	0.01	0.0	none	0.0	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	90	1e-4	M03
+W13	smooth_l1	0	1.0	0.5	0.01363	delta_z	0.0044	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	30	1e-7	Q02
+W14	smooth_l1	0	1.0	0.5	0.01363	delta_z	0.0044	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	30	1e-6	Q02
+W15	smooth_l1	0	1.0	0.5	0.01363	delta_z	0.0044	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	30	1e-5	Q02
+W16	smooth_l1	0	1.0	0.5	0.01363	delta_z	0.0044	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	30	1e-4	Q02
+W17	smooth_l1	0	1.0	0.5	0.01363	delta_z	0.0044	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	60	1e-7	Q02
+W18	smooth_l1	0	1.0	0.5	0.01363	delta_z	0.0044	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	60	1e-6	Q02
+W19	smooth_l1	0	1.0	0.5	0.01363	delta_z	0.0044	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	60	1e-5	Q02
+W20	smooth_l1	0	1.0	0.5	0.01363	delta_z	0.0044	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	60	1e-4	Q02
+W21	smooth_l1	0	1.0	0.5	0.01363	delta_z	0.0044	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	90	1e-7	Q02
+W22	smooth_l1	0	1.0	0.5	0.01363	delta_z	0.0044	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	90	1e-6	Q02
+W23	smooth_l1	0	1.0	0.5	0.01363	delta_z	0.0044	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	90	1e-5	Q02
+W24	smooth_l1	0	1.0	0.5	0.01363	delta_z	0.0044	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	90	1e-4	Q02

@@ -1,0 +1,20 @@
+# Remaining NOCAL-ONLY split-grid work, rebuilt from disk after 18217392 finished with 13
+# FAILED tasks (all the pdex shm race). Built from agg_results.csv presence, not from the
+# job's task list -- 84 of 97 succeeded and must not be re-run.
+#
+# ⚠️ scripts/build_backfill_grid.py defaults to --patterns 'L*__*,D0*__*' and therefore
+# reported 0 tasks for the G arms. Generated explicitly here instead.
+arm_id	tag	split	calibrate	missing_modes
+G07	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_rsplitraw-group_mean-1.0-1.0_s42	4	none	nocal
+G09	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_rsplitcmean-group_mean-1.0-1.0_s42	4	none	nocal
+G11	smooth_l1_nbw0_nbs1.0_dcos0.01_rsplitraw-cell-1.0-3.0_s42	4	none	nocal
+G12	smooth_l1_nbw0_nbs1.0_dcos0.01_rsplitraw-cell-1.0-10.0_s42	4	none	nocal
+G13	smooth_l1_nbw0_nbs1.0_dcos0.01_rsplitraw-cell-1.0-30.0_s42	4	none	nocal
+G14	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_rsplitraw-cell-1.0-3.0_s42	4	none	nocal
+G15	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_rsplitraw-cell-1.0-10.0_s42	4	none	nocal
+G16	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_rsplitraw-cell-1.0-30.0_s42	4	none	nocal
+G17	smooth_l1_nbw0_nbs1.0_dcos0.01_rsplitcmean-cell-1.0-3.0_s42	4	none	nocal
+G18	smooth_l1_nbw0_nbs1.0_dcos0.01_rsplitcmean-cell-1.0-10.0_s42	4	none	nocal
+G19	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_rsplitcmean-cell-1.0-3.0_s42	4	none	nocal
+G20	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_rsplitcmean-cell-1.0-10.0_s42	4	none	nocal
+G23	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_rsplitdelta_only-group_mean-1.0-3.0_s42	4	none	nocal
