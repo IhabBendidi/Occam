@@ -219,6 +219,35 @@ splits and should not be quoted as a gain. ⚠️ The M06 base is untested; F-lo
 `delta_mag_weight` was setup-dependent, so M06 could behave differently and is not predicted by
 this table.
 
+## ⭐⭐⭐ F-ckpt4 — checkpoint sweep COMPLETE on all three bases. **Validation selection is sound (Spearman +0.992…+0.993), but it mis-picks on M06 at a cost of −0.0037.**
+
+Completes F-ckpt2/F-ckpt3, which covered M03 only. 90 of 90 checkpoints scored.
+
+| arm | base | Spearman `val` vs cell-eval | `val` pick | cell-eval argmax | **cost of `val`** | max consecutive swing | 4-metric pick |
+|---|---|---|---|---|---|---|---|
+| C1 | M03 | **+0.992** | 25 | 25 | **+0.0000** | **0.1744** | 25 |
+| C2 | M06 | **+0.992** | **17** | **25** | **−0.0037** | 0.0827 | 25 |
+| C3 | Q02 | **+0.993** | 25 | 25 | **+0.0000** | 0.0755 | 25 |
+
+### Reading
+
+1. **Validation selection is sound but not perfect.** Rank correlation is +0.992–0.993 on all
+   three bases, and it lands on the exact argmax for M03 and Q02. **On M06 it picks epoch 17
+   against cell-eval's 25 and gives up 0.0037** — about a third of the Q02-over-M06 margin
+   (+0.0102). So the codebase's warning is not purely about ranking ARMS: validation can
+   mis-pick WITHIN an arm too, rarely and cheaply.
+2. **All three bases have their cell-eval argmax at epoch 25 of 30**, and all three 4-metric
+   composites agree. The best checkpoint is consistently ~5 epochs from the end, which argues 30
+   epochs is near a sensible stopping point rather than well past one.
+3. **⛔ The extreme oscillation is an M03 property, not a universal one.** M03's largest
+   consecutive-epoch swing is **0.1744**; M06's is 0.0827 and Q02's 0.0755 — less than half.
+   **F-ckpt1 generalised from M03 and overstated the case.** The oscillation is real everywhere
+   but twice as violent on the balanced-loss base. Q02, the best base, is also the most stable.
+4. **⇒ Protocol settled: `best_model.pth` is the right checkpoint for all three bases**, with
+   the M06 caveat noted. The epochs × `eta_min` grid needs no change.
+
+⚠️ Selection split 0 only; a different split could shift the argmax by an epoch or two.
+
 ## ⭐⭐⭐ F-ckpt3 — C1's full 30-epoch curve: **validation and cell-eval agree UNANIMOUSLY. Spearman +0.992, and all four metrics plus the composite pick epoch 25.**
 
 Completes F-ckpt2 (which had 23 of 30 epochs).
@@ -256,6 +285,54 @@ Completes F-ckpt2 (which had 23 of 30 epochs).
    needs the per-epoch curve at 60 and 90 epochs, not just the selected checkpoint.
 
 ⚠️ C1 is M03's loss on split 0. C2 (M06) is 20/30 and C3 (Q02) unscored.
+
+## ⭐⭐ F-vicreg2 — FINAL VICReg table, 10/10 arms at 5/5. **Only `V09` (var + cov TOGETHER) beats Q02, at +0.0060. Every other arm is BELOW the base.**
+
+Completes F-vicreg1, which had 8 of 10 arms at 4/5. The ranking is now fully resolved and one
+conclusion changed: `V10` drops from +0.0009 to **−0.0010** on its fifth split, so **`V09` is the
+sole arm above the base**, not one of two.
+
+**Q02 base:** 0.3783 · `mae` 0.0225 · `ovl@N` 0.0774 · `disc_l1` 0.7029.
+
+| arm | var | cov | γ | target | n | `pearson_delta` | Δ | `mae` ↓ | `ovl@N` | `disc_l1` |
+|---|---|---|---|---|---|---|---|---|---|---|
+| **`V09`** | **1×** | **10×** | 0.55 | `delta_z` | 5/5 | **0.3843 ± 0.0016** | **+0.0060** | **0.0225** | **0.0808** | **0.7065** |
+| `V10` | 1× | 1× | 0.55 | `z_hat` | 5/5 | 0.3773 ± 0.0031 | −0.0010 | 0.0228 | 0.0771 | **0.7113** |
+| `V03` | 0 | 10× | — | `delta_z` | 5/5 | 0.3761 ± 0.0019 | −0.0022 | 0.0228 | 0.0746 | 0.6979 |
+| `V07` | 1× | 0 | **1.0** | `delta_z` | 5/5 | 0.3754 ± 0.0036 | −0.0029 | 0.0228 | 0.0757 | 0.7050 |
+| `V01` | 0 | 0.1× | — | `delta_z` | 5/5 | 0.3748 ± 0.0020 | −0.0035 | 0.0226 | 0.0745 | 0.7042 |
+| `V08` | 1× | 1× | 0.55 | `delta_z` | 5/5 | 0.3744 ± 0.0027 | −0.0039 | 0.0229 | 0.0749 | 0.7075 |
+| `V05` | 0.1× | 0 | 0.55 | `delta_z` | 5/5 | 0.3743 ± 0.0021 | −0.0040 | 0.0226 | 0.0752 | 0.6986 |
+| `V04` | 0 | 1× | — | `z_hat` | 5/5 | 0.3736 ± 0.0029 | −0.0047 | 0.0227 | 0.0778 | 0.6984 |
+| `V02` | 0 | 1× | — | `delta_z` | 5/5 | 0.3728 ± 0.0017 | −0.0055 | 0.0230 | 0.0777 | 0.7047 |
+| `V06` | 1× | 0 | 0.55 | `delta_z` | 5/5 | 0.3720 ± 0.0024 | −0.0063 | 0.0226 | 0.0758 | 0.7070 |
+
+### Reading
+
+1. **`V09` is the only arm above the base.** +0.0060 `pearson_delta`, `ovl@N` +0.0034, `disc_l1`
+   +0.0036, `mae` unchanged at 0.0225 — three metrics up, one held, none worse.
+2. **9 of 10 arms are BELOW the base**, spanning −0.0010 to −0.0063. So VICReg is not broadly
+   helpful; **one specific combination is, and the rest are mildly harmful.**
+3. **The interaction is confirmed and is the whole effect.** var-only best (`V07`) −0.0029;
+   cov-only best (`V03`) −0.0022; var+cov at 1×/1× (`V08`) −0.0039 — all negative. Only 1×/10×
+   is positive. **This corrects F-latent7's pre-registration, which was mine:** it predicted cov
+   would matter and var would not, from the std distribution. Neither alone matters; the ratio
+   between them does.
+4. **`disc_l1` rises in 8 of 10 arms** (0.6979–0.7113 vs base 0.7029 — 8 above or equal), with
+   `V10` highest at 0.7113. So the terms do something real to the representation even where
+   `pearson_delta` falls; they just usually cost more than they buy.
+5. **γ makes little difference**: `V07` (γ=1.0) −0.0029 vs `V06` (γ=0.55) −0.0063 at the same
+   weight, so the paper's γ is mildly better than my std-derived one — the opposite of what I
+   argued, and small either way.
+
+⚠️ **The arm spread is 0.0123, which is smaller than the consecutive-epoch swing on every base**
+(M03 0.1744, M06 0.0827, Q02 0.0755 — F-ckpt3). **`V09`'s +0.0060 is within the range a single
+epoch of training moves this model.** It needs a seed replicate before it is more than a lead,
+and that caveat applies to the whole table, not just the winner.
+
+⚠️ Not measured: whether `V09` actually raised the effective rank. F-latent7 found 32.9/512 on
+Q02, and that was the motivation for the term — the score moving is not evidence the mechanism
+worked. `scripts/loss_scale.py`-style rank probe on `V09`'s checkpoint is the direct check.
 
 ## ⭐⭐ F-vicreg1 — **variance AND covariance TOGETHER beat Q02 (+0.0063); either alone does not.** My pre-registration was wrong about which term matters.
 

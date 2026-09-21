@@ -1,0 +1,25 @@
+# TEST cell-eval for the epochs x eta_min grid (train 18245180 M03 half / 18245181 Q02 half).
+# NOCAL only. Protocol: best_model.pth, justified by F-ckpt2/3 -- validation selection agrees
+# with cell-eval at Spearman +0.992..+0.993 on all three bases.
+# READ AGAINST: M03 0.3679 · Q02 0.3783 · E1 0.3749 · E3 0.3933 (all 60ep/1e-5 where noted).
+arm_id	kind	tag
+W01	loss	smooth_l1_nbw0_nbs1.0_dcos0.01_e30_em1e-7_s42
+W02	loss	smooth_l1_nbw0_nbs1.0_dcos0.01_e30_em1e-6_s42
+W03	loss	smooth_l1_nbw0_nbs1.0_dcos0.01_e30_em1e-5_s42
+W04	loss	smooth_l1_nbw0_nbs1.0_dcos0.01_e30_em1e-4_s42
+W05	loss	smooth_l1_nbw0_nbs1.0_dcos0.01_e60_em1e-7_s42
+W06	loss	smooth_l1_nbw0_nbs1.0_dcos0.01_e60_em1e-6_s42
+W07	loss	smooth_l1_nbw0_nbs1.0_dcos0.01_e60_em1e-5_s42
+W08	loss	smooth_l1_nbw0_nbs1.0_dcos0.01_e60_em1e-4_s42
+W09	loss	smooth_l1_nbw0_nbs1.0_dcos0.01_e90_em1e-7_s42
+W10	loss	smooth_l1_nbw0_nbs1.0_dcos0.01_e90_em1e-6_s42
+W13	loss	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_e30_em1e-7_s42
+W14	loss	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_e30_em1e-6_s42
+W15	loss	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_e30_em1e-5_s42
+W16	loss	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_e30_em1e-4_s42
+W17	loss	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_e60_em1e-7_s42
+W18	loss	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_e60_em1e-6_s42
+W19	loss	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_e60_em1e-5_s42
+W20	loss	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_e60_em1e-4_s42
+W21	loss	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_e90_em1e-7_s42
+W22	loss	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_e90_em1e-6_s42
