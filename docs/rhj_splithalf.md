@@ -219,6 +219,56 @@ splits and should not be quoted as a gain. ⚠️ The M06 base is untested; F-lo
 `delta_mag_weight` was setup-dependent, so M06 could behave differently and is not predicted by
 this table.
 
+## ⭐⭐⭐ F-sched1 — **60 epochs + `eta_min` 1e-5 improves ALL THREE bases, on nearly every metric. `E3` = 0.3933 is the new campaign best.**
+
+**The largest single gain of the campaign, and the only intervention so far to improve all four
+metrics at once.** Every loss-term result in this campaign was measured at a stopping point that
+was too early.
+
+**What is varied:** the LR schedule only — epochs 30 → 60, cosine floor `eta_min` 1e-7 → 1e-5.
+Every loss term is bit-identical to its base, passed as overrides. **Held fixed:** arm s313
+throughout, seed 42.
+
+### Measured — test cell-eval, uncalibrated
+
+| arm | = base | n | `pearson_delta` | Δ | `mae` ↓ | Δ | `ovl@N` | Δ | `disc_l1` | Δ |
+|---|---|---|---|---|---|---|---|---|---|---|
+| **`E3`** | **Q02** | 5/5 | **0.3933 ± 0.0027** | **+0.0150** | **0.0217** | **−0.0008** | **0.0817** | **+0.0043** | 0.7047 | **+0.0018** |
+| **`E2`** | **M06** | 5/5 | **0.3867 ± 0.0021** | **+0.0186** | 0.0224 | **−0.0008** | 0.0750 | **+0.0047** | **0.7178** | **+0.0131** |
+| **`E1`** | **M03** | 4/5 ⚠️ | **0.3752 ± 0.0022** | **+0.0073** | **0.0210** | **−0.0002** | 0.0707 | −0.0015 | 0.6800 | **+0.0085** |
+| — | Q02 base | 5/5 | 0.3783 | — | 0.0225 | — | 0.0774 | — | 0.7029 | — |
+| — | M06 base | 5/5 | 0.3681 | — | 0.0232 | — | 0.0703 | — | 0.7047 | — |
+| — | M03 base | 5/5 | 0.3679 | — | 0.0212 | — | 0.0722 | — | 0.6715 | — |
+
+### Reading
+
+1. **`E3` at 0.3933 is the campaign best**, +0.0150 over Q02 and **+0.0211 above `experimental`
+   0.3722**. ⚠️ `experimental` is replicate agreement, not a ceiling — beatable via the
+   two-sided noise asymmetry — so this is NOT a claim of super-experimental accuracy.
+2. **`E2` and `E3` improve ALL FOUR metrics simultaneously.** No other intervention in this
+   campaign has done that: `dcos` traded `mae` for correlation, the latent losses traded
+   `disc_l1`, the split traded `pearson_delta`, `cdel` lost everywhere. A dominant win means
+   there is no decision to make — it is simply better.
+3. **⇒ Every prior comparison was made at an undertrained stopping point.** This was one of the
+   three pre-registered outcomes and it is the one that landed. The loss-term rankings are not
+   invalidated — all arms were compared at the same 30 epochs — but their MARGINS are suspect,
+   because a schedule worth +0.015 to +0.019 dwarfs most of them (Q02-over-M06 was +0.0102,
+   M03-over-L11 +0.0264).
+4. **Setup-dependence does NOT appear.** All three bases improve, unlike `delta_mag_weight`,
+   the latent losses and `cdel`, each of which flipped or varied between bases. A schedule
+   change is evidently a different class of lever from a loss term.
+5. **`E2` gains most on `pearson_delta`** (+0.0186) and takes `disc_l1` to **0.7178**, second
+   only to D03's 0.7263. **`E1` gains least** (+0.0073) and is the only one to lose a metric
+   (`ovl@N` −0.0015). The ordering M06/Q02 > M03 matches the pattern that the
+   direction-dominated regime responds more to extra supervision.
+
+⚠️ **`E1` is 4/5 splits.** ⚠️ **Confounded by design, and this matters for what to do next:**
+epochs and `eta_min` moved TOGETHER, so this does not say which did the work. 60 epochs also
+doubles the pool `best_model.pth` selects over while the validation metric oscillates ±0.20
+between consecutive epochs (F7) — so part of the gain may be extra draws at a lucky epoch rather
+than a better optimum. **The checkpoint sweep (C1/C2/C3, 30 per-epoch checkpoints each) is the
+experiment that separates those two explanations**, and it is already trained.
+
 ## ⭐⭐⭐ F-latent7 — **the latent is using ~5% of its dimensions.** Effective rank 32.9 / 512 on Q02, 24.6 / 512 on M03.
 
 **Why measured.** VICReg's variance term is a HINGE, `max(0, γ − std_j)` — exactly zero until a

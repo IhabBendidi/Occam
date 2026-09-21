@@ -93,7 +93,11 @@ fi
 # 6th column `delta_mag_weight` is OPTIONAL: rows from the original 5-column grid leave MAGW
 # empty and it defaults to 0, which is the value all 540 runs to date used. Without the
 # default, adding the column would silently pass an empty string to --set.
-read -r ARM LOSS NBW NBS DCW MAGW LLT LLW LCW LCT RSP RCW RDW RSM RDT <<<"$ROW"
+read -r ARM LOSS NBW NBS DCW MAGW LLT LLW LCW LCT RSP RCW RDW RSM RDT VVW VCW VGA VTG <<<"$ROW"
+VVW="${VVW:-0.0}"      # vicreg_var_weight
+VCW="${VCW:-0.0}"      # vicreg_cov_weight
+VGA="${VGA:-0.0}"      # vicreg_gamma -- a var weight without it REFUSES, by design
+VTG="${VTG:-delta_z}"  # vicreg_target: delta_z | z_hat
 RSM="${RSM:-cmean}"   # recon_split_mode:   raw | cmean | delta_only
 RDT="${RDT:-cell}"    # recon_delta_target: cell | group_mean  (group_mean = PHASE 2)
 # Columns 11-13, OPTIONAL like 7-10, so every earlier grid still parses unchanged.
@@ -131,6 +135,10 @@ fi
 if [ "${LCW}" != "0.0" ] && [ "${LCW}" != "0" ]; then
     SUFFIX="${SUFFIX}_lcos${LCW}-${LCT}"
 fi
+# VICReg axes join the identity only when ON, so existing run dirs keep their names.
+if [ "${VVW}" != "0.0" ] && [ "${VVW}" != "0" ]; then SUFFIX="${SUFFIX}_vvar${VVW}g${VGA}"; fi
+if [ "${VCW}" != "0.0" ] && [ "${VCW}" != "0" ]; then SUFFIX="${SUFFIX}_vcov${VCW}"; fi
+if [ "${VVW}" != "0.0" ] || [ "${VCW}" != "0.0" ]; then SUFFIX="${SUFFIX}-${VTG}"; fi
 if [ "${RSP}" = "true" ]; then
     # mode AND delta target must be in the identity: two arms differing only in which target
     # the delta regresses against are different experiments, not the same run.
@@ -150,6 +158,7 @@ echo "slurm   : job ${SLURM_ARRAY_JOB_ID:-?} task ${IDX}  qos ${SLURM_JOB_QOS:-?
 echo "varied  : loss=${LOSS} nbw=${NBW} nbs=${NBS} dcos=${DCW} dmag=${MAGW}"
 echo "latent  : type=${LLT} mse_w=${LLW} cos_w=${LCW} cos_target=${LCT}"
 echo "sched   : epochs=${EPOCHS:-<config>} eta_min=${ETA_MIN:-<config>} save_every=${SAVE_EVERY:-0}"
+echo "vicreg  : var=${VVW} cov=${VCW} gamma=${VGA} target=${VTG}"
 echo "recon   : split=${RSP} mode=${RSM} delta_target=${RDT} ctrl_w=${RCW} delta_w=${RDW}"
 echo "frozen  : adjacency_map batch=2048 lr=1e-3 dlr=1e-3 cos=0.5 dpo=false"
 echo "          film=multiplicative_only fh=256 fmf=true epochs=30 seed=${SEED}  (= arm s313)"
@@ -195,6 +204,10 @@ python -m occam.train --config "$CONFIG" --stages vcell \
     --set "stages.vcell.loss.recon_delta_weight=${RDW}" \
     --set "stages.vcell.loss.recon_split_mode=${RSM}" \
     --set "stages.vcell.loss.recon_delta_target=${RDT}" \
+    --set "stages.vcell.loss.vicreg_var_weight=${VVW}" \
+    --set "stages.vcell.loss.vicreg_cov_weight=${VCW}" \
+    --set "stages.vcell.loss.vicreg_gamma=${VGA}" \
+    --set "stages.vcell.loss.vicreg_target=${VTG}" \
     --set "stages.vcell.graph.data_perts_only=false" \
     --set "stages.vcell.interaction.interaction_type=film" \
     --set "stages.vcell.interaction.film_mode=multiplicative_only" \

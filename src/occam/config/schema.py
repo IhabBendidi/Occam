@@ -359,6 +359,10 @@ VCELL_SCHEMA: Dict[str, Dict[str, Optional[str]]] = {
         "latent_loss_alpha": "latent_loss_alpha",
         "latent_cos_weight": "latent_cos_weight",
         "latent_cos_target": "latent_cos_target",
+        "vicreg_var_weight": "vicreg_var_weight",
+        "vicreg_cov_weight": "vicreg_cov_weight",
+        "vicreg_gamma": "vicreg_gamma",
+        "vicreg_target": "vicreg_target",
         # F-recon1 split reconstruction. Routed here too, or --set cannot reach them:
         # dataclass + YAML + THIS TABLE are three independent layers.
         "recon_split": "recon_split",

@@ -187,7 +187,11 @@ stages:
       latent_loss_weight: 0.0
       latent_loss_alpha: 0.5
       latent_cos_weight: 0.0
-      latent_cos_target: delta_z   # delta_z | z_hat -- NOT equivalent, unlike the MSE
+      latent_cos_target: delta_z
+      vicreg_var_weight: 0.0       # VICReg variance hinge; needs vicreg_gamma > 0
+      vicreg_cov_weight: 0.0       # VICReg covariance (decorrelates latent dims)
+      vicreg_gamma: 0.0            # hinge threshold; set from the MEASURED per-dim std
+      vicreg_target: delta_z       # delta_z | z_hat   # delta_z | z_hat -- NOT equivalent, unlike the MSE
       recon_split: false           # F-recon1: split recon into ctrl-passthrough + delta
       recon_split_mode: cmean
       recon_delta_target: cell     # cell | group_mean  (group_mean = PHASE 2)      # cmean | raw | delta_only

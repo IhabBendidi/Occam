@@ -490,6 +490,15 @@ class VirtualCellConfig:
     recon_delta_target: str = "cell"
     recon_ctrl_weight: float = 1.0    # weight of recon(D(z_ctrl), ctrl)
     recon_delta_weight: float = 1.0   # weight of recon(pred - D(z_ctrl), target - ctrl)
+    # VICReg (F-latent7). The latent MSE is already the INVARIANCE term; these are the two
+    # regularisers that stop an invariance term collapsing the representation.
+    #   vicreg_gamma: the variance HINGE threshold. NOT the paper's 1.0 -- measured per-dim
+    #   std here is ~0.55-0.60, so 1.0 would keep the hinge permanently active and turn the
+    #   term into "make everything bigger". 0 = unset, and a var weight without it REFUSES.
+    vicreg_var_weight: float = 0.0
+    vicreg_cov_weight: float = 0.0
+    vicreg_gamma: float = 0.0
+    vicreg_target: str = "delta_z"   # delta_z | z_hat -- NOT equivalent under a per-row control
     latent_cos_target: str = "delta_z"  # delta_z (effect direction) | z_hat (absolute state);
                                      # unlike the MSE, these are NOT the same loss
     latent_cos_weight: float = 0.0   # weight of 1-cos(delta_z, delta_z_target);

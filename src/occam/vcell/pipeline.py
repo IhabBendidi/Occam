@@ -1374,8 +1374,11 @@ class VirtualCellTrainer:
             (loss_tensor, metrics_dict). loss is 0 if latent_loss_type == "none".
         """
         _wlc = float(getattr(self.config, "latent_cos_weight", 0.0))
-        if self.latent_loss_type == "none" and _wlc <= 0:
-            return torch.tensor(0.0, device=self.device), torch.tensor(0.0, device=self.device), {}
+        _z = torch.tensor(0.0, device=self.device)
+        if (self.latent_loss_type == "none" and _wlc <= 0
+                and float(getattr(self.config, "vicreg_var_weight", 0.0)) <= 0
+                and float(getattr(self.config, "vicreg_cov_weight", 0.0)) <= 0):
+            return _z, _z, _z, _z, {}
 
         delta_z = model_output["delta_z"]
         z_hat = model_output["z_hat"]
@@ -1426,6 +1429,57 @@ class VirtualCellTrainer:
         #                perturbation, the same way the gene-space `cosine_loss_weight` on the
         #                absolute profile scores ~0.99 regardless of what was predicted.
         # `delta_z` is the default for that reason; `z_hat` exists to MEASURE the difference.
+        # ─── VICReg VARIANCE + COVARIANCE (latent only) ───────────────────────────────────
+        # Our latent MSE already plays VICReg's INVARIANCE role (it pulls delta_z onto
+        # delta_z_target). These are the two regularisers that keep an invariance term from
+        # collapsing the representation:
+        #   variance   : mean_j max(0, gamma - std_j(Z))    -- a HINGE, exactly zero above gamma
+        #   covariance : sum_{i!=j} C(Z)_ij^2 / d           -- decorrelates the dimensions
+        #
+        # ⚠️ gamma is NOT VICReg's 1.0. Measured (F-latent7): per-dim std is ~0.55-0.60 here, so
+        # gamma=1 would make the hinge permanently active and turn the variance term into a
+        # plain "make everything bigger" penalty. Default is 0 = OFF; set it from the measured
+        # std distribution.
+        #
+        # ⚠️ WHAT THE MEASUREMENT SAYS TO EXPECT (pre-registered, F-latent7): only 0.6% of dims
+        # are dead (std<0.01) so the VARIANCE term has little to fix, while the effective rank
+        # is 33/512 on Q02 and 25/512 on M03, so the COVARIANCE term has a real target.
+        #
+        # Statistics are over the BATCH (one row per cell), which is where a collapsed
+        # dimension shows up. Targets `delta_z` or `z_hat` per `vicreg_target`; unlike the MSE
+        # these are NOT the same, because a per-row-varying control shifts z_hat but not
+        # delta_z.
+        var_loss = torch.tensor(0.0, device=self.device)
+        cov_loss = torch.tensor(0.0, device=self.device)
+        _wv = float(getattr(self.config, "vicreg_var_weight", 0.0))
+        _wcv = float(getattr(self.config, "vicreg_cov_weight", 0.0))
+        if _wv > 0 or _wcv > 0:
+            _vt = str(getattr(self.config, "vicreg_target", "delta_z"))
+            if _vt == "delta_z":
+                Z = delta_z
+            elif _vt == "z_hat":
+                Z = z_hat
+            else:
+                raise ValueError(
+                    f"Unknown vicreg_target: {_vt!r}. Use 'delta_z' or 'z_hat'.")
+            if Z.shape[0] < 2:
+                pass                      # std/cov undefined on a single row
+            else:
+                _gamma = float(getattr(self.config, "vicreg_gamma", 0.0))
+                Zc = Z - Z.mean(dim=0, keepdim=True)
+                if _wv > 0:
+                    if _gamma <= 0:
+                        raise ValueError(
+                            "vicreg_var_weight > 0 needs vicreg_gamma > 0. The variance term "
+                            "is a hinge max(0, gamma - std); with gamma=0 it is identically "
+                            "zero and the weight would be silently inert.")
+                    std = torch.sqrt(Z.var(dim=0, unbiased=True) + 1e-8)
+                    var_loss = torch.clamp(_gamma - std, min=0.0).mean()
+                if _wcv > 0:
+                    n, d = Z.shape
+                    C = (Zc.T @ Zc) / (n - 1)
+                    cov_loss = (C.pow(2).sum() - C.pow(2).diagonal().sum()) / d
+
         cos_loss = torch.tensor(0.0, device=self.device)
         _ct = str(getattr(self.config, "latent_cos_target", "delta_z"))
         if _wlc > 0:
@@ -1450,6 +1504,8 @@ class VirtualCellTrainer:
                 ).mean().item(),
                 "z_hat_mse_w_target": F.mse_loss(z_hat, z_target).item(),
                 "latent_cos_loss": float(cos_loss),
+                "vicreg_var_loss": float(var_loss),
+                "vicreg_cov_loss": float(cov_loss),
                 "latent_cos_delta_z": (1 - F.cosine_similarity(
                     delta_z, delta_z_target, dim=-1)).mean().item(),
                 "latent_cos_z_hat": (1 - F.cosine_similarity(
@@ -1457,7 +1513,7 @@ class VirtualCellTrainer:
                 "latent_mse_loss": float(loss),
             }
 
-        return loss, cos_loss, metrics
+        return loss, cos_loss, var_loss, cov_loss, metrics
 
     def _compute_latent_diagnostics(
         self, model_output: Dict[str, torch.Tensor]
@@ -2335,7 +2391,8 @@ class VirtualCellTrainer:
                             epoch_hurdle_n += sc_mask.sum().item()
 
                 # v2: Latent loss (supervise delta_z or z_hat)
-                latent_loss, latent_cos_loss, latent_metrics = self._compute_latent_loss(
+                (latent_loss, latent_cos_loss, vicreg_var_loss, vicreg_cov_loss,
+                 latent_metrics) = self._compute_latent_loss(
                     model_output, target,
                 )
                 # Health checks that must run even when there is no latent loss — the arms
@@ -2355,6 +2412,12 @@ class VirtualCellTrainer:
                 _wlc = float(getattr(self.config, "latent_cos_weight", 0.0))
                 if _wlc > 0:
                     loss = loss + _wlc * latent_cos_loss
+                _wv = float(getattr(self.config, "vicreg_var_weight", 0.0))
+                _wcv = float(getattr(self.config, "vicreg_cov_weight", 0.0))
+                if _wv > 0:
+                    loss = loss + _wv * vicreg_var_loss
+                if _wcv > 0:
+                    loss = loss + _wcv * vicreg_cov_loss
                 if _mw > 0:
                     loss = loss + _mw * mag_loss
                 if _wc > 0:
