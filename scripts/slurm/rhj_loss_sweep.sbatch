@@ -93,7 +93,11 @@ fi
 # 6th column `delta_mag_weight` is OPTIONAL: rows from the original 5-column grid leave MAGW
 # empty and it defaults to 0, which is the value all 540 runs to date used. Without the
 # default, adding the column would silently pass an empty string to --set.
-read -r ARM LOSS NBW NBS DCW MAGW LLT LLW LCW LCT RSP RCW RDW RSM RDT VVW VCW VGA VTG REP RETA <<<"$ROW"
+# ⚠️ BASE is read even though it is documentation only. With `read -r`, the LAST variable
+# absorbs every remaining field -- so omitting it put "1e-7<TAB>M03" into RETA, which corrupted
+# both the run suffix and the --set value. Caught by the tab in a run directory name.
+read -r ARM LOSS NBW NBS DCW MAGW LLT LLW LCW LCT RSP RCW RDW RSM RDT VVW VCW VGA VTG REP RETA BASE <<<"$ROW"
+BASE="${BASE:-}"   # consumed so it cannot leak into RETA
 VVW="${VVW:-0.0}"      # vicreg_var_weight
 VCW="${VCW:-0.0}"      # vicreg_cov_weight
 VGA="${VGA:-0.0}"      # vicreg_gamma -- a var weight without it REFUSES, by design

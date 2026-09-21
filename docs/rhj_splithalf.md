@@ -219,6 +219,90 @@ splits and should not be quoted as a gain. ⚠️ The M06 base is untested; F-lo
 `delta_mag_weight` was setup-dependent, so M06 could behave differently and is not predicted by
 this table.
 
+## ⭐⭐⭐ F-ckpt3 — C1's full 30-epoch curve: **validation and cell-eval agree UNANIMOUSLY. Spearman +0.992, and all four metrics plus the composite pick epoch 25.**
+
+Completes F-ckpt2 (which had 23 of 30 epochs).
+
+| | value |
+|---|---|
+| **Spearman, `val_pΔ` vs cell-eval `pΔ`** (30 epochs) | **+0.992** |
+| validation's pick | **epoch 25** |
+| cell-eval `pearson_delta` argmax | **epoch 25** |
+| cell-eval `mae` argmin | **epoch 25** |
+| cell-eval `overlap_at_N` argmax | **epoch 25** |
+| cell-eval `disc_l1` argmax | **epoch 25** |
+| 4-metric composite | **epoch 25 (1.000)** |
+| **cost of selecting on validation** | **+0.0000** |
+| largest consecutive-epoch swing | **0.1744** |
+| last 5 epochs, cell-eval `pΔ` | 0.3469 · 0.3591 · 0.3245 · 0.3552 · 0.3210 |
+
+### Reading
+
+1. **Unanimous.** Every one of the four metrics, the composite, and the validation metric select
+   the same epoch, and epoch 25's composite is a perfect 1.000 — it is the argmax of all four
+   simultaneously. There is no trade to adjudicate here and nothing for a 4-metric selector to
+   add over `val_pearson_delta` on this arm.
+2. **⇒ `best_model.pth` is the right checkpoint, and the epochs × `eta_min` sweep needs no
+   protocol change.** That was the blocker; it is cleared for M03's regime.
+3. **The oscillation persists to the end of training** — the last five epochs swing 0.3210 to
+   0.3591 (0.0381), and the largest consecutive jump anywhere is 0.1744. Training does not
+   settle by epoch 30; it keeps sampling good and bad states.
+4. **⇒ This is a strong argument for more epochs that has nothing to do with convergence.**
+   If the model keeps oscillating and the selector reliably catches the peaks, then more epochs
+   = more peaks sampled = a better selected checkpoint, even with no improvement in the
+   underlying trajectory. **F-sched1's gain is real, but "better convergence" and "more peaks
+   sampled" remain indistinguishable** — and the epochs × `eta_min` sweep will not separate them
+   either, because both mechanisms predict the same monotone gain with epochs. Separating them
+   needs the per-epoch curve at 60 and 90 epochs, not just the selected checkpoint.
+
+⚠️ C1 is M03's loss on split 0. C2 (M06) is 20/30 and C3 (Q02) unscored.
+
+## ⭐⭐ F-vicreg1 — **variance AND covariance TOGETHER beat Q02 (+0.0063); either alone does not.** My pre-registration was wrong about which term matters.
+
+⚠️ **Corrects a pre-registration that was mine.** F-latent7 predicted: *"only 0.6% of dims are
+dead, so the VARIANCE term has little to fix; the effective rank is 33/512, so the COVARIANCE
+term has a real target. Expect `cov_weight` to matter and `var_weight` not to."* Neither term
+alone helps. **Their combination does.**
+
+**Q02 base:** `pearson_delta` 0.3783 · `mae` 0.0225 · `ovl@N` 0.0774 · `disc_l1` 0.7029.
+
+| arm | var / cov / γ / target | n | `pearson_delta` | `mae` ↓ | `ovl@N` | `disc_l1` |
+|---|---|---|---|---|---|---|
+| **`V09`** | **1× / 10× / 0.55 / `delta_z`** | 4/5 ⚠️ | **0.3846 ± 0.0017** | **0.0225** | **0.0809** | **0.7064** |
+| `V10` | 1× / 1× / 0.55 / `z_hat` | 2/5 ⚠️ | 0.3792 ± 0.0041 | 0.0228 | 0.0770 | **0.7115** |
+| `V03` | 0 / 10× / — / `delta_z` | 5/5 | 0.3761 ± 0.0019 | 0.0228 | 0.0746 | 0.6979 |
+| `V07` | 1× / 0 / **1.0** / `delta_z` | 4/5 ⚠️ | 0.3761 ± 0.0037 | 0.0228 | 0.0756 | 0.7052 |
+| `V08` | 1× / 1× / 0.55 / `delta_z` | 4/5 ⚠️ | 0.3749 ± 0.0027 | 0.0228 | 0.0751 | 0.7075 |
+| `V01` | 0 / 0.1× / — / `delta_z` | 4/5 ⚠️ | 0.3749 ± 0.0023 | 0.0226 | 0.0744 | 0.7042 |
+| `V05` | 0.1× / 0 / 0.55 / `delta_z` | 4/5 ⚠️ | 0.3747 ± 0.0023 | 0.0226 | 0.0753 | 0.6982 |
+| `V04` | 0 / 1× / — / `z_hat` | 4/5 ⚠️ | 0.3736 ± 0.0033 | 0.0227 | 0.0780 | 0.6982 |
+| `V02` | 0 / 1× / — / `delta_z` | 5/5 | 0.3728 ± 0.0017 | 0.0230 | 0.0777 | 0.7047 |
+| `V06` | 1× / 0 / 0.55 / `delta_z` | 4/5 ⚠️ | 0.3727 ± 0.0022 | 0.0225 | 0.0762 | 0.7069 |
+
+### Reading
+
+1. **`V09` is the only arm above the base, at +0.0063, and it improves three metrics while
+   holding `mae` exactly** (0.0225 = base): `ovl@N` +0.0035, `disc_l1` +0.0035. ⚠️ **4/5 splits.**
+2. **Neither term alone works.** Best cov-only is `V03` at 0.3761 (−0.0022); best var-only is
+   `V07` at 0.3761 (−0.0022). Both *below* base. Yet var 1× + cov 10× is +0.0063. **That is an
+   interaction, not an additive effect** — which is what VICReg's own design claims (variance
+   stops dimensions dying, covariance stops them duplicating; either alone leaves the other
+   failure mode open).
+3. **Weight ratio matters more than either weight.** `V08` (1×/1×) is 0.3749 while `V09`
+   (1×/10×) is 0.3846 — a 0.0097 gap from the covariance weight alone, given the same variance
+   weight. The 10× covariance point is where it works.
+4. **`γ` = 1.0 is not obviously wrong.** `V07` (paper's γ) ties `V03` and beats `V06` (γ=0.55)
+   by +0.0034 at the same weight. My reasoning for γ=0.55 from the measured std was sound but
+   is not supported by the outcome; both γ values sit within noise of each other.
+5. **`z_hat` is competitive**: `V10` at 0.3792 (2/5) has the best `disc_l1` of any arm here
+   (0.7115). Too few splits to rank, but it is not the dead end `delta_z`'s dominance elsewhere
+   suggested.
+
+⚠️ **Eight of ten arms are 4/5 or worse** (the pdex shm race), and the whole spread across arms
+(0.3727–0.3846, i.e. 0.0119) is smaller than the **0.1744** consecutive-epoch swing F-ckpt1/3
+measured on this panel. **`V09` needs its fifth split and a seed replicate before it is more
+than a lead.**
+
 ## ⭐⭐⭐ F-ckpt2 — **validation selection AGREES with cell-eval: Spearman +0.988, and both pick the same epoch.** The selector is fine; the MODEL oscillates.
 
 **This refines F-ckpt1 and corrects part of its framing.** F-ckpt1 measured a 0.175 swing between
