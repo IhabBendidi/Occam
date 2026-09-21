@@ -219,6 +219,60 @@ splits and should not be quoted as a gain. ⚠️ The M06 base is untested; F-lo
 `delta_mag_weight` was setup-dependent, so M06 could behave differently and is not predicted by
 this table.
 
+## ⭐⭐⭐ F-ckpt1 — **consecutive epochs differ by up to 0.17 on the TEST metric.** The F7 oscillation is in the MODEL, not just the validation metric.
+
+**Status: C1 (M03's loss) at 19 of 30 checkpoints; C2/C3 still scoring.** Selection split 0 only.
+
+### Measured — every epoch of one run, scored by cell-eval on split 0
+
+| epoch | `pearson_delta` | `mae` ↓ | `ovl@N` | `disc_l1` | 4-metric |
+|---|---|---|---|---|---|
+| 1 | 0.1390 | 0.0354 | 0.0274 | 0.5028 | 0.000 |
+| 3 | 0.2764 | 0.0241 | 0.0396 | 0.6093 | 0.605 |
+| 4 | **0.2149** | 0.0289 | 0.0424 | 0.6162 | 0.475 |
+| 6 | 0.2933 | 0.0239 | 0.0579 | 0.6400 | 0.791 |
+| 7 | 0.3187 | 0.0229 | 0.0495 | 0.6419 | 0.790 |
+| 10 | **0.2336** | 0.0261 | 0.0535 | 0.6362 | 0.648 |
+| 11 | 0.3172 | 0.0231 | 0.0583 | 0.6545 | 0.860 |
+| 12 | **0.3387** | 0.0221 | 0.0592 | 0.6575 | 0.913 |
+| **13** | **0.1642** | 0.0333 | 0.0285 | 0.6138 | 0.245 |
+| 14 | **0.3199** | 0.0234 | 0.0548 | 0.6505 | 0.828 |
+| 16 | 0.3496 | 0.0218 | 0.0598 | 0.6617 | 0.941 |
+| 17 | 0.3367 | 0.0226 | 0.0610 | 0.6607 | 0.919 |
+| **18** | 0.3442 | 0.0221 | **0.0670** | **0.6653** | **0.981** ⭐ |
+| 19 | **0.3544** | **0.0217** | 0.0567 | 0.6625 | 0.931 |
+
+**4-metric pick: epoch 18.** Per-metric argmax: `pearson_delta` and `mae` → epoch 19;
+`overlap_at_N` and `disc_l1` → epoch 18. So the composite is a genuine 2–2 split, not a
+rubber-stamp of one metric.
+
+### Reading
+
+1. **⛔ Epoch 12 → 13 → 14 goes 0.3387 → 0.1642 → 0.3199.** A **0.175** collapse and recovery
+   between consecutive epochs, with epoch 13 landing near the `meanpert` anchor (0.1324). Epoch
+   3 → 4 does the same at smaller scale (0.2764 → 0.2149), and 9 → 10 again.
+2. **This is NOT split noise.** Across the 5-split arms the between-split sd is 0.002–0.003, so
+   a single split sits within ~0.003 of its 5-split mean. **A 0.175 swing is two orders of
+   magnitude larger.** The oscillation is real model variation between epochs.
+3. **⇒ F7 is worse than recorded.** F7 documented a ±0.20 oscillation in the VALIDATION metric
+   and treated it as a selection nuisance. It is present at the same magnitude in the TEST
+   metric, i.e. the checkpoints themselves swing — the model passes through genuinely bad states
+   mid-training.
+4. **⇒ Any single-checkpoint comparison between arms is partly a draw from this oscillation.**
+   Every loss-term margin in this campaign — Q02-over-M06 (+0.0102), M03-over-L11 (+0.0264),
+   the latent gains (+0.004…+0.010) — is small relative to a 0.175 inter-epoch swing. The
+   RANKINGS may survive (all arms got one draw each under the same protocol) but no individual
+   margin below ~0.01 should be read as a property of the loss term until replicated.
+5. **⇒ F-sched1's confound is live and now plausible in the "lottery" direction.** More epochs
+   = more draws against this oscillation, so a 60-epoch arm has a genuinely higher expected
+   maximum than a 30-epoch arm at equal model quality. **That does not make E3's 0.3933 wrong,
+   but it does mean the gain cannot yet be attributed to better convergence.**
+6. **The trend is still rising at epoch 19** (0.3544, the best `pearson_delta` so far), so
+   30 epochs is not obviously past the useful point for this arm.
+
+⚠️ C1 is 19/30 and single-split. ⚠️ C2 (M06) and C3 (Q02) are unscored, and F-loss9/F-latent4
+showed those bases behave differently, so this does not describe them.
+
 ## ⭐⭐⭐ F-sched1 — **60 epochs + `eta_min` 1e-5 improves ALL THREE bases, on nearly every metric. `E3` = 0.3933 is the new campaign best.**
 
 **The largest single gain of the campaign, and the only intervention so far to improve all four

@@ -53,9 +53,13 @@ def main(argv=None):
 
     rows = []
     for d in sorted(glob.glob(os.path.join(a.run_dir, "*"))):
-        f = os.path.join(d, a.sub, "agg_results.csv")
-        if not os.path.isfile(f):
+        # eval_splithalf writes <out-root>/split_NN/<arm>/agg_results.csv, so the split level
+        # sits between the checkpoint dir and the arm dir. Globbing it rather than hardcoding
+        # split_00 keeps the selector usable if the selection split ever changes.
+        hits = sorted(glob.glob(os.path.join(d, "split_*", a.sub, "agg_results.csv")))
+        if not hits:
             continue
+        f = hits[0]
         m = _read_agg(f)
         if not m or any(k not in m for k in M):
             continue
