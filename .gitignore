@@ -162,3 +162,13 @@ cache/
 # the source h5ad + axis.npz + the builder. Git keeps the benchmark DEFINITION (axis, cohort,
 # splits, baselines, manifest, CARD); the matrix lives on HuggingFace beside the .h5ad.
 data/benchmarks/**/panel.npz
+
+# ---- artifacts that must never re-enter the history -------------------------------------
+# An 18 GB CellFlow.pkl and 1.2 GB of pert_means tables reached commits 811de7e / 1cd169b and
+# made the branch UNPUSHABLE: GitHub caps a pack at 2 GiB and a file at 100 MB. They were
+# purged from history on 2026-09-21; these rules stop it happening again. All of them are
+# rebuildable (scripts/pert_group_means.py) or live on HuggingFace.
+reproducibility/**/*.pkl
+reproducibility/**/*.pt
+cache/pert_means/
+cache/pert_disp/
