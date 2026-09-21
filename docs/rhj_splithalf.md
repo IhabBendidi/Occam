@@ -219,6 +219,69 @@ splits and should not be quoted as a gain. ⚠️ The M06 base is untested; F-lo
 `delta_mag_weight` was setup-dependent, so M06 could behave differently and is not predicted by
 this table.
 
+## ⭐⭐⭐ F-ckpt2 — **validation selection AGREES with cell-eval: Spearman +0.988, and both pick the same epoch.** The selector is fine; the MODEL oscillates.
+
+**This refines F-ckpt1 and corrects part of its framing.** F-ckpt1 measured a 0.175 swing between
+consecutive epochs on the test metric and inferred that any single-checkpoint comparison is "partly
+a draw from this oscillation". True — but it left open whether `val_pearson_delta` could even see
+the oscillation. It can, almost perfectly.
+
+**Question.** Does the checkpoint that `val_pearson_delta` selects agree with what cell-eval
+would pick, and what does choosing on validation cost?
+
+### Measured — C1 (M03's loss), 23 of 30 epochs with BOTH scores
+
+| epoch | `val_pΔ` | cell-eval `pΔ` | 4-metric | |
+|---|---|---|---|---|
+| 1 | 0.1571 | 0.1390 | 0.000 | |
+| 4 | 0.2136 | 0.2149 | 0.469 | ↓ dip, seen by BOTH |
+| 7 | 0.3396 | 0.3187 | 0.779 | |
+| 12 | 0.3544 | 0.3387 | 0.899 | |
+| **13** | **0.1482** | **0.1642** | 0.243 | ↓ the 0.175 collapse — **validation sees it** |
+| 14 | 0.3340 | 0.3199 | 0.816 | |
+| 16 | 0.3748 | 0.3496 | 0.928 | |
+| 19 | 0.3824 | 0.3544 | 0.917 | |
+| **22** | **0.3886** | **0.3581** | **0.985** | ⭐ **val, 4-metric AND cell-eval `pΔ` all pick this** |
+| 23 | 0.3561 | 0.3368 | 0.948 | |
+
+| | value |
+|---|---|
+| **Spearman, `val_pΔ` vs cell-eval `pΔ`** | **+0.988** |
+| Spearman, `val_pΔ` vs 4-metric composite | **+0.921** |
+| validation's pick | epoch 22 |
+| 4-metric pick | epoch 22 |
+| cell-eval `pΔ` argmax | epoch 22 |
+| **cost of selecting on validation** | **+0.0000** |
+
+### Reading
+
+1. **✅ `val_pearson_delta` is a GOOD checkpoint selector.** Rank correlation +0.988 with the
+   test metric across 23 epochs, and it lands on the exact argmax. Selecting on validation costs
+   **nothing** here.
+2. **⇒ The codebase's warning is about a DIFFERENT claim, and both can be true.**
+   `pipeline.py` records that this criterion "was MEASURED to rank checkpoints wrongly on the
+   real panel ... picked one arm and put the eventual bake-off winner last" — that is about
+   ranking **ARMS against each other**. This measurement is about ranking **EPOCHS within one
+   arm**. Validation does the second well and, per that note, the first badly. I had been
+   treating them as one claim.
+3. **⇒ F-ckpt1's oscillation is real MODEL variation, faithfully reported.** Validation sees the
+   epoch-13 collapse (0.1482 against its neighbours' 0.35) just as cell-eval does. So the
+   selector is not noisy — the model genuinely passes through bad states, and the metric
+   correctly says so.
+4. **⇒ This weakens the "lottery" reading of F-sched1.** More epochs do give more draws, but the
+   selector reliably identifies the good draws, so a longer run finding a better state is a REAL
+   benefit rather than a selection artifact. E3's +0.0150 is more likely to be genuine than
+   F-ckpt1 implied. ⚠️ Not settled: this says selection is sound, not that 60 epochs converges
+   better than 30. The 2D epochs × `eta_min` sweep is still the experiment for that.
+5. **⇒ The epochs × `eta_min` sweep can use `best_model.pth`.** The protocol question is
+   answered for this base: no need to select on cell-eval, and no need to fall back to
+   `final_model.pth`.
+
+⚠️ **One base, one split.** C1 is M03's loss, scored on split 0 only. C2 (M06) and C3 (Q02) are
+still scoring, and three levers have already behaved differently across those bases (F-loss9,
+F-latent4, F-recon3) — so the +0.988 should be confirmed on them before the protocol is treated
+as settled for all three.
+
 ## ⭐⭐⭐ F-ckpt1 — **consecutive epochs differ by up to 0.17 on the TEST metric.** The F7 oscillation is in the MODEL, not just the validation metric.
 
 **Status: C1 (M03's loss) at 19 of 30 checkpoints; C2/C3 still scoring.** Selection split 0 only.
