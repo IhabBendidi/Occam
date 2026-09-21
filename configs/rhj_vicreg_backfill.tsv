@@ -1,0 +1,14 @@
+# VICReg backfill: splits lost to the pdex shm race (F-infra1). NOCAL only.
+# 8 of 10 arms sat at 4/5, and the whole arm spread (0.3727-0.3846 = 0.0119) is SMALLER
+# than the 0.1744 consecutive-epoch swing measured on this panel (F-ckpt3) -- so a 4/5
+# mean is too weakly resolved to rank these arms against each other or against the base.
+#
+# ⚠️ V09 split 4 is EXCLUDED: job 18247051 is already computing it. Queueing it twice
+# would have two jobs writing the same output directory.
+arm_id	tag	split	calibrate	missing_modes
+V01	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_vcov0.000081-delta_z_s42	4	none	nocal
+V04	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_vcov0.00081-z_hat_s42	4	none	nocal
+V05	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_vvar0.00487g0.55-delta_z_s42	4	none	nocal
+V06	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_vvar0.0487g0.55-delta_z_s42	4	none	nocal
+V07	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_vvar0.0131g1.0-delta_z_s42	4	none	nocal
+V08	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_vvar0.0487g0.55_vcov0.00081-delta_z_s42	4	none	nocal
