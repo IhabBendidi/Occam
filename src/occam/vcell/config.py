@@ -162,6 +162,29 @@ class VirtualCellConfig:
     # tree's `delta_cos_weight` (virtual_cell/pipeline.py:3397).
     delta_cos_weight: float = 0.0   # weight of 1 - cos(pred-ctrl_mean, group_mean-ctrl_mean)
     pert_mean_dir: str = "cache/pert_means"   # table from scripts/pert_group_means.py
+
+    # --- F-disp1 DISPERSION TERMS ------------------------------------------------------------
+    # MEASURED: our predicted cells carry 2.6% of the real within-perturbation dispersion
+    # (0.0026 vs 0.1009 mean per-gene std, 568/568 perturbations), and real cell deltas align
+    # with their group direction at cos 0.246 +- 0.100 while `delta_cos_weight` drives that
+    # cosine toward 1. These three terms calibrate the spread instead of maximising alignment.
+    #
+    # ⚠️ ALL FOUR SCORED METRICS ARE PSEUDOBULK (F-disp1), so none of these can win a score
+    # through the distribution channel. They are REGULARISERS on the mean path: forcing the
+    # output to depend on WHICH control cell it was given. Judge them on the four metrics,
+    # and read the dispersion diagnostics only to confirm the term did what it claims.
+    #
+    # ⚠️ Matching a MOMENT is not the same as a per-sample penalty. A batch holds a median of
+    # ONE cell per perturbation (measured: 1,169 distinct perts in 2,048 rows), so
+    # `(x_i - target)^2` per row would drive every cell to the target VALUE rather than the
+    # distribution to the target SPREAD. `gene_var` and `radial_spread` therefore match a
+    # BATCH-level normalised second moment to 1, and measure the spread around the model's own
+    # per-group EMA mean -- not around the real mean, which would let a bias satisfy the term.
+    dcos_conc_weight: float = 0.0      # (cos(pred delta, group delta) - real cos_mean)^2, per cell
+    radial_spread_weight: float = 0.0  # (batch-mean of ((r - ema_r)/rad_std)^2 - 1)^2
+    gene_var_weight: float = 0.0       # (batch-mean of ((pred - ema_mu)/real_std)^2 - 1)^2
+    disp_ema_momentum: float = 0.99    # EMA of the model's own per-group mean (detached)
+    pert_disp_dir: str = "cache/pert_disp"   # table from scripts/pert_group_dispersion.py
     loss_norm: str = "pooled"       # "per_cell": mean over each cell's own masked genes, then over cells (F174)
     source_weight: str = "none"     # "balanced"|"sqrt": per-sample weight equalising source share (F174)
     # F181/E3 — condition the perturbation code on (source, assay modality). all9 mixes

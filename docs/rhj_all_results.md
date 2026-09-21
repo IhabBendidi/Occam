@@ -169,6 +169,14 @@ measurement.
 ⚠️ `Q05` (latent cosine 1×) scores 0.3787, marginally above `Q02`, but on **4/5 splits**. `Q02`
 is the defensible choice until `Q05` completes.
 
+⚠️ **UPDATE 2026-09-21 — the bases are 30-EPOCH configurations, and the SCHEDULE beats every
+loss-composition change in this file.** The same Q02 loss at a longer schedule scores `W23`
+(90 ep) 0.3959, `W22` (90 ep, `eta_min` 1e-6) 0.3985 and **`Y06` (150 ep, `eta_min` 3e-4)
+0.4043** — against the base's 0.3783. That is **+0.0260 from the schedule alone**, larger than
+any loss term measured in this campaign (the latent MSE that made Q02 out of M06 was +0.0102).
+**When starting from a base, start from its 150-epoch / `eta_min` 3e-4 form** (F-sched3), and
+read new terms against THAT, not against the 30-epoch number.
+
 
 ## Split reconstruction — M03 base (job 18217067, PARTIAL: 26 arms, most still scoring)
 
@@ -257,3 +265,70 @@ F-recon3 / F-recon4. **No arm beats its base on `pearson_delta`.** Best is `G10`
 
 **Bases for reference:** M06 0.3681 / 0.0232 / 0.0703 / 0.7047 · M03 0.3679 / 0.0212 / 0.0722 / 0.6715.
 
+
+## Schedule (epochs × `eta_min`), VICReg, and their compounding — jobs 18247298, 18249983, 18250877
+
+F-sched2 / F-vicreg3, **24/24 arms COMPLETE**. **`epochs` is the single strongest lever found in this campaign; `eta_min` is not a tunable direction but is NOT negligible — it is ±0.003 of seed-like variance (within-row spread 0.0028–0.0103, three rows with three different winners, every row non-monotone).** The Q02 epochs ladder is positive in **8 of 8 paired contrasts at 5/5 splits each**: 30→60 is +0.0116…+0.0264 and 60→90 is +0.0025…+0.0083 at every floor. **`W22` (Q02, 90 epochs, `eta_min` 1e-6) = 0.3985 is the campaign best**, +0.0026 (5/5) over `W23`. ✅ Two determinism checks passed: `W13` = the `Q02` base and `W19` = `E3`, both exact on all four metrics from different run dirs.
+
+⛔ **VICReg does NOT compound.** Held at fixed length it is −0.0016 (0/5) at 90 ep and −0.0014 (2/5) at 60 ep on `pearson_delta`, and −0.0045 on `ovl@N`. Its F-vicreg2 gain (+0.0060 at 30 ep) was a faster route to where the longer schedule arrives anyway. What it keeps is `disc_l1`: +0.0048 (5/5) at 90 ep, and `X02` 0.7189 / `W24` 0.7190 are the campaign maximum.
+
+⚠️ **CORRECTION.** The mid-flight validation composite ranked `eta_min` 1e-4 above 1e-5 on both bases (W12 0.4284 > W11 0.4212, W24 0.4430 > W23 0.4419). On test both contrasts are −0.0002/−0.0001 with 2–3 of 5 positive. Validation misranks ARMS; it selects EPOCHS well (F-ckpt4).
+
+### Extended schedule — the Y grid (F-sched3): **`eta_min` 3e-4 is a real direction, and 0.4043 is the campaign best**
+
+⚠️ The W grid below spans `eta_min` 1e-7…1e-4 and concluded the floor was noise. **That holds only inside that band.** At 3e-4 the floor wins at BOTH 120 and 150 epochs, and the epochs plateau moves with it: at 1e-5 the schedule over-trains past 120 (−0.0014, 0/5) while at 3e-4 it is still climbing at 150 (+0.0028, 5/5).
+
+| arm | base | epochs | `eta_min` | n | `pearson_delta` ↑ | `mae` ↓ | `ovl@N` ↑ | `disc_l1` ↑ |
+|---|---|---|---|---|---|---|---|---|
+| **`Y06`** | Q02 | **150** | **3e-4** | 5/5 | **0.4043** ± 0.0019 | 0.0215 | **0.0946** | **0.7288** |
+| `Y03` | Q02 | 120 | **3e-4** | 5/5 | **0.4015** ± 0.0018 | 0.0217 | 0.0919 | 0.7247 |
+| `Y05` | Q02 | **150** | 1e-4 | 5/5 | **0.3983** ± 0.0023 | 0.0217 | 0.0931 | 0.7223 |
+| `Y01` | Q02 | 120 | 1e-5 | 5/5 | **0.3978** ± 0.0028 | 0.0217 | 0.0889 | 0.7141 |
+| `Y04` | Q02 | **150** | 1e-5 | 5/5 | **0.3963** ± 0.0021 | 0.0217 | 0.0913 | 0.7176 |
+| `Y02` | Q02 | 120 | 1e-4 | 5/5 | **0.3960** ± 0.0021 | 0.0223 | 0.0904 | 0.7221 |
+
+`Y06` − `W22` = **+0.0058** `pearson_delta`, **+0.0059** `ovl@N`, **+0.0098** `disc_l1`. `ovl@N` 0.0946 and `disc_l1` 0.7288 are campaign maxima; `mae` 0.0215 ties the Q02-family best. ⚠️ Both axes are at their tested EDGE with positive margins — an endpoint optimum, which F-loss3 flags as a range problem rather than a finished tuning.
+
+### The W grid — epochs × `eta_min` (1e-7…1e-4), 24/24 arms
+
+| arm | base | epochs | `eta_min` | n | `pearson_delta` ↑ | `mae` ↓ | `ovl@N` ↑ | `disc_l1` ↑ |
+|---|---|---|---|---|---|---|---|---|
+| `W22` | Q02 | **90** | 1e-6 | 5/5 | **0.3985** ± 0.0025 | 0.0215 | 0.0868 | 0.7156 |
+| `W21` | Q02 | **90** | 1e-7 | 5/5 | **0.3981** ± 0.0018 | 0.0216 | 0.0855 | 0.7183 |
+| `W23` | Q02 | **90** | 1e-5 | 5/5 | **0.3959** ± 0.0031 | 0.0216 | 0.0887 | 0.7142 |
+| `W24` | Q02 | **90** | 1e-4 | 5/5 | **0.3957** ± 0.0022 | 0.0221 | 0.0889 | 0.7190 |
+| `W19` = `E3` | Q02 | 60 | 1e-5 | 5/5 | **0.3933** ± 0.0027 | 0.0217 | 0.0817 | 0.7047 |
+| `W18` | Q02 | 60 | 1e-6 | 5/5 | **0.3921** ± 0.0030 | 0.0216 | 0.0819 | 0.7089 |
+| `W20` | Q02 | 60 | 1e-4 | 5/5 | **0.3921** ± 0.0034 | 0.0216 | 0.0792 | 0.7068 |
+| `W17` | Q02 | 60 | 1e-7 | 5/5 | **0.3898** ± 0.0026 | 0.0216 | 0.0811 | 0.7040 |
+| `W09` | M03 | **90** | 1e-7 | 5/5 | **0.3842** ± 0.0033 | 0.0209 | 0.0816 | 0.6852 |
+| `W11` | M03 | **90** | 1e-5 | 5/5 | **0.3805** ± 0.0023 | 0.0210 | 0.0814 | 0.6852 |
+| `W12` | M03 | **90** | 1e-4 | 5/5 | **0.3805** ± 0.0023 | 0.0208 | 0.0799 | 0.6836 |
+| `W08` | M03 | 60 | 1e-4 | 4/5 ⚠️ | **0.3800** ± 0.0021 | 0.0208 | 0.0765 | 0.6814 |
+| `W16` | Q02 | 30 | 1e-4 | 5/5 | **0.3794** ± 0.0026 | 0.0229 | 0.0795 | 0.7017 |
+| `W13` = `Q02` base | Q02 | 30 | 1e-7 | 5/5 | **0.3783** ± 0.0027 | 0.0225 | 0.0774 | 0.7029 |
+| `W06` | M03 | 60 | 1e-6 | 5/5 | **0.3777** ± 0.0020 | 0.0208 | 0.0745 | 0.6750 |
+| `W10` | M03 | **90** | 1e-6 | 5/5 | **0.3773** ± 0.0022 | 0.0208 | 0.0812 | 0.6791 |
+| `W14` | Q02 | 30 | 1e-6 | 5/5 | **0.3769** ± 0.0017 | 0.0227 | 0.0767 | 0.7015 |
+| `W05` | M03 | 60 | 1e-7 | 4/5 ⚠️ | **0.3754** ± 0.0031 | 0.0208 | 0.0763 | 0.6739 |
+| `W07` | M03 | 60 | 1e-5 | 5/5 | **0.3749** ± 0.0021 | 0.0210 | 0.0708 | 0.6800 |
+| `W01` | M03 | 30 | 1e-7 | 4/5 ⚠️ | **0.3683** ± 0.0018 | 0.0212 | 0.0721 | 0.6715 |
+| `W15` | Q02 | 30 | 1e-5 | 4/5 ⚠️ | **0.3679** ± 0.0025 | 0.0231 | 0.0702 | 0.6936 |
+| `W02` | M03 | 30 | 1e-6 | 5/5 | **0.3650** ± 0.0031 | 0.0214 | 0.0711 | 0.6663 |
+| `W03` | M03 | 30 | 1e-5 | 5/5 | **0.3644** ± 0.0012 | 0.0213 | 0.0725 | 0.6716 |
+| `W04` | M03 | 30 | 1e-4 | 5/5 | **0.3622** ± 0.0024 | 0.0214 | 0.0694 | 0.6701 |
+
+**The VICReg / compounding arms (same anchors, `VICReg` column):**
+
+| arm | base | epochs | `eta_min` | VICReg | n | `pearson_delta` ↑ | `mae` ↓ | `ovl@N` ↑ | `disc_l1` ↑ |
+| `X02` | Q02 | **90** | 1e-5 | **on** | 5/5 | **0.3943** ± 0.0021 | 0.0220 | 0.0843 | **0.7189** |
+| `E3` | Q02 | 60 | 1e-5 | off | 5/5 | **0.3933** ± 0.0027 | 0.0217 | 0.0817 | 0.7047 |
+| `X01` | Q02 | 60 | 1e-5 | **on** | 5/5 | **0.3920** ± 0.0034 | 0.0217 | 0.0793 | 0.7079 |
+| `V09` | Q02 | 30 | default | **on** | 5/5 | **0.3843** ± 0.0016 | 0.0225 | 0.0808 | 0.7065 |
+| `Q02` | Q02 | 30 | default | off | 5/5 | **0.3783** ± 0.0027 | 0.0225 | 0.0774 | 0.7029 |
+| `E1` | M03 | 60 | 1e-5 | off | 5/5 | **0.3749** ± 0.0021 | 0.0210 | 0.0708 | 0.6800 |
+| `M03` | M03 | 30 | default | off | 5/5 | **0.3679** ± 0.0017 | 0.0212 | 0.0722 | 0.6715 |
+
+**Anchor:** `experimental` (half-A vs half-B of the same experiment) 0.3722 / `mae` 0.0257 / `ovl@N` 0.1942 / `disc_l1` 0.7821. Eight model arms now sit above `experimental` on `pearson_delta`; none is close on `ovl@N`.
+
+**Still running (snapshot 2026-09-21, array at 69/100):** 7 of the 24 W arms — `W16` (Q02 30/1e-4), the whole Q02 60-epoch row `W17`–`W20`, and `W21`/`W22` (Q02 90/1e-7, 1e-6). Eval array 18249983, `%6` throttle (F-infra1), ~45 min left. ⚠️ The Q02 60-epoch row is the one that matters — it is the only remaining cell that could show the Q02 epochs ladder is non-monotone.

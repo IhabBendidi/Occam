@@ -737,6 +737,14 @@ class VirtualCellTrainer:
         self.delta_reg_lambda = config.delta_reg_lambda
         self.delta_reg_tau = config.delta_reg_tau
         self.expression_loss_mode = config.expression_loss_mode
+        # F-disp1 dispersion terms: the EMA centres are allocated lazily on first use, so an
+        # arm with every dispersion weight at 0 pays nothing (the gene-space EMA is 1.28 GB).
+        self._disp_ema_rad = None      # (G,)          model's own mean ||pred - ctrl_mean||
+        self._disp_ema_mu = None       # (G, n_genes)  model's own per-group mean profile
+        self._disp_seen_rad = None     # (G,) bool     has this group's radial centre been set?
+        self._disp_seen_mu = None      # (G,) bool     has this group's profile centre been set?
+        self._disp_acc = {"cos_pred": 0.0, "cos_real": 0.0, "n_cos": 0,
+                          "rad_ratio": 0.0, "n_rad": 0, "var_ratio": 0.0, "n_var": 0}
 
         # AMP scaler
         self._amp_dtype = (torch.bfloat16 if str(getattr(self.config, "amp_dtype", "fp16")) == "bf16"
@@ -1826,7 +1834,16 @@ class VirtualCellTrainer:
             or (bool(getattr(config, "recon_split", False))
                 and (str(getattr(config, "recon_split_mode", "cmean")) in ("cmean", "delta_only")
                      or str(getattr(config, "recon_delta_target", "cell")) == "group_mean"))
+            # F-disp1: all three dispersion terms read `gmeans`/`cmeans`/`gline` for the
+            # reference the spread is measured around, so they belong in THIS gate too --
+            # and they need the dispersion table on top of it (loaded just below).
+            or float(getattr(config, "dcos_conc_weight", 0.0)) > 0
+            or float(getattr(config, "radial_spread_weight", 0.0)) > 0
+            or float(getattr(config, "gene_var_weight", 0.0)) > 0
         )
+        _needs_disp = (float(getattr(config, "dcos_conc_weight", 0.0)) > 0
+                       or float(getattr(config, "radial_spread_weight", 0.0)) > 0
+                       or float(getattr(config, "gene_var_weight", 0.0)) > 0)
         if _needs_group_means:
             # ⚠️ REFUSE, DO NOT DEGRADE. A weight that is set and has no effect is worse than
             # a crash: three DCOS arms burned a GPU each producing bit-identical curves
@@ -1840,6 +1857,10 @@ class VirtualCellTrainer:
                     ("delta_cos_weight", float(getattr(config, "delta_cos_weight", 0.0)) > 0),
                     ("recon_split(%s)" % getattr(config, "recon_split_mode", "cmean"),
                      bool(getattr(config, "recon_split", False))),
+                    ("dcos_conc_weight", float(getattr(config, "dcos_conc_weight", 0.0)) > 0),
+                    ("radial_spread_weight",
+                     float(getattr(config, "radial_spread_weight", 0.0)) > 0),
+                    ("gene_var_weight", float(getattr(config, "gene_var_weight", 0.0)) > 0),
                 ) if v]
                 raise FileNotFoundError(
                     f"{_asked} require the per-(cell line, perturbation) mean table, but "
@@ -1851,6 +1872,26 @@ class VirtualCellTrainer:
             _gm_idx, _gmeans, _cmeans, _gline = load_group_means(
                 str(getattr(config, "pert_mean_dir", "cache/pert_means")), self.device,
                 sources={_srcname(fm.path) for fm in file_metas})
+        _disp = None
+        if _needs_disp:
+            # ⚠️ REFUSE, DO NOT DEGRADE -- same rule as the means table above. A dispersion
+            # weight whose target is missing would train against zeros, which is not "off":
+            # matching a variance target of 0 is an instruction to COLLAPSE, the exact
+            # pathology F-disp1 measured.
+            _disp_dir = str(getattr(config, "pert_disp_dir", "cache/pert_disp"))
+            if not (Path(_disp_dir).is_dir() and any(Path(_disp_dir).glob("*.npz"))):
+                raise FileNotFoundError(
+                    f"dcos_conc_weight/radial_spread_weight/gene_var_weight require the "
+                    f"per-group DISPERSION table, but {_disp_dir} has no *.npz. Build it "
+                    f"with scripts/pert_group_dispersion.py. Refusing to train: the terms "
+                    f"would match a variance target of ZERO, i.e. ask for the collapse they "
+                    f"exist to fix.")
+            from occam.vcell.stream_v2 import load_group_dispersion
+            _dv, _drm, _drs, _dcm, _dcs, _dnc = load_group_dispersion(
+                _disp_dir, _gm_idx, int(_gmeans.shape[0]), self.device,
+                sources={_srcname(fm.path) for fm in file_metas})
+            _disp = {"gvar": _dv, "rad_mean": _drm, "rad_std": _drs,
+                     "cos_mean": _dcm, "cos_std": _dcs, "n_cells": _dnc}
         _snr_min = getattr(config, "min_pert_snr", None)
         _snr_max = getattr(config, "max_pert_snr", None)
         _snr_tab, _keep = None, None
@@ -1898,6 +1939,7 @@ class VirtualCellTrainer:
             "gmeans": _gmeans, "cmeans": _cmeans, "gline": _gline,
             "raw_pool": raw_pool_cpu,
             "target_pb_k": int(getattr(config, "target_pb_k", 1)),
+            "disp": _disp,
         }
         if _gmeans is not None:
             print(f"  [stream_v2] target_pb_k={getattr(config, 'target_pb_k', 1)} "
@@ -2049,6 +2091,10 @@ class VirtualCellTrainer:
         epoch_ranking_loss = 0.0
         epoch_hurdle_loss = 0.0
         epoch_mag_loss = 0.0
+        # F-disp1: per-epoch dispersion diagnostics. Reset here so the printed ratio is the
+        # epoch's, not the run's -- a cumulative average would hide the term taking effect.
+        self._disp_acc = {"cos_pred": 0.0, "cos_real": 0.0, "n_cos": 0,
+                          "rad_ratio": 0.0, "n_rad": 0, "var_ratio": 0.0, "n_var": 0}
         epoch_recon_ctrl = 0.0
         epoch_recon_delta = 0.0
         epoch_hurdle_pi_sum = 0.0
@@ -2341,6 +2387,185 @@ class VirtualCellTrainer:
                         dt = (st["gmeans"][g] - cm2) * gmf2     # true group delta
                         dcos_loss = (1 - F.cosine_similarity(dp[has], dt[has], dim=-1)).mean()
                         del cm2, gmf2, dp, dt
+                # ─── F-disp1 DISPERSION TERMS ────────────────────────────────────────────
+                # MEASURED on W23: predicted cells carry 2.6% of the real within-perturbation
+                # dispersion (0.0026 vs 0.1009 per-gene std, 568/568 perturbations), and real
+                # cell deltas align with their group direction at cos 0.246 +- 0.100 while
+                # `dcos` above drives that cosine toward 1. So the collapse is what the loss
+                # ASKS FOR: parallel directions (dcos) plus equal magnitudes (delta_mag) is a
+                # constant delta, and `smooth_l1` -- the only per-cell term -- is ~2% of the
+                # total in this regime.
+                #
+                # ⚠️ A BATCH HOLDS A MEDIAN OF ONE CELL PER PERTURBATION (measured: 1,169
+                # distinct perts in 2,048 rows). Therefore:
+                #   * a per-row penalty `(x_i - target)^2` on a SPREAD would drive every cell
+                #     to the same value, i.e. reinforce the collapse. `radial_spread` and
+                #     `gene_var` instead match a BATCH-LEVEL normalised second moment to 1,
+                #     which is what "the dispersion is right on average" actually means;
+                #   * the centre must be the MODEL'S OWN per-group mean, tracked as a detached
+                #     EMA. Measuring spread around the REAL mean would let a constant bias
+                #     satisfy the term without any dispersion at all.
+                # `dcos_conc` is a FIRST moment and needs neither: it calibrates each cell's
+                # alignment to the group's real mean alignment.
+                disp_cos_loss = torch.zeros((), device=self.device)
+                disp_rad_loss = torch.zeros((), device=self.device)
+                disp_var_loss = torch.zeros((), device=self.device)
+                _wdc = float(getattr(self.config, "dcos_conc_weight", 0.0))
+                _wrs = float(getattr(self.config, "radial_spread_weight", 0.0))
+                _wgv = float(getattr(self.config, "gene_var_weight", 0.0))
+                if (_wdc > 0 or _wrs > 0 or _wgv > 0):
+                    _st = self._stream_v2_state
+                    _dsp = (_st or {}).get("disp")
+                    _gid = getattr(self, "_last_group_id", None)
+                    if _dsp is None or _gid is None:
+                        raise RuntimeError(
+                            "dispersion terms are ON but the dispersion table / group ids are "
+                            "absent from _stream_v2_state. That is a GATE failure, not a data "
+                            "problem: _needs_group_means and _needs_disp must both include "
+                            "dcos_conc_weight / radial_spread_weight / gene_var_weight. "
+                            "Refusing to train with a silently-zero term (F-loss1).")
+                    _g = _gid.clamp(min=0)
+                    # a group with n_cells < 2 has NO defined dispersion (NaN in the table)
+                    _ok = (_gid >= 0) & (_dsp["n_cells"][_g] >= 2)
+                    if bool(_ok.any()):
+                        _cm3 = _st["cmeans"][_st["gline"][_g]]
+                        _gmf3 = gene_mask.float()
+                        _dp3 = (prediction - _cm3) * _gmf3
+
+                        if _wdc > 0:
+                            # DIRECTION CONCENTRATION. Calibrate each cell's alignment with its
+                            # group's mean effect to the REAL mean alignment (measured 0.246,
+                            # not 1) instead of maximising it the way `dcos` does.
+                            #
+                            # ⚠️ SLICE THE ROWS BEFORE THE OP, exactly as the `dcos` term above
+                            # does. Computing on the full batch and indexing afterwards looks
+                            # equivalent and is not: `cosine_similarity`'s backward is NaN for a
+                            # zero vector, and autograd multiplies that NaN by the ZERO incoming
+                            # gradient of a row this term excluded -- so an excluded row poisons
+                            # the batch's gradient while the LOSS stays finite.
+                            _ci = _ok.nonzero(as_tuple=True)[0]
+                            _gc = _g[_ci]
+                            _dt3 = (_st["gmeans"][_gc] - _cm3[_ci]) * _gmf3[_ci]
+                            _c = F.cosine_similarity(_dp3[_ci], _dt3, dim=-1)
+                            _ct = _dsp["cos_mean"][_gc]
+                            disp_cos_loss = ((_c - _ct) ** 2).mean()
+                            with torch.no_grad():
+                                self._disp_acc["cos_pred"] += float(_c.mean())
+                                self._disp_acc["cos_real"] += float(_ct.mean())
+                                self._disp_acc["n_cos"] += 1
+                            del _dt3, _c, _ct, _gc, _ci
+
+                        if _wrs > 0:
+                            # RADIAL SPREAD. Match the spread of ||pred - ctrl_mean|| to the real
+                            # spread, measured around the MODEL's own mean radius per group (a
+                            # detached EMA), so a bias in the radius -- which `delta_mag` already
+                            # supervises -- cannot satisfy this term.
+                            #
+                            # ⚠️ NOT `.norm()`: its backward is `grad * x / ||x||`, i.e. 0/0 for a
+                            # row whose masked delta is exactly zero. The clamped sum-of-squares
+                            # form is differentiable everywhere.
+                            _r = (_dp3 * _dp3).sum(dim=-1).clamp(min=1e-12).sqrt()
+                            if self._disp_ema_rad is None:
+                                # ⚠️ LAZY init on the model's OWN first observation per group, NOT
+                                # on the real mean. Warm-starting on the real mean made the
+                                # epoch-1 diagnostic read 1.0380, which was the model's BIAS
+                                # against the real radius rather than its spread -- exactly the
+                                # confound the EMA centre exists to remove.
+                                self._disp_ema_rad = torch.zeros_like(_dsp["rad_mean"])
+                                self._disp_seen_rad = torch.zeros(
+                                    _dsp["rad_mean"].shape[0], dtype=torch.bool,
+                                    device=self.device)
+                            # a group whose centre has never been observed has EMA 0, and
+                            # (r - 0)/std would read as an enormous spread. Skip it this batch;
+                            # the update below centres it for the next one.
+                            _ri = (_ok & self._disp_seen_rad[_g]).nonzero(as_tuple=True)[0]
+                            if _ri.numel() > 0:
+                                # rows sliced FIRST: rad_std is NaN for the one group with
+                                # n_cells < 2, and a NaN the mask removes afterwards still
+                                # poisons the backward pass (`0 * NaN = NaN`).
+                                _gr = _g[_ri]
+                                _rs_t = _dsp["rad_std"][_gr].clamp(min=1e-3)
+                                _u = (_r[_ri] - self._disp_ema_rad[_gr]) / _rs_t
+                                _m2 = (_u ** 2).mean()
+                                disp_rad_loss = (_m2 - 1.0) ** 2
+                                with torch.no_grad():
+                                    # accumulate ONLY when the term actually ran: a fallback
+                                    # value averaged in would read as "dispersion matched"
+                                    self._disp_acc["rad_ratio"] += float(_m2.clamp(min=0).sqrt())
+                                    self._disp_acc["n_rad"] += 1
+                                del _gr, _rs_t, _u, _m2
+                            del _ri
+                            with torch.no_grad():
+                                _mom = float(getattr(self.config, "disp_ema_momentum", 0.99))
+                                _gu, _inv = torch.unique(_g[_ok], return_inverse=True)
+                                _rd = _r[_ok].detach()
+                                _sum = torch.zeros(_gu.numel(), device=self.device,
+                                                   dtype=_rd.dtype).index_add_(0, _inv, _rd)
+                                _cnt = torch.zeros(_gu.numel(), device=self.device,
+                                                   dtype=_rd.dtype).index_add_(
+                                                       0, _inv, torch.ones_like(_rd))
+                                _new = _sum / _cnt.clamp(min=1)
+                                # momentum 0 on a group's first touch = take the observation
+                                _mm = torch.where(self._disp_seen_rad[_gu],
+                                                  torch.full_like(_new, _mom),
+                                                  torch.zeros_like(_new))
+                                self._disp_ema_rad[_gu] = (_mm * self._disp_ema_rad[_gu]
+                                                           + (1 - _mm) * _new)
+                                self._disp_seen_rad[_gu] = True
+                                del _gu, _inv, _rd, _sum, _cnt, _new, _mm
+                            del _r
+
+                        if _wgv > 0:
+                            # PER-GENE VARIANCE. Same construction as the radial term, one degree
+                            # of freedom per gene instead of one per cell.
+                            if self._disp_ema_mu is None:
+                                self._disp_ema_mu = torch.zeros_like(_st["gmeans"])
+                                self._disp_seen_mu = torch.zeros(
+                                    _st["gmeans"].shape[0], dtype=torch.bool,
+                                    device=self.device)
+                            _gi2 = (_ok & self._disp_seen_mu[_g]).nonzero(as_tuple=True)[0]
+                            if _gi2.numel() > 0:
+                                _gs = _g[_gi2]
+                                _sd = _dsp["gvar"][_gs].clamp(min=1e-6).sqrt()
+                                # only genes PRESENT in the row and with a real spread worth
+                                # matching: a gene whose real std is ~0 carries no dispersion
+                                # target, and dividing by it manufactures a huge gradient.
+                                _keep = (_gmf3[_gi2] > 0) & (_sd > 1e-2)
+                                _w3 = _keep.float()
+                                # divide by 1 where the gene is dropped rather than by a 1e-6
+                                # std the mask zeroes afterwards: a masked-out element still
+                                # gets a backward pass, and `0 * huge` poisons a kept one.
+                                _sds = torch.where(_keep, _sd, torch.ones_like(_sd))
+                                _uu = ((prediction[_gi2] - self._disp_ema_mu[_gs]) / _sds) ** 2
+                                _m2g = (_uu * _w3).sum() / _w3.sum().clamp(min=1.0)
+                                disp_var_loss = (_m2g - 1.0) ** 2
+                                with torch.no_grad():
+                                    self._disp_acc["var_ratio"] += float(_m2g.clamp(min=0).sqrt())
+                                    self._disp_acc["n_var"] += 1
+                                del _gs, _sd, _sds, _keep, _w3, _uu, _m2g
+                            del _gi2
+                            with torch.no_grad():
+                                _mom = float(getattr(self.config, "disp_ema_momentum", 0.99))
+                                _gu, _inv = torch.unique(_g[_ok], return_inverse=True)
+                                _P = prediction.detach()[_ok]
+                                _sum = torch.zeros(_gu.numel(), _P.shape[1], device=self.device,
+                                                   dtype=_P.dtype).index_add_(0, _inv, _P)
+                                _cnt = torch.zeros(_gu.numel(), device=self.device,
+                                                   dtype=_P.dtype).index_add_(
+                                                       0, _inv, torch.ones(_P.shape[0],
+                                                                           device=self.device,
+                                                                           dtype=_P.dtype))
+                                _new = _sum / _cnt.clamp(min=1).unsqueeze(1)
+                                _mm = torch.where(self._disp_seen_mu[_gu],
+                                                  torch.full_like(_cnt, _mom),
+                                                  torch.zeros_like(_cnt)).unsqueeze(1)
+                                self._disp_ema_mu[_gu] = (_mm * self._disp_ema_mu[_gu]
+                                                          + (1 - _mm) * _new)
+                                self._disp_seen_mu[_gu] = True
+                                del _P, _sum, _cnt, _new, _mm, _gu, _inv
+
+                        del _cm3, _gmf3, _dp3
+
                 hurdle_loss = torch.tensor(0.0, device=self.device)
                 if self.config.hurdle_loss_weight > 0 and "logit_pi" in model_output:
                     is_sc = batch.is_sc
@@ -2422,6 +2647,12 @@ class VirtualCellTrainer:
                     loss = loss + _mw * mag_loss
                 if _wc > 0:
                     loss = loss + _wc * dcos_loss
+                if _wdc > 0:
+                    loss = loss + _wdc * disp_cos_loss
+                if _wrs > 0:
+                    loss = loss + _wrs * disp_rad_loss
+                if _wgv > 0:
+                    loss = loss + _wgv * disp_var_loss
                 if self.gpl_fn is not None:
                     loss = loss + self.gpl_weight * gpl_loss
                 if self.config.ranking_loss_weight > 0:
@@ -2826,6 +3057,16 @@ class VirtualCellTrainer:
             "n_grad_norm_batches": n_grad_norm,
             "n_bad_gradnorm": n_bad_gradnorm,
             "mag_loss": (epoch_mag_loss / max(n_batches, 1)),
+            # F-disp1 diagnostics. `*_ratio` is pred dispersion / REAL dispersion: 1.0 = matched,
+            # and F-disp1 measured 0.026 before any of these terms existed.
+            "disp_cos_pred": (self._disp_acc["cos_pred"] / self._disp_acc["n_cos"]
+                              if self._disp_acc["n_cos"] else None),
+            "disp_cos_real": (self._disp_acc["cos_real"] / self._disp_acc["n_cos"]
+                              if self._disp_acc["n_cos"] else None),
+            "disp_rad_ratio": (self._disp_acc["rad_ratio"] / self._disp_acc["n_rad"]
+                               if self._disp_acc["n_rad"] else None),
+            "disp_var_ratio": (self._disp_acc["var_ratio"] / self._disp_acc["n_var"]
+                               if self._disp_acc["n_var"] else None),
             "recon_ctrl_loss": (epoch_recon_ctrl / max(n_batches, 1)),
             "recon_delta_loss": (epoch_recon_delta / max(n_batches, 1)),
         }
@@ -4297,6 +4538,25 @@ class VirtualCellTrainer:
                           "   (UNWEIGHTED; configured weights apply on top)"
                           % (_rc, 100*_rc/max(_tot,1e-12), _rd, 100*_rd/max(_tot,1e-12),
                              _rc/max(_rd,1e-12)), flush=True)
+                # F-disp1 dispersion diagnostics, printed UNCONDITIONALLY for the same
+                # reason as the block above: these arms run with WANDB_MODE=offline, and a
+                # term that is ON and unmeasured is how DCOS burned three GPUs (F-loss1).
+                # `*_ratio` = pred dispersion / REAL dispersion. 1.0 = matched. The
+                # pre-term baseline, measured on W23, is 0.026.
+                _dd = {k: metrics.get(k) for k in
+                       ("disp_cos_pred", "disp_cos_real", "disp_rad_ratio", "disp_var_ratio")}
+                if any(v is not None for v in _dd.values()):
+                    _parts = []
+                    if _dd["disp_cos_pred"] is not None:
+                        _parts.append("cos(pred delta, group delta)=%.4f vs REAL %.4f"
+                                      % (_dd["disp_cos_pred"], _dd["disp_cos_real"]))
+                    if _dd["disp_rad_ratio"] is not None:
+                        _parts.append("radial std_pred/std_real=%.4f" % _dd["disp_rad_ratio"])
+                    if _dd["disp_var_ratio"] is not None:
+                        _parts.append("per-gene std_pred/std_real=%.4f" % _dd["disp_var_ratio"])
+                    print("  [disp] " + "  ".join(_parts)
+                          + "   (ratio 1.0 = matched; 0.026 = the W23 baseline collapse)",
+                          flush=True)
                 _diag = {k: metrics[k] for k in
                          ("delta_z_ratio", "offmanifold_ratio",
                           "delta_z_cosine_w_target", "gate_active_dims")

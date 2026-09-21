@@ -1,0 +1,24 @@
+{
+ "axis_sha256": "6efa91af1af5c8b88fa5b024c683a53962ab9b7aa0c02b82173babb45966c77d",
+ "n_genes": 8000,
+ "source_genes": 33694,
+ "in_vocab": 29187,
+ "min_detection": 0.08,
+ "candidates_passing_filters": 8279,
+ "perturbation_targets": 105,
+ "targets_resolved_on_annotation": 102,
+ "targets_force_included": 102,
+ "targets_force_included_below_threshold": 40,
+ "targets_unresolved": [
+  "C19orf26",
+  "C3orf72",
+  "KIAA1804"
+ ],
+ "qc_cells": 91168,
+ "detection_of_selected": {
+  "min": 0.00039487539487539485,
+  "median": 0.2823194541944542,
+  "max": 1.0,
+  "below_threshold": 40
+ }
+}

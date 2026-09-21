@@ -52,7 +52,7 @@ __all__ = [
     "CONTROL", "SPLIT_SALT", "CohortDriftError", "HalfSplit",
     "freeze_cohort", "group_seed", "balanced_halves", "draw_splits",
     "assert_cohort", "assert_disjoint_halves", "panel_for_split",
-    "train_pert_grand_mean", "meanpert_arm", "transfer_arm",
+    "train_pert_grand_mean", "meanpert_arm", "transfer_arm", "sum_of_singles_arm",
 ]
 
 CONTROL = "non-targeting"
@@ -380,6 +380,47 @@ def transfer_arm(
     D = np.stack([np.asarray(deltas[str(p)], dtype=np.float32) for p in labels])
     if D.shape != ctrl_used.shape:
         raise ValueError(f"transfer deltas gave {D.shape}, expected {ctrl_used.shape}")
+    pred = ctrl_used + D
+    frac = 0.0
+    if clip:
+        neg = pred < 0
+        frac = float(neg.mean())
+        pred = np.clip(pred, 0.0, None)
+    return pred, frac
+
+
+def sum_of_singles_arm(
+    ctrl_used: np.ndarray, labels: Sequence[str], deltas: Mapping[str, np.ndarray],
+    clip: bool = True,
+) -> Tuple[np.ndarray, float]:
+    """``ctrl_used + delta_A + delta_B`` per row: the ADDITIVITY baseline for double perts.
+
+    `deltas[p]` is the SUM of the two constituent genes' measured single-gene deltas, taken
+    from the TRAINING single arms of the same file against the same control mean
+    (`scripts/norman/norman_build_panel.py`). So this arm is "add the two effects you already
+    measured separately", i.e. the non-learned version of exactly what a composition model is
+    asked to do — and it is also OUR ARCHITECTURE'S OWN composition operator in closed form,
+    because `model.forward` sums the perturbations' graph embeddings (`max_perts > 1`).
+
+    ⚠️ A model at or below this baseline has learned nothing about interaction. Measured on
+    the Norman cohort it already reaches pearson(Δ) 0.93 on the additive stratum and 0.84 on
+    the non-additive one, so it is a demanding reference, not a floor.
+
+    `ctrl_used` must be the SAME drawn control cells the model arm received, so the
+    control-draw noise cancels in the comparison this baseline exists to support.
+    """
+    ctrl_used = np.asarray(ctrl_used, dtype=np.float32)
+    labels = np.asarray(labels, dtype=str)
+    missing = sorted({str(p) for p in labels} - set(deltas))
+    if missing:
+        raise ValueError(
+            f"{len(missing)} perturbation(s) have no sum_of_singles delta (e.g. "
+            f"{missing[:5]}). Every scored pair needs both of its genes to have a single arm, "
+            f"or this arm is silently a control arm for those rows. Rebuild with "
+            f"scripts/norman/norman_build_panel.py.")
+    D = np.stack([np.asarray(deltas[str(p)], dtype=np.float32) for p in labels])
+    if D.shape != ctrl_used.shape:
+        raise ValueError(f"sum_of_singles deltas gave {D.shape}, expected {ctrl_used.shape}")
     pred = ctrl_used + D
     frac = 0.0
     if clip:

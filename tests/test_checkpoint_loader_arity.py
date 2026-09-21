@@ -37,6 +37,40 @@ def test_from_vcell_checkpoint_really_returns_two_values():
         "the contract is (trainer, ckpt); a different arity needs every caller updated")
 
 
+def test_every_load_frozen_call_site_unpacks_EIGHT_values():
+    """`load_frozen` returns 8 values and every caller must unpack 8.
+
+    It returned 7 until `sum_of_singles` (the norman_combo additivity baseline) was added.
+    Unpacking 7 from an 8-tuple raises, which is the harmless case; the dangerous one is a
+    call site that unpacks a DIFFERENT 8 and silently shifts `cohort` into `grand`. Both are
+    caught by counting the names.
+    """
+    import ast
+    import glob
+    import os
+
+    expected = 8
+    sites = 0
+    for path in glob.glob(os.path.join(REPO, "scripts", "*.py")):
+        tree = ast.parse(open(path).read())
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Assign) or not isinstance(node.value, ast.Call):
+                continue
+            fn = node.value.func
+            name = getattr(fn, "attr", None) or getattr(fn, "id", None)
+            if name != "load_frozen":
+                continue
+            tgt = node.targets[0]
+            assert isinstance(tgt, ast.Tuple), \
+                f"{os.path.basename(path)}: load_frozen result is not unpacked as a tuple"
+            got = len(tgt.elts)
+            assert got == expected, (
+                f"{os.path.basename(path)}: load_frozen unpacked into {got} names, "
+                f"expected {expected}. Adding a return value means updating EVERY caller.")
+            sites += 1
+    assert sites >= 2, f"found only {sites} load_frozen call site(s); the scan is broken"
+
+
 def test_every_call_site_unpacks_both_values():
     for rel in CALLERS:
         path = os.path.join(REPO, rel)

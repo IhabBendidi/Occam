@@ -66,9 +66,14 @@ def agg(run_dir, sub):
 
 
 def collect():
-    out = {"baselines": [], "ours_nocal": [], "ours_cal": [], "competitors": [], "emission": []}
+    out = {"baselines": [], "ours_nocal": [], "ours_cal": [], "competitors": [], "emission": [],
+           "campaign_sched": [], "campaign_reg": [], "campaign_loss": []}
     for b in ("ctrlcell", "ctrlmean", "meanpert", "transfer", "experimental"):
         out["baselines"].append((b, agg(BASE_DIR, f"celleval_{b}"), ""))
+    # ⚠️ THE ORIGINAL GLOB ONLY SAW `L*` AND `D0*`, so this file silently omitted every arm
+    # of the schedule, VICReg, latent, recon-split and dispersion campaigns -- including the
+    # campaign BEST. A scoreboard that is missing the best arm is worse than no scoreboard,
+    # so the families are enumerated explicitly and each one names the question it answers.
     for key, sub in (("ours_nocal", "celleval_model_nocal"), ("ours_cal", "celleval_model_cal")):
         rows = []
         for d in sorted(glob.glob("runs/rhj_splithalf/L*__*")) + sorted(glob.glob("runs/rhj_splithalf/D0*__*")):
@@ -86,6 +91,33 @@ def collect():
             ("**STATE**", "compet_state_s42", "headline"),
             ("**CellFlow**", "compet_cellflow_s42", "headline")]:
         out["competitors"].append((lbl, agg(f"runs/rhj_splithalf/{dirn}", "celleval_model_nocal"), note))
+    # --- the rest of the campaign, by family. Each arm is labelled with what it VARIES,
+    # because `W22` says nothing and "Q02 base, 90 ep, eta_min 1e-6" says everything.
+    FAMILIES = [
+        ("campaign_sched", "W", "epochs x eta_min (F-sched2)"),
+        ("campaign_sched", "Y", "extended schedule (F-sched3)"),
+        ("campaign_sched", "E", "60-epoch schedule (F-sched1)"),
+        ("campaign_reg", "V", "VICReg latent terms (F-vicreg2)"),
+        ("campaign_reg", "X", "VICReg x schedule compounding (F-vicreg3)"),
+        ("campaign_reg", "Z", "dispersion terms (F-disp1)"),
+        ("campaign_loss", "Q", "latent losses on M06 (F-latent4/6)"),
+        ("campaign_loss", "M", "dcos/delta_mag scale-match (F-loss7/8)"),
+        ("campaign_loss", "G", "split reconstruction (F-recon3/4)"),
+        ("campaign_loss", "T", "latent losses at 0.01x (F-latent5)"),
+    ]
+    for key, prefix, what in FAMILIES:
+        rows = []
+        for d in sorted(glob.glob(f"runs/rhj_splithalf/{prefix}[0-9][0-9]__*")):
+            arm, tag = os.path.basename(d).split("__", 1)
+            r = agg(d, "celleval_model_nocal")
+            if r:
+                rows.append((f"`{arm}` {tag.replace('_s42', '')}", r, what,
+                             _mean(r[1]["pearson_delta"])))
+        out.setdefault(key, []).extend((a_, r, n) for a_, r, n, _ in
+                                       sorted(rows, key=lambda x: -x[3]))
+    for key in ("campaign_sched", "campaign_reg", "campaign_loss"):
+        out[key] = sorted(out.get(key, []),
+                          key=lambda t: -_mean(t[1][1]["pearson_delta"]))
     out["emission"].append(("none (`model_nocal`)", agg(REF, "celleval_model_nocal"), "the default"))
     out["emission"].append(("calibration only (`model_cal`)", agg(REF, "celleval_model_cal"), "control-fit quantile"))
     from occam.vcell.panel.celleval_v1 import _read_agg
@@ -135,6 +167,14 @@ def main(argv=None):
             ("baselines", "Baselines — model-independent anchors", "Read every model number against these, never against 0."),
             ("competitors", "Competitors — retrained on our data, our axis, our splits", "⚠️ None of these reproduces the method's published figure; see `docs/rhj_competitors_results.md` for each arm's deliberate deviations."),
             ("ours_nocal", "Our arms — UNCALIBRATED (`model_nocal`), the reportable table", "Loss composition and delta-cosine sweep, seed 42."),
+            ("campaign_sched", "Schedule arms — epochs x `eta_min`",
+             "F-sched1/2/3. `epochs` is the strongest lever in the campaign; `eta_min` is noise "
+             "inside 1e-7…1e-4 and a real gain at 3e-4. The campaign BEST lives here."),
+            ("campaign_reg", "Regulariser arms — VICReg and the dispersion terms",
+             "F-vicreg2/3, F-disp1. VICReg helps at 30 epochs and hurts at 60–90; the "
+             "dispersion terms hold per-cell spread at parity (mechanism verified in training)."),
+            ("campaign_loss", "Loss-composition arms — latent, scale-match, split reconstruction",
+             "F-latent4/5/6, F-loss7/8, F-recon3/4. These produced the three bases M03/M06/Q02."),
             ("ours_cal", "Our arms — CALIBRATED (`model_cal`), same checkpoints", "Shown because it was measured, NOT because it should be used."),
             ("emission", "Post-hoc emission treatments on `s313`", "⚠️ split 00 only for the NB rows (n=1)."),
     ]:

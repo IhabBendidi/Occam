@@ -39,7 +39,7 @@ ANCHOR_TAGS = ("ctrlmean", "ctrlcell")
 # be named like an anchor -- otherwise the anchor
 # requirement below could be satisfied by a signal-carrying arm, which is exactly the
 # weakening this file exists to prevent.
-REFERENCE_TAGS = ("experimental", "meanpert", "transfer")
+REFERENCE_TAGS = ("experimental", "meanpert", "transfer", "sum_of_singles")
 
 Arm = Tuple[str, np.ndarray, np.ndarray]
 
@@ -214,6 +214,12 @@ def build_arms(
     # have it.
     if "transfer" in extra:
         arms.append(("transfer", np.asarray(extra["transfer"], np.float32), labels))
+    # `sum_of_singles` is the ADDITIVITY baseline for combinatorial perturbations
+    # (norman_combo). It is placed before `meanpert` for the same reason `transfer` is: it is
+    # the strong non-learned reference on that benchmark, so a truncated run must have it.
+    if "sum_of_singles" in extra:
+        arms.append(("sum_of_singles",
+                     np.asarray(extra["sum_of_singles"], np.float32), labels))
     if "meanpert" in extra:
         arms.append(("meanpert", np.asarray(extra["meanpert"], np.float32), labels))
 

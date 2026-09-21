@@ -845,6 +845,99 @@ def load_group_means(mean_dir: str, device, dtype=torch.float32, sources: Option
     return index, means, ctrl_means, group_line
 
 
+def load_group_dispersion(disp_dir: str, index: dict, n_groups: int, device,
+                          dtype=torch.float32, sources: Optional[set] = None):
+    """Load cache/pert_disp/*.npz and ALIGN it row-for-row with `load_group_means`.
+
+    `index` is the dict `load_group_means` returned -- (source, cell_line, pert) -> row. The
+    dispersion tables are keyed the same way, but a positional concatenation would only match
+    by accident: it would silently depend on the glob order of two directories. So every row
+    is placed through `index`, and a key the means table does not know is DROPPED rather than
+    appended (it has no reference mean, so no term could use it).
+
+    Returns (gvar, rad_mean, rad_std, cos_mean, cos_std, n_cells), each row-aligned to
+    `means`, with NaN/0 rows for groups the dispersion table could not define (n_cells < 2).
+    `n_cells` is the gate: a term MUST drop rows whose group has n_cells < 2.
+    """
+    d = Path(disp_dir)
+    files = sorted(d.glob("*.npz"))
+    if sources is not None:
+        files = [f for f in files if f.stem in sources]
+    if not files:
+        raise FileNotFoundError(
+            f"no dispersion tables in {d} (run scripts/pert_group_dispersion.py)")
+    gvar = None
+    rad_m = torch.full((n_groups,), float("nan"))
+    rad_s = torch.full((n_groups,), float("nan"))
+    cos_m = torch.full((n_groups,), float("nan"))
+    cos_s = torch.full((n_groups,), float("nan"))
+    ncell = torch.zeros(n_groups, dtype=torch.int64)
+    placed = 0
+    for f in files:
+        src = f.stem
+        z = np.load(f, allow_pickle=True)
+        keys = [str(k) for k in z["keys"]]
+        rows, dst = [], []
+        for i, k in enumerate(keys):
+            ln, pt = k.split("|", 1)
+            j = index.get((src, ln, pt))
+            if j is not None:
+                rows.append(i); dst.append(j)
+        if not dst:
+            continue
+        ri = np.asarray(rows); di = torch.from_numpy(np.asarray(dst, dtype=np.int64))
+        if gvar is None:
+            gvar = torch.zeros(n_groups, z["gvar"].shape[1], dtype=torch.float32)
+        gvar[di] = torch.from_numpy(np.asarray(z["gvar"][ri], dtype=np.float32))
+        rad_m[di] = torch.from_numpy(np.asarray(z["rad_mean"][ri], dtype=np.float32))
+        rad_s[di] = torch.from_numpy(np.asarray(z["rad_std"][ri], dtype=np.float32))
+        cos_m[di] = torch.from_numpy(np.asarray(z["cos_mean"][ri], dtype=np.float32))
+        cos_s[di] = torch.from_numpy(np.asarray(z["cos_std"][ri], dtype=np.float32))
+        ncell[di] = torch.from_numpy(np.asarray(z["n_cells"][ri], dtype=np.int64))
+        placed += len(dst)
+    if gvar is None or placed == 0:
+        raise RuntimeError(
+            f"dispersion tables in {d} share NO group key with the group-mean index "
+            f"({len(index)} groups). One of the two was built against a different axis, "
+            f"target_sum or pert column -- refusing to train on an all-zero target.")
+    ok = int((ncell >= 2).sum())
+    print(f"  [group-disp] {placed:,}/{len(index):,} groups placed, {ok:,} with n>=2, "
+          f"gvar {tuple(gvar.shape)} "
+          f"({gvar.numel() * 4 / 1e9:.2f} GB) from {len(files)} file(s)", flush=True)
+    m = ncell >= 2
+    # ⚠️ OVER PRESENT GENES ONLY. The table is on the 44,728-gene ENCODER axis while each
+    # source measures ~9,000 of them, so a mean over all columns is diluted ~4x by structural
+    # zeros and reads as a much smaller dispersion than the data has (0.022 vs 0.096-0.126).
+    _sd = gvar[m].clamp(min=0).sqrt()
+    _present = _sd > 0
+    _std = float(_sd[_present].mean()) if bool(_present.any()) else float("nan")
+    print(f"  [group-disp] REAL dispersion (present genes only): per-gene std {_std:.4f} · "
+          f"||delta|| {float(rad_m[m].mean()):.3f} ± {float(rad_s[m].mean()):.3f} · "
+          f"cos(cell delta, group delta) {float(cos_m[m].mean()):.4f} "
+          f"± {float(cos_s[m].mean()):.4f}", flush=True)
+    # ⚠️ NaN OUT OF THE GENE TABLE. Groups with n_cells < 2 carry NaN (no dispersion is
+    # defined), and the gene-variance term masks per ELEMENT, where `0 * NaN = NaN` poisons the
+    # whole batch: the smoke test dropped 1 batch of 312 per epoch to the nan-guard and the
+    # epoch's diagnostic read NaN. `n_cells >= 2` stays the real gate; this only makes the
+    # arithmetic safe. The per-group SCALARS keep their NaN: they are consumed by row
+    # INDEXING, where a masked row genuinely disappears, and a silent 0 there would read as
+    # "this group has zero spread" -- the claim these terms exist to falsify.
+    # ⚠️ ALL OF THEM, not just the gene table. The first version left the per-group SCALARS
+    # NaN on the argument that they are consumed by row indexing -- but the indexing happens
+    # AFTER the arithmetic, so a NaN row still flows through a subtraction or a division and
+    # `0 * NaN = NaN` poisons the batch's GRADIENT while the loss stays finite. That cost two
+    # smoke iterations (`[nan-guard] batch 77: NON-FINITE GRADIENT with a FINITE loss`).
+    # `n_cells >= 2` remains the real gate, and the consumers now slice rows before gathering;
+    # this is the last line of defence.
+    gvar = torch.nan_to_num(gvar, nan=0.0)
+    rad_m = torch.nan_to_num(rad_m, nan=0.0)
+    rad_s = torch.nan_to_num(rad_s, nan=0.0)
+    cos_m = torch.nan_to_num(cos_m, nan=0.0)
+    cos_s = torch.nan_to_num(cos_s, nan=0.0)
+    to = lambda t: t.to(device=device, dtype=dtype)
+    return (to(gvar), to(rad_m), to(rad_s), to(cos_m), to(cos_s), ncell.to(device))
+
+
 def dense_to_csr(x: torch.Tensor) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Dense (n, G) float tensor -> (vals, cols int32, rowptr) with rowsum returned separately by caller."""
     xn = x.numpy() if isinstance(x, torch.Tensor) else np.asarray(x)

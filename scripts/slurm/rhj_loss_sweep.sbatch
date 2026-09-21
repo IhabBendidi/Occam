@@ -96,7 +96,23 @@ fi
 # ⚠️ BASE is read even though it is documentation only. With `read -r`, the LAST variable
 # absorbs every remaining field -- so omitting it put "1e-7<TAB>M03" into RETA, which corrupted
 # both the run suffix and the --set value. Caught by the tab in a run directory name.
-read -r ARM LOSS NBW NBS DCW MAGW LLT LLW LCW LCT RSP RCW RDW RSM RDT VVW VCW VGA VTG REP RETA BASE <<<"$ROW"
+# ⚠️ FIELD-COUNT GUARD. `read -r` gives the LAST variable every remaining field, so a grid
+# with one unexpected column does not fail -- it silently concatenates into the last one. That
+# is exactly how "1e-7<TAB>M03" ended up inside RETA, corrupting both the run suffix and the
+# --set value with no error. Refuse instead.
+_NF="$(printf '%s\n' "$ROW" | awk -F'\t' '{print NF}')"
+if [ "${_NF:-0}" -gt 25 ]; then
+    echo "grid row $IDX has $_NF tab-separated fields; this launcher reads at most 25. A new" >&2
+    echo "column must be added to the read below, or it lands inside GVW unnoticed." >&2
+    exit 1
+fi
+# The three F-disp1 columns (DCC RSW GVW) are appended AFTER `BASE`, so every 22-column grid
+# still parses unchanged and they default to 0.0 -- the no-op value all 570 runs before
+# 2026-09-21 used.
+read -r ARM LOSS NBW NBS DCW MAGW LLT LLW LCW LCT RSP RCW RDW RSM RDT VVW VCW VGA VTG REP RETA BASE DCC RSW GVW <<<"$ROW"
+DCC="${DCC:-0.0}"   # dcos_conc_weight      -- calibrate per-cell effect-direction alignment
+RSW="${RSW:-0.0}"   # radial_spread_weight  -- match the spread of ||pred - ctrl_mean||
+GVW="${GVW:-0.0}"   # gene_var_weight       -- match per-gene within-group variance
 BASE="${BASE:-}"   # consumed so it cannot leak into RETA
 VVW="${VVW:-0.0}"      # vicreg_var_weight
 VCW="${VCW:-0.0}"      # vicreg_cov_weight
@@ -154,6 +170,9 @@ if [ "${RSP}" = "true" ]; then
 fi
 # ⚠️ The schedule MUST be in the identity. Without it a 60-epoch arm would write to the same
 # directory as its 30-epoch namesake and silently overwrite it.
+if [ "${DCC}" != "0.0" ] && [ "${DCC}" != "0" ]; then SUFFIX="${SUFFIX}_dconc${DCC}"; fi
+if [ "${RSW}" != "0.0" ] && [ "${RSW}" != "0" ]; then SUFFIX="${SUFFIX}_rspread${RSW}"; fi
+if [ "${GVW}" != "0.0" ] && [ "${GVW}" != "0" ]; then SUFFIX="${SUFFIX}_gvar${GVW}"; fi
 if [ -n "${EPOCHS}" ]; then SUFFIX="${SUFFIX}_e${EPOCHS}"; fi
 if [ -n "${ETA_MIN}" ]; then SUFFIX="${SUFFIX}_em${ETA_MIN}"; fi
 SUFFIX="${SUFFIX}_s${SEED}"
@@ -167,6 +186,7 @@ echo "varied  : loss=${LOSS} nbw=${NBW} nbs=${NBS} dcos=${DCW} dmag=${MAGW}"
 echo "latent  : type=${LLT} mse_w=${LLW} cos_w=${LCW} cos_target=${LCT}"
 echo "sched   : epochs=${EPOCHS:-<config>} eta_min=${ETA_MIN:-<config>} save_every=${SAVE_EVERY:-0}"
 echo "vicreg  : var=${VVW} cov=${VCW} gamma=${VGA} target=${VTG}"
+echo "disp    : dcos_conc=${DCC} radial_spread=${RSW} gene_var=${GVW}"
 echo "recon   : split=${RSP} mode=${RSM} delta_target=${RDT} ctrl_w=${RCW} delta_w=${RDW}"
 echo "frozen  : adjacency_map batch=2048 lr=1e-3 dlr=1e-3 cos=0.5 dpo=false"
 echo "          film=multiplicative_only fh=256 fmf=true epochs=30 seed=${SEED}  (= arm s313)"
@@ -187,6 +207,8 @@ cat > "${RUN_DIR}/slurm_job.json" <<JSON
  "latent_cos_weight": "${LCW}", "latent_cos_target": "${LCT}",
  "recon_split": "${RSP}", "recon_split_mode": "${RSM}", "recon_delta_target": "${RDT}",
  "recon_ctrl_weight": "${RCW}", "recon_delta_weight": "${RDW}",
+ "dcos_conc_weight": "${DCC}", "radial_spread_weight": "${RSW}",
+ "gene_var_weight": "${GVW}",
  "slurm_array_job_id": "${SLURM_ARRAY_JOB_ID:-}", "slurm_task_id": "${IDX}",
  "qos": "${SLURM_JOB_QOS:-}", "host": "$(hostname)", "started": "$(date -Is)"}
 JSON
@@ -216,6 +238,9 @@ python -m occam.train --config "$CONFIG" --stages vcell \
     --set "stages.vcell.loss.vicreg_cov_weight=${VCW}" \
     --set "stages.vcell.loss.vicreg_gamma=${VGA}" \
     --set "stages.vcell.loss.vicreg_target=${VTG}" \
+    --set "stages.vcell.loss.dcos_conc_weight=${DCC}" \
+    --set "stages.vcell.loss.radial_spread_weight=${RSW}" \
+    --set "stages.vcell.loss.gene_var_weight=${GVW}" \
     --set "stages.vcell.graph.data_perts_only=false" \
     --set "stages.vcell.interaction.interaction_type=film" \
     --set "stages.vcell.interaction.film_mode=multiplicative_only" \

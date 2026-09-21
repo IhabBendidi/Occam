@@ -82,9 +82,13 @@ def load_frozen(panel_dir: str, split_index: int, encoder_gene_names=None):
         cohort = json.load(fh)
     with open(os.path.join(panel_dir, "splits_manifest.json")) as fh:
         man = json.load(fh)
-    if man["cohort_sha256"] != cohort["cohort_sha256"]:
+    # ⚠️ The hash cross-check is the guard against a panel built from one cohort and split
+    # from another. `norman_combo`'s manifest does not carry the key (its builder writes the
+    # cohort hash only into cohort.json), so a MISSING key is tolerated while a MISMATCHED
+    # one still refuses -- silence and disagreement are different things.
+    if "cohort_sha256" in man and man["cohort_sha256"] != cohort["cohort_sha256"]:
         raise SystemExit("cohort.json and splits_manifest.json disagree on the cohort hash; "
-                         "rebuild with scripts/build_splithalf_panel.py")
+                         "rebuild the panel")
 
     X = np.asarray(z["X"], dtype=np.float32)
     labels = np.asarray(z["labels"], dtype=str)
@@ -131,7 +135,16 @@ def load_frozen(panel_dir: str, split_index: int, encoder_gene_names=None):
     if os.path.isfile(td_path):
         tz = np.load(td_path, allow_pickle=True)
         transfer = {str(p): tz["deltas"][i] for i, p in enumerate(tz["perts"])}
-    return base, labels, split, cohort, grand, man, transfer
+
+    # norman_combo: the ADDITIVITY baseline, `delta_A + delta_B` per pair. Absent on
+    # rhj_fewshot (single-gene perturbations have nothing to compose), present on any
+    # combinatorial panel — so its absence is normal and its presence adds one arm.
+    sos_path = os.path.join(panel_dir, "sum_of_singles.npz")
+    sos = None
+    if os.path.isfile(sos_path):
+        sz = np.load(sos_path, allow_pickle=True)
+        sos = {str(p): sz["deltas"][i] for i, p in enumerate(sz["perts"])}
+    return base, labels, split, cohort, grand, man, transfer, sos
 
 
 def load_model(ckpt_path: str, device: str, output_activation=None):
@@ -291,7 +304,14 @@ def main() -> int:
         # with the identity, purely to draw `ctrl_used` -- and it draws it from the SAME
         # seeded RNG the model runs use, so `ctrl_used` is bit-identical across every run
         # of this split and `meanpert`/`transfer` cancel the model's control noise exactly.
-        arms = ["ctrlmean", "ctrlcell", "experimental", "transfer", "meanpert"]
+        # ⚠️ Which reference arms EXIST depends on the panel, so the list is resolved
+        # against the artifact below rather than hardcoded: `transfer` needs
+        # transfer_deltas.npz (rhj_fewshot has it; a single-cell-line combinatorial panel
+        # cannot) and `sum_of_singles` needs sum_of_singles.npz (norman_combo has it;
+        # single-gene perturbations have nothing to compose). Requesting an arm the panel
+        # cannot build used to leave it silently absent from the record, which reads as
+        # "scored 0" rather than "not applicable".
+        arms = ["ctrlmean", "ctrlcell", "experimental", "meanpert"]
         if args.arms:
             want = [a.strip() for a in args.arms.split(",") if a.strip()]
             unknown = sorted(set(want) - set(arms))
@@ -308,11 +328,20 @@ def main() -> int:
         encoder_genes = trainer.encoder_gene_names
         calibrate, batch_size = args.calibrate, args.batch_size
 
-    base, labels, split, cohort, grand, man, transfer = load_frozen(
+    base, labels, split, cohort, grand, man, transfer, sos = load_frozen(
         args.panel_dir, args.split, encoder_gene_names=encoder_genes)
+
+    if args.mode == "reference" and not args.arms:
+        # resolved now that the panel is loaded: only the arms it can actually build
+        if transfer is not None:
+            arms.insert(3, "transfer")
+        if sos is not None:
+            arms.append("sum_of_singles")
+        print(f"[splithalf] reference arms for this panel: {arms}")
     print(f"[splithalf] panel {base.real_X_model.shape[0]:,} x {base.n_keep:,} "
           f"(encoder width {base.n_enc:,}) · cohort {cohort['n_perts']} · "
-          f"split {split.index} · benchmark {man['benchmark_sha256'][:16]}")
+          f"split {split.index} · benchmark "
+          f"{str(man.get('benchmark_sha256') or man.get('gene_axis_sha256') or 'n/a')[:16]}")
 
     if args.probe or args.mode == "reference":
         # Prediction = the control input, verbatim. No checkpoint, no graph, and therefore
@@ -348,6 +377,7 @@ def main() -> int:
         model=model, pert2id=pert2id, device=device, predict_fn=predict_fn,
         grand_mean=grand, grand_mean_info=man.get("train_grand_mean"),
         transfer_deltas=transfer, transfer_info=man.get("transfer"),
+        sos_deltas=sos, sos_info=man.get("sum_of_singles"),
         calibrate=calibrate, center_delta=bool(args.center_delta),
         batch_size=batch_size, seed=args.seed,
         probe=args.probe,

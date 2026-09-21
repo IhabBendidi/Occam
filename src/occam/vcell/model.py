@@ -447,16 +447,33 @@ class VirtualCellModel(nn.Module):
             ).unsqueeze(-1)
             pert_z = z_graph[pert_flat] * pert_mask  # (B, pert_latent_dim)
         else:
-            # Multi-pert fallback — sum embeddings per sample
-            pert_z = torch.zeros(batch_size, self.pert_latent_dim, device=device)
+            # ─── MULTI-PERT: sum the graph embeddings of a sample's perturbations ─────────
+            # This is the COMPOSITION OPERATOR for combinatorial perturbations (e.g. Norman's
+            # 131 double-perturbation pairs): a double is modelled as the sum of its parts in
+            # graph-embedding space. It is the architectural assumption such a benchmark
+            # exists to test, so it is worth naming rather than leaving as a "fallback".
+            #
+            # ⚠️ VECTORISED. The original implementation was a Python double loop building
+            # `pert_z[i] = pert_z[i] + z_graph[p]` one autograd node at a time -- 2 x
+            # batch_size graph ops per forward at batch 2048, written as a rarely-taken
+            # fallback and never for a training run. `index_add_` does it in one kernel and is
+            # mathematically identical (a sum is a sum, and index_add_ is deterministic for
+            # a fixed index order on a single device).
+            flat, rows = [], []
+            for i, perts in enumerate(pert_indices):
+                for p in perts:
+                    if p >= 0:
+                        flat.append(p); rows.append(i)
             pert_mask = torch.tensor(
                 [float(any(p >= 0 for p in perts)) for perts in pert_indices],
                 device=device,
             ).unsqueeze(-1)
-            for i, perts in enumerate(pert_indices):
-                for p in perts:
-                    if p >= 0:
-                        pert_z[i] = pert_z[i] + z_graph[p]
+            pert_z = torch.zeros(batch_size, self.pert_latent_dim, device=device,
+                                 dtype=z_graph.dtype)
+            if flat:
+                idx_row = torch.as_tensor(rows, device=device, dtype=torch.long)
+                idx_pert = torch.as_tensor(flat, device=device, dtype=torch.long)
+                pert_z = pert_z.index_add(0, idx_row, z_graph[idx_pert])
 
         # 3b. F181/E3 source + modality conditioning (no-op unless --source_cond is set)
         pert_z = self._condition_pert(pert_z, pert_mask, source_ids, modality_ids, device)

@@ -1,0 +1,21 @@
+# Y-GRID EVAL -- the 6 extended-schedule arms (Q02 base, epochs 120/150 x eta_min 1e-5/1e-4/3e-4).
+#
+# QUESTION: F-sched2 found the epochs axis positive in 8/8 paired contrasts and still
+# decelerating at 60->90 (+0.0025..+0.0083). Is it live past 90? Pre-registration in
+# scripts/grids/rhj_epochs_ext.tsv.
+#
+# NOCAL ONLY (the calibrated mode is retired, user directive 2026-09-21). Protocol
+# best_model.pth, per F-ckpt4 (validation selects the epoch well: Spearman +0.992..+0.993).
+#
+# ⚠️ Read against W22 0.3985 / W23 0.3959 / W19=E3 0.3933 -- all Q02, same corpus, 5/5 splits.
+# 30 tasks = 6 arms x 5 splits. THROTTLE %6 (F-infra1 pdex shm race; %12 hit 50% marginal).
+#
+#   GRID=configs/rhj_Y_eval.tsv CALIBRATE=none \
+#   sbatch --qos=vco --wckey=vco --array=0-29%6 scripts/slurm/rhj_splithalf_models.sbatch
+arm_id	kind	tag
+Y01	loss	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_e120_em1e-5_s42
+Y02	loss	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_e120_em1e-4_s42
+Y03	loss	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_e120_em3e-4_s42
+Y04	loss	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_e150_em1e-5_s42
+Y05	loss	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_e150_em1e-4_s42
+Y06	loss	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_e150_em3e-4_s42

@@ -199,6 +199,23 @@ def score_arm(tag: str, matrix: np.ndarray, arm_labels: np.ndarray, panel: Panel
             import shutil
             shutil.copyfile(produced, cache_path)
             print(f"[panel] cached real-side DE -> {os.path.basename(cache_path)}")
+
+    # F-disp1 DIAGNOSTICS, printed next to every arm's metrics. A score cannot say whether a
+    # dispersion term took effect -- all four scored metrics are pseudobulk -- so the two
+    # quantities that can are reported here and folded into metrics.json under `disp_*`.
+    # ⚠️ Costs one read of the two scored h5ads plus pred_de.csv (~20-40 s on this panel).
+    # Set OCCAM_SKIP_DISP_DIAG=1 to skip it; the scores are unaffected either way.
+    if os.environ.get("OCCAM_SKIP_DISP_DIAG") != "1":
+        try:
+            from occam.vcell.panel.dispersion import report as _disp_report
+            _real_de = cache_path if os.path.isfile(cache_path) else os.path.join(
+                arm_dir, "real_de.csv")
+            for _k, _v in _disp_report(tag, pred_path, target_path, arm_dir, _real_de).items():
+                metrics[f"disp_{_k}"] = _v
+        except Exception as _e:                                       # noqa: BLE001
+            # A diagnostic must never fail a scored arm.
+            print(f"[panel] ⚠️ {tag}: dispersion diagnostic failed "
+                  f"({type(_e).__name__}: {_e}); scores are unaffected", flush=True)
     return metrics, arm_dir, target_path
 
 

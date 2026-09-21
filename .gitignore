@@ -150,3 +150,15 @@ competitors/**/cell-eval-outdir/
 reproducibility/**/*.h5ad
 reproducibility/**/*.torch
 reproducibility/**/*.npy
+
+# ---- norman_combo (Norman 2019 / GSE133344) ----------------------------------------------
+# The GEO downloads and the derived per-gene statistics: 3.2 GB of primary data plus a 1.2 GB
+# dispersion table. Both are REBUILDABLE from the accession by
+# scripts/norman/norman_gene_stats.py and scripts/pert_group_dispersion.py, and neither
+# belongs in a git history.
+data/external/
+cache/
+# The panel MATRIX is 150 MB -- above GitHub's 100 MB hard limit -- and is a pure function of
+# the source h5ad + axis.npz + the builder. Git keeps the benchmark DEFINITION (axis, cohort,
+# splits, baselines, manifest, CARD); the matrix lives on HuggingFace beside the .h5ad.
+data/benchmarks/**/panel.npz

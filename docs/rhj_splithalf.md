@@ -3,6 +3,865 @@
 **This file owns every number that comes out of the split-half protocol.** Written as it is
 read, partial results labelled partial, superseded numbers kept with the correction beside
 them.
+## ⭐⭐⭐ F-sched3 — **COMPLETE. `eta_min` 3e-4 IS a real direction, and it was outside the W grid's band. `Y06` (Q02, 150 ep, `eta_min` 3e-4) = 0.4043 is the first arm above 0.40 and the new campaign best.**
+
+**Objective.** Best model on SEEN perturbations in an UNSEEN context: 611 held-out HepG2
+perturbations predicted from one half-B control cell, split-half paired `pearson_delta`,
+cell-eval 0.6.0, uncalibrated.
+
+**Question.** F-sched2 found the epochs ladder positive in 8/8 contrasts but decelerating
+(30→60 +0.0116…+0.0264, 60→90 +0.0025…+0.0083). Is it live past 90?
+
+**Varied:** `epochs` ∈ {120, 150} × `eta_min` ∈ {1e-5, 1e-4, **3e-4**}. **Held fixed:** the Q02
+loss composition exactly as `W23` (smooth_l1 + dcos 0.5 + delta_mag 0.01363 + latent MSE
+0.0044), batch 2048, lr 1e-3, decoder_lr 1e-3, seed 42, arm s313 otherwise. Grid and
+pre-registration: `scripts/grids/rhj_epochs_ext.tsv`. Jobs `18252962` (train, 6/6 COMPLETED,
+1:38–2:06 wall) → `18263829` (eval, 60/60 tasks COMPLETED, no pdex failures).
+
+**Anchors:** `experimental` 0.3722 (mae 0.0257, ovl@N 0.1942, disc_l1 0.7821) · Q02 (30 ep)
+0.3783 · `E3` (60 ep) 0.3933 · `W23` (90 ep, 1e-5) 0.3959 · `W22` (90 ep, 1e-6) 0.3985.
+
+### The result: **0.4043**, and every metric except `mae` at its campaign maximum
+
+| arm | epochs | `eta_min` | n | `pearson_delta` ↑ | `mae` ↓ | `ovl@N` ↑ | `disc_l1` ↑ |
+|---|---|---|---|---|---|---|---|
+| **`Y06`** | **150** | **3e-4** | 5/5 | **0.4043** ± 0.0019 | 0.0215 | **0.0946** | **0.7288** |
+| `Y03` | 120 | **3e-4** | 5/5 | **0.4015** ± 0.0018 | 0.0217 | 0.0919 | 0.7247 |
+| `Y05` | 150 | 1e-4 | 5/5 | **0.3983** ± 0.0023 | 0.0217 | 0.0931 | 0.7223 |
+| `Y01` | 120 | 1e-5 | 5/5 | **0.3978** ± 0.0028 | 0.0217 | 0.0889 | 0.7141 |
+| `Y04` | 150 | 1e-5 | 5/5 | **0.3963** ± 0.0021 | 0.0217 | 0.0913 | 0.7176 |
+| `Y02` | 120 | 1e-4 | 5/5 | **0.3960** ± 0.0021 | 0.0223 | 0.0904 | 0.7221 |
+
+`Y06` is +0.0058 on `pearson_delta`, +0.0059 on `ovl@N` and +0.0098 on `disc_l1` over `W22`,
+the previous best. `ovl@N` 0.0946 and `disc_l1` 0.7288 are campaign maxima. `mae` 0.0215 ties
+the best Q02-family value.
+
+### ⚠️ CORRECTION TO F-sched2 — `eta_min` is a direction after all, ABOVE the band it tested
+
+F-sched2 concluded that `eta_min` "is not a tunable direction — it is ±0.003 of seed-like
+variance", from a grid spanning **1e-7 … 1e-4**. That conclusion is correct *inside that band*
+and wrong as a general claim, because the band was too low. Extend it one step to **3e-4** and
+the ordering becomes consistent at BOTH lengths:
+
+| epochs | 1e-5 | 1e-4 | **3e-4** |
+|---|---|---|---|
+| 120 | 0.3978 | 0.3960 | **0.4015** |
+| 150 | 0.3963 | 0.3983 | **0.4043** |
+
+| contrast | `pearson_delta` | `mae` ↓ | `ovl@N` | `disc_l1` | sign |
+|---|---|---|---|---|---|
+| `Y03` (120, 3e-4) − `W22` (90, 1e-6) | **+0.0030** | +0.0002 | **+0.0052** | **+0.0090** | 4/5 |
+| `Y04` (150, 1e-5) − `W22` | −0.0021 | +0.0002 | +0.0045 | +0.0020 | 1/5 |
+
+**3e-4 wins at 120 and at 150; the two lower floors swap places between the two lengths.** So
+the *within-band* non-monotonicity F-sched2 measured was real noise, and there is ALSO a real
+gradient at the top of the range that the band could not see. With lr = 1e-3, 3e-4 means the
+learning rate never falls below ~0.3x peak — a materially different regime from the 1e-7…1e-4
+arms, all of which decay to ≤0.1x.
+
+### ⚠️ The plateau depends on the FLOOR — so "90 is the plateau" was wrong
+
+| `eta_min` | 90 → 120 | 120 → 150 |
+|---|---|---|
+| 1e-5 | +0.0019 (4/5) | **−0.0014 (0/5)** ← over-trains |
+| 1e-4 | +0.0003 (3/5) | **+0.0023 (4/5)** |
+| **3e-4** | — (not run at 90) | **+0.0028 (5/5)** ← still climbing |
+
+At a LOW floor the schedule saturates and then reverses; at a HIGH floor it is still gaining at
+150 epochs. This is a genuine interaction, and it retracts the partial reading recorded earlier
+in this finding (*"the ladder has essentially flattened… 90 is approximately the plateau"*),
+which was computed from the 1e-5 and 1e-4 columns before the 3e-4 column existed. **Neither
+knob can be tuned alone** — pre-registered branch 3 of the W grid, which the W grid itself
+could not exhibit.
+
+✅ **`ovl@N` and `disc_l1` rise monotonically with length at every floor** (+0.0024…+0.0027 and
++0.0002…+0.0041 for 120→150), even where `pearson_delta` falls. `mae` improves slightly with
+length at the two higher floors (−0.0002…−0.0005, 0/5 positive = 5/5 better) and worsens at
+1e-5. The metrics do not agree on the optimum; `Y06` happens to lead on three of four.
+
+### What this opens (NOT run — proposal only)
+
+The best arm sits at the EDGE of both axes: the longest schedule and the highest floor tested,
+with both margins still positive (+0.0028 for 120→150 at 3e-4, +0.0058 over `W22`). The
+untested directions are **180+ epochs at 3e-4** and **a floor above 3e-4** (5e-4 is 0.5x lr;
+1e-3 would be no decay at all and is not a candidate). ⚠️ Both are endpoint optima, which
+F-loss3 flagged as the signature of a knob whose range is wrong rather than a finished tuning.
+
+## ⛔⛔⛔ F-disp3 — **CORRECTION TO F-disp2's MECHANISM CLAIM. The terms hit a PROXY, not the dispersion. Measured properly, dispersion got WORSE — `radial_spread` 8× worse — and the FDR-significant gene count did not improve at all.**
+
+**Asked directly ("for the runs that didn't collapse, did we improve the number of
+FDR-significant genes?"), so measured rather than recalled. The answer is no, and the reason
+invalidates a claim I made two findings ago.**
+
+### The FDR-significant gene count did not move
+
+Eval-side diagnostic (`disp_*` in each arm's `metrics.json`, mean over splits, `model_nocal`):
+
+| arm | term | splits | std_pred/std_real | nsig pred | nsig real | nsig RATIO |
+|---|---|---|---|---|---|---|
+| `W23` | control | — | **0.026** (F-disp1) | ~3,475 | 113 | **30.8** |
+| `Z01` | `dcos_conc` 1× | 5 | 0.0446 | 3,847 | 114 | 33.9 |
+| `Z02` | `dcos_conc` 5× | 5 | 0.0415 | 4,116 | 114 | 36.2 |
+| `Z03` | `radial_spread` 1× | 4 | 0.0381 | 3,447 | 113 | 30.4 |
+| `Z04` | `radial_spread` 5× | 5 | 0.0680 | 3,432 | 114 | 30.2 |
+| `Z05` | `gene_var` 1× | 5 | 0.0337 | 3,466 | 114 | 30.5 |
+| `Z06` | `gene_var` 5× | 5 | 0.0413 | 3,505 | 114 | 30.8 |
+
+**Every arm is still ~30× over-calling significance and still at 3–7% of the real dispersion.**
+The best arm on this axis (`Z04`, 0.0680) is 2.6× the control's 0.026 and still 15× short of 1.0.
+
+### ⚠️ THE TRAINING DIAGNOSTIC WAS AN ARTEFACT — and I reported it as verification
+
+F-disp2 states that the training logs "confirm they DID" hold dispersion at 99–102% of real,
+and calls it "MECHANISM VERIFIED". **That was wrong.** Re-measured on the trained checkpoints
+with real single control cells (`scripts/loss_scale_disp.py`, 128 perturbations × 8 controls),
+on the SAME perturbations the terms trained on:
+
+| checkpoint | training log claimed | radial std_pred/std_real | per-gene std_pred/std_real |
+|---|---|---|---|
+| `W23` control | — | **0.2225** | **0.1079** |
+| `Z05` `gene_var` 1× | per-gene **0.9923** | 0.1548 | **0.0961** ↓ |
+| `Z03` `radial_spread` 1× | radial **0.9944** | **0.0269** ↓↓ | **0.0265** ↓↓ |
+
+**`radial_spread` made the collapse 8× WORSE than the control** (0.2225 → 0.0269) while its own
+training diagnostic read 0.9944.
+
+**The mechanism of the artefact.** Both moment terms measure spread around a **detached EMA of
+the model's own per-group mean** (`disp_ema_momentum` 0.99, ~90 updates per group per epoch).
+That centre LAGS the model, so the residual `(x − EMA)²/σ²_real` is a mixture of two things:
+genuine cell-to-cell spread *and* the model's temporal DRIFT since the EMA was formed.
+Minimising `(m2 − 1)²` can be satisfied by the drift term alone — and the optimiser took that
+route, collapsing the per-cell dispersion toward zero while keeping the proxy pinned at 1.0.
+The design note in `config.py` argued the EMA centre was needed so that a *bias* could not
+satisfy the term. It closed that hole and opened a different one.
+
+### What F-disp2's numbers do and do not mean
+
+* ✅ **The COSTS stand.** `Z01`–`Z06` really do lose 0.029–0.209 `pearson_delta` against
+  `W23`, 0/5 splits positive, monotone in weight. Those are measurements of these three terms
+  as implemented.
+* ⛔ **The CONCLUSION does not.** "The distributional hypothesis is falsified" is retracted:
+  the arms never restored dispersion, so the experiment did not test what it was built to test.
+  What is established is narrower and still useful — **these three proxy formulations cost
+  0.03–0.21 and buy nothing**, and one of them actively deepens the collapse.
+* ⛔ **"The mechanism worked and the hypothesis was wrong" is retracted.** It was the reverse:
+  the hypothesis is untested and the mechanism did not work.
+
+### What would actually test it
+
+The failure is the lagging centre, so the fix is a centre that cannot absorb drift: a **second
+forward pass on a different control cell for the same perturbation**, giving an unbiased
+within-group variance from the pair `(p₁ − p₂)²/2` with no running statistic at all. That is
+the design F-disp1's implementation note rejected as "expensive" (one extra forward on a
+subsample) in favour of the EMA. The extra forward is the honest price of measuring dispersion;
+the EMA was cheaper and measured something else.
+
+⚠️ **The lesson is about the instrumentation, not the biology.** F-loss1's rule was "a term
+that is ON and unmeasured is how DCOS burned three GPUs", and the response here was to
+instrument the terms — correctly. But the instrument was **derived from the term's own
+objective**, so it could only ever report success. An instrument must be independent of the
+thing it validates: the eval-side `disp_*` numbers, which are, disagreed with the training-side
+ones by 25× and were sitting in `metrics.json` the whole time.
+
+## ⛔⛔ F-disp2 — ⚠️ **ITS MECHANISM CLAIM IS RETRACTED BY F-disp3 ABOVE — read that first.** **COMPLETE. ALL THREE dispersion terms HURT, 6/6 arms, 0/5 splits positive on every metric.** Matching real per-cell dispersion costs −0.029 to −0.209 `pearson_delta`. The hypothesis is falsified.
+
+**Objective.** Best model on SEEN perturbations in an UNSEEN context: 611 held-out HepG2
+perturbations from one half-B control cell, split-half paired, cell-eval 0.6.0, uncalibrated.
+
+**Question.** F-disp1 measured that our per-cell predictions carry 2.6% of the real
+within-perturbation dispersion and that all four scored metrics are pseudobulk. Three terms
+were built to restore that dispersion, and the training logs confirm they DID (99–102% of real).
+Does restoring it change any of the four scores?
+
+**Varied:** which dispersion term is on (one per arm) × weight (1× / 5× parity, both measured
+against Q02's own DCOS contribution). **Held fixed:** Q02's loss composition, 90 epochs,
+`eta_min` 1e-5, seed 42 — so `W23` is the exactly-matched paired control. Grid:
+`scripts/grids/rhj_dispersion.tsv`. Jobs `18266534` (train, 6/6 clean) → `18296324` (eval, `%6`).
+
+### Every arm, against the matched control
+
+| arm | term | weight | n | `pearson_delta` ↑ | `mae` ↓ | `ovl@N` ↑ | `disc_l1` ↑ |
+|---|---|---|---|---|---|---|---|
+| **`W23`** | — (control) | — | 5/5 | **0.3959** ± 0.0031 | **0.0216** | **0.0887** | **0.7142** |
+| `Z03` | `radial_spread` | 0.512 (1×) | 4/5 ⚠️ | 0.3677 ± 0.0036 | 0.0227 | 0.0717 | 0.6721 |
+| `Z05` | `gene_var` | 0.473 (1×) | 5/5 | 0.3673 ± 0.0017 | 0.0223 | 0.0582 | 0.6798 |
+| `Z04` | `radial_spread` | 2.56 (5×) | 5/5 | 0.3557 ± 0.0021 | 0.0225 | 0.0695 | 0.6548 |
+| `Z06` | `gene_var` | 2.37 (5×) | 4/5 ⚠️ | 0.3453 ± 0.0019 | 0.0242 | 0.0589 | 0.6652 |
+| `Z01` | `dcos_conc` | 13.09 (1×) | 5/5 | **0.2024** ± 0.0016 | 0.0318 | 0.0185 | 0.5989 |
+| `Z02` | `dcos_conc` | 65.47 (5×) | 5/5 | **0.1868** ± 0.0019 | 0.0374 | 0.0173 | 0.6032 |
+
+### Paired contrasts — 24 of 24 metric-contrasts negative
+
+| arm | `pearson_delta` | `mae` ↓ | `ovl@N` | `disc_l1` | sign |
+|---|---|---|---|---|---|
+| `Z03` (radial 1×) | **−0.0287** | +0.0012 | −0.0170 | −0.0420 | 0/4 |
+| `Z05` (gene_var 1×) | **−0.0286** | +0.0007 | −0.0305 | −0.0343 | 0/5 |
+| `Z04` (radial 5×) | **−0.0402** | +0.0009 | −0.0192 | −0.0594 | 0/5 |
+| `Z06` (gene_var 5×) | **−0.0511** | +0.0026 | −0.0298 | −0.0488 | 0/4 |
+| `Z01` (dcos_conc 1×) | **−0.1935** | +0.0102 | −0.0702 | −0.1153 | 0/5 |
+| `Z02` (dcos_conc 5×) | **−0.2090** | +0.0159 | −0.0714 | −0.1110 | 0/5 |
+
+**Every arm is worse on every metric, on every split** — `mae` is worse in 5/5 (or 4/4) of each
+arm's splits, which for an ERROR metric means the sign is the same as the others. And **every
+term is monotone in its weight**: 5× is worse than 1× for all three (radial −0.0402 vs −0.0287,
+gene_var −0.0511 vs −0.0286, dcos_conc −0.2090 vs −0.1935). A dose-response on three
+independent terms is not an optimisation accident; it is the effect.
+
+### What this settles
+
+1. **The distributional hypothesis is FALSIFIED on this benchmark.** F-disp1's metric audit
+   predicted "no direct score to win through the distribution channel" and flagged that the
+   terms *could* cost `ovl@N`. The measurement is worse than that prediction: they cost every
+   metric, including the two that are pure means.
+2. **The 2.6% dispersion collapse is not a defect to repair — it is the model's optimal answer
+   to a pseudobulk objective.** Given one control cell, the score-maximising prediction is the
+   conditional MEAN; per-cell spread around it is variance the metrics only punish. Forcing the
+   spread back in is forcing the model off its own optimum, and the size of the loss tracks how
+   hard you force it.
+3. **`dcos_conc` is in a different class from the other two, exactly as the design predicted.**
+   The two moment-matching terms are mean-preserving and cost ~0.03; `dcos_conc` matches a
+   FIRST moment against an absolute target and costs ~0.20, dropping the model BELOW the
+   `transfer` baseline (0.2323) with `disc_l1` 0.599 a third of the way to the 0.5 chance floor.
+   F-disp1 already measured why: a real cell's Δ from the control mean is ~4× the perturbation
+   and mostly the cell's own identity, so instructing the model to reproduce that cosine is
+   instructing it to inject cell-identity noise into its delta.
+
+✅ **The mechanism worked; the hypothesis was wrong.** Training logs: `Z01`/`Z02` held cos at
+0.2181/0.2028 against the real 0.1992; `Z03`/`Z04` held the radial ratio at 0.9944/0.9970;
+`Z05`/`Z06` at 0.9923/1.0179 per-gene — against `W23`'s trained collapse of 0.075 / 0.22 /
+0.108. There is no version of this result that is a plumbing artefact, which is the whole
+reason the terms were instrumented before they were swept.
+
+⚠️ **What this does NOT establish.** These are all four PSEUDOBULK metrics on ONE benchmark. A
+single-cell-level metric (per-cell Wasserstein, energy distance, a discriminator) would score
+these arms differently, and nothing here says dispersion is worthless for a task that reads it.
+It says dispersion is not a lever for `rhj_fewshot`'s four metrics, and that a dispersion term
+run against a pseudobulk objective is a direct cost.
+
+✅ **`radial_spread` and `gene_var` at 1× are the cheapest way to buy realism if it is ever
+wanted**: −0.029 `pearson_delta` for a dispersion ratio of ~1.0 instead of ~0.1. That is the
+price list, not a recommendation.
+
+## ⭐⭐⭐ F-disp1 — **our per-cell predictions carry 2.6% of the real within-perturbation dispersion** (568/568 perturbations), which inflates FDR-significant genes **30.8×** — but all four scored metrics are PSEUDOBULK, so a distributional loss has no direct score to win
+
+**Objective.** Predict a perturbation's effect in a cellular context where that perturbation was
+never measured, **from a single control cell**. Headline: split-half paired `pearson_delta`,
+cell-eval 0.6.0, uncalibrated, 611 held-out HepG2 perturbations on the 6,983-gene axis.
+
+**Question this answers.** Asked directly: does a *distributional* loss make sense — on the
+whole prediction, or specifically on the `delta_mag` and `dcos` terms? Before designing one,
+two things had to be measured rather than assumed: **(a)** is our predicted single-cell
+distribution actually wrong, and **(b)** do any of the four scored metrics read a distribution
+at all. Both were measured today, on `W23` (the campaign-best arm), split 00.
+
+**What is varied / held fixed.** Nothing is varied — this is a read-only diagnostic on
+artefacts already on disk (`runs/rhj_splithalf/W23__*/split_00/`). 21,063 rows × 6,983 genes,
+568 perturbations with ≥10 cells, median 24 cells per perturbation.
+
+### (a) The dispersion is collapsed — by a factor of ~38
+
+| quantity | pred | real | ratio |
+|---|---|---|---|
+| mean per-gene within-perturbation std | **0.0026** | **0.1009** | **0.026** |
+| median per-perturbation median(std_pred / std_real) | — | — | **0.021** |
+| mean ‖Δ‖ of the group MEAN | 2.5027 | 2.9230 | 0.856 |
+| perturbations where pred std < real std | **568 / 568 = 100%** | | |
+| control rows (injected real — sanity check) | 0.1040 | 0.1039 | 1.001 |
+
+The control row check is the control for this measurement: those rows are injected real cells,
+and they match to 3 decimals, so the collapse is a property of the **predicted perturbed rows**
+and not of how the file is read.
+
+**Interpretation: the model is very nearly a per-perturbation lookup table.** A predicted cell
+varies by 2.6% of the biological spread, which means the prediction is almost independent of
+*which control cell it was given* — on a benchmark whose stated task is "predict from a single
+control cell". The mean effect is, by contrast, roughly right (‖Δ‖ ratio 0.856).
+
+⚠️ **This is what the Q02 loss composition asks for, not an accident.** `dcos` 0.5 pushes every
+cell's Δ toward one shared target direction and `delta_mag` 0.01363 pulls every cell's ‖Δ‖ to
+the group value, while `smooth_l1` — the only per-cell term — is ~2% of the total in this
+direction-dominated regime (F-loss5). Parallel directions + equal magnitudes = a constant Δ.
+The 2.6% is the loss working as specified.
+
+### (b) But every scored metric is a pseudobulk metric — read from cell-eval 0.6.0 source
+
+| metric | what it actually consumes | sensitive to dispersion? |
+|---|---|---|
+| `pearson_delta` | `_generic_evaluation(..., use_delta=True)` → `iter_bulk_arrays` group means | **no** |
+| `mae` | same path, `use_delta=False` → group means | **no** |
+| `discrimination_score_l1` | `perturbation_effect` on bulk arrays, ranked distances | **no** |
+| `overlap_at_N` | `compute_overlap`: `k_eff` = **real**'s significant-gene count; both lists ranked by \|fold_change\| of the means; pred is FDR-filtered before ranking | **only through the pred FDR filter** |
+
+`cell_eval/_types/_de.py:241` — `k_eff = real_genes.size if not k else k` — so N comes from the
+ground truth alone; our inflated significance does not set N. And `get_top_genes` ranks by
+`ABS_FOLD_CHANGE`, a function of the group means.
+
+### The dispersion collapse DOES distort the DE statistics — measured
+
+| | pred | real | ratio |
+|---|---|---|---|
+| FDR-significant genes per perturbation (α = 0.05) | **3,475** (49.8% of 6,983) | **113** (1.6%), median 17 | **30.8×** |
+| perturbations where pred calls more than real | **100%** | | |
+
+This is the pseudobulk-variance pitfall documented in `CLAUDE.md`, now measured on our own best
+arm: near-zero within-group variance makes the Wilcoxon test call half the transcriptome
+significant. ⚠️ **But it is currently NOT binding on the score**, because the pred FDR filter
+only has to admit N genes and N is at most 113 on average; a 3,475-gene pool always covers it.
+
+### What this means for a distributional loss — the pre-registration, before any arm is run
+
+1. **A distributional term cannot raise any of the four scores *through the distribution
+   channel*.** All four read group means. Anyone expecting +`overlap_at_N` from fixing
+   dispersion is expecting it from the one channel that is provably not binding.
+2. ⚠️ **It could LOWER `overlap_at_N`.** Restoring real dispersion shrinks pred's significant
+   pool from ~3,475 toward ~113. For perturbations where real has many significant genes, the
+   pred pool could become *smaller* than N, and the missing ranks score as misses.
+3. ⚠️ **It cannot lower `mae`/`pearson_delta` either** — those are mean quantities and a
+   mean-preserving dispersion term is neutral on them **in expectation**; any movement is a
+   second-order optimisation effect, which is exactly the thing that has to be measured rather
+   than argued.
+4. ✅ **The legitimate reason to run it is as a REGULARISER on the mean path**: forcing the
+   output to depend on the input control cell forces the model to use per-cell covariates it
+   currently ignores. That is the same class of intervention as VICReg — and F-vicreg3 is the
+   warning: VICReg's +0.0060 at 30 epochs went to −0.0016 at 90. **Screen a dispersion term at
+   90 epochs directly**, not at 30, or the result will not be believable.
+5. ✅ **Report the mechanism, not only the score.** Any such arm must report
+   `std_pred / std_real` and the significant-gene ratio alongside the four metrics, so a null
+   score can be distinguished from a term that never took effect.
+
+### Implementation note — a set-to-set loss needs a sampler change; moment-matching does not
+
+Measured on `nadig_2024_hepg2.h5ad` (145,473 rows, 2,394 perturbations): rows are **not** sorted
+by perturbation (mean run length 1.0), and in a 2,048-row batch there are ~1,169 distinct
+perturbations with **median count 1** (max 68, the controls). So MMD / Sinkhorn / any set-to-set
+objective has no set to work with under the current sampler and would need grouped batches
+(G perturbations × K cells), which is a real change to `stream_v2`'s buffer assembly AND a
+confound — grouped batches change the gradient even with the old loss, so such an arm needs its
+own control.
+
+**The cheap route needs no sampler change.** With one cell per group per batch, a per-gene
+second-moment match is still an unbiased stochastic estimator: penalise
+`|(pred_i − μ̂_real)² − σ̂²_real|` per gene, where `μ̂_real` and `σ̂²_real` come from precomputed
+per-group tables. The group-MEAN table already exists and is already loaded for `delta_mag`
+(7,179 groups × 44,728 genes, 1.28 GB); a variance table mirrors it exactly. The batch even
+already carries `group_id` (`stream_v2.py:193`), so the loss side is a few lines. Radial-only
+variants are cheaper still: matching the spread of ‖Δ‖ or the concentration of Δ directions
+needs **one scalar per group**, not a gene-wide table.
+
+### The real dispersion targets, now measured for every group (`scripts/pert_group_dispersion.py`)
+
+7,179 groups, 627,869 cells, in the model's own log1p space on the 44,728-gene encoder axis,
+around the same references the existing terms use (`gvar` around the group mean; radius and
+cosine around the LINE CONTROL MEAN, which is what `delta_mag` and `dcos` are defined against).
+
+| source | groups (n≥2) | per-gene std | ‖cell Δ‖ | cos(cell Δ, group Δ) |
+|---|---|---|---|---|
+| hepg2 | 2,393 / 2,393 | 0.0963 | 11.529 ± 2.285 | **0.2536** ± 0.1165 |
+| jurkat | 2,392 / 2,393 | 0.1258 | 13.420 ± 2.753 | **0.1906** ± 0.0939 |
+| rpe1 | 2,393 / 2,393 | 0.1104 | 12.505 ± 2.022 | **0.2927** ± 0.1396 |
+| pooled (as loaded) | 7,178 / 7,179 | — | 12.485 ± 2.353 | **0.2456** ± 0.1167 |
+
+⚠️ **A real cell's own Δ aligns with its group's mean Δ at only ~0.25.** ‖cell Δ‖ ≈ 12.5 against
+a group effect of ≈ 2.9, so a single cell's deviation from the control mean is ~4× the
+perturbation itself and mostly its own identity. That is the correct target for a
+concentration term — not 1.
+
+### ⚠️ CORRECTION — the model is UNDER-aligned per cell, not over-concentrated
+
+Measured on `W23`'s checkpoint with **real single control cells** as input (128 perturbations ×
+8 control cells, 9,612 present genes, `scripts/loss_scale_disp.py`):
+
+| quantity | pred | real | ratio |
+|---|---|---|---|
+| cos(pred Δ, group Δ), per cell | **0.075** | **0.238** | 0.32 |
+| radial std_pred / std_real | — | — | **0.2225** |
+| per-gene std_pred / std_real | — | — | **0.1079** |
+| `smooth_l1` per element | 0.035431 | | |
+| `dcos` = 1 − cos(Δpred, Δtrue) | 0.924964 | | |
+
+**When F-disp1 was proposed, the claim was that `dcos` OVER-concentrates the predicted
+directions and that a concentration term would relax it. That is wrong, and this measurement
+is why:** per-cell, our alignment is 0.075 against a real 0.238. `dcos` drives the cosine
+toward 1 but the model never gets near it, because the per-cell Δ it has to produce is
+dominated by the control cell's own identity, which the model must reconstruct through the
+decoder and does imperfectly. A concentration term therefore pushes alignment **UP** on this
+base and partially duplicates `dcos` rather than opposing it. It is still the right quantity —
+calibrating to the real value instead of maximising — but the sign of the current error is the
+opposite of what was predicted.
+
+⚠️ **Two dispersion ratios, two spaces.** The scored panel gives 0.026 (0.0026 / 0.1009, over
+6,983 panel genes in scoring space); this per-cell measurement gives 0.108 (over 9,612 present
+genes of the hepg2 file on the encoder axis, with 8 control inputs). **The panel number is the
+one the metrics see**; both say collapsed, and the 4× between them is a space-and-gene-set
+difference, not a disagreement about the model.
+
+### ✅ MECHANISM VERIFIED AT THE REAL SCHEDULE — all 6 Z arms trained clean, every one holding dispersion at parity
+
+Job `18266534`, 6/6 COMPLETED (1:17–1:21 wall each), **0 nan-guard events in any arm**. Final
+epoch diagnostics, against `W23`'s trained collapse (cos 0.075 · radial 0.2225 · per-gene
+0.1079) and the real targets:
+
+| arm | term | weight | final diagnostic | real target | val `pearson_delta` |
+|---|---|---|---|---|---|
+| `Z01` | `dcos_conc` | 13.09 (1×) | cos **0.2181** | 0.1992 | 0.2227 |
+| `Z02` | `dcos_conc` | 65.47 (5×) | cos **0.2028** | 0.1992 | 0.1966 |
+| `Z03` | `radial_spread` | 0.512 (1×) | radial ratio **0.9944** | 1.0 | 0.4092 |
+| `Z04` | `radial_spread` | 2.56 (5×) | radial ratio **0.9970** | 1.0 | 0.3948 |
+| `Z05` | `gene_var` | 0.473 (1×) | per-gene ratio **0.9923** | 1.0 | 0.4279 |
+| `Z06` | `gene_var` | 2.37 (5×) | per-gene ratio **1.0179** | 1.0 | 0.3956 |
+
+**Every term did exactly what it was built to do.** The dispersion the base model destroys over
+90 epochs (down to 2.6–22% of real) is held at 99–102% of real in the matching arm. So whatever
+the test scores say, this is a measurement of the HYPOTHESIS, not of a term that failed to fire
+— the F-loss1 trap is closed.
+
+⚠️ **The two `dcos_conc` arms have catastrophic VALIDATION scores** (0.2227 and 0.1966 against
+`W23`'s 0.4419 and the other four arms' 0.39–0.43). Validation misranks *arms* (F-ckpt4), so
+this is not a test result — but a 0.22 is not a ranking wobble, it is a different regime.
+Expect `Z01`/`Z02` to score far below the control: calibrating per-cell alignment to 0.199
+appears to fight the pseudobulk objective directly. ⚠️ Pre-registered before the test scores
+land, so it can be checked rather than rationalised afterwards.
+
+✅ Cost: 1:17–1:21 per arm, **the same as the control** (`W23` 1:15) — the three terms add no
+measurable wall time even with the 1.28 GB gene-variance table and its EMA.
+
+**Eval:** job `18296324`, 30 tasks (6 arms × 5 splits), **`%6`**, nocal only, grid
+`configs/rhj_Z_eval.tsv`. `%6` is the measured-safe concurrency: the Y eval ran 60/60 tasks
+clean at `%6`, while F-infra1 measured ~50% marginal failures at `%12` and ~30% at `%20`. The
+training throttle was moot — all six arms finished before it mattered.
+
+### ✅ PLUMBING VERIFIED — the 2-epoch smoke test passes, and the terms visibly work
+
+All three weights on at 1× parity (`dcos_conc` 13.09, `radial_spread` 0.512, `gene_var` 0.473),
+2 epochs, Q02 config, `SMOKE4`:
+
+| | epoch 1 | epoch 2 | target |
+|---|---|---|---|
+| batches completed | **312 / 312** | **312 / 312** | no drops |
+| nan-guard lines | **none** | **none** | none |
+| cos(pred Δ, group Δ) | 0.1377 | **0.1865** | REAL 0.1995 |
+| radial std_pred/std_real | 0.9984 | 0.9983 | 1.0 |
+| per-gene std_pred/std_real | 0.7467 | **0.9735** | 1.0 |
+| loss | 1.1924 | 0.6964 | — |
+| grad_norm (max) | 3.92 (695) | 0.96 (18.8) | — |
+
+**The terms are not inert and they move the quantity they target**: the direction concentration
+climbs 0.138 → 0.187 toward the real 0.200 in one epoch, and the per-gene ratio 0.747 → 0.974
+toward 1.0. Epoch-1 loss is 1.19 against the baseline Q02's 0.689, i.e. the three terms add
+~0.50 at parity, as designed. ⚠️ `grad_norm` max spikes to 695 on epoch 1 and settles to 18.8
+on epoch 2; clipping is on, but this is the thing to watch if a 90-epoch arm diverges.
+
+### Three bugs, and the one piece of reasoning that cost two extra iterations
+
+| attempt | symptom | cause | fix |
+|---|---|---|---|
+| 1 | non-finite **LOSS**, batch 77 | `0 * NaN` from the 1-of-7,179 group with `n_cells < 2`, masked per ELEMENT | `nan_to_num` the gene table; row-select |
+| 2 | non-finite **GRADIENT**, finite loss, batch 77 | `.norm()`'s backward is `0/0` for a zero-delta row | clamped sum-of-squares norm; guarded division |
+| 3 | same, batch 77 | the per-group **SCALAR** tables are still NaN for that group, and the mask is applied AFTER the arithmetic | slice rows before every gather; `nan_to_num` all five tables |
+
+⚠️ **The mistake worth remembering is attempt 1's reasoning**, not the bug: "the scalars can
+stay NaN because they are consumed by row INDEXING" is false, because the indexing happens
+after the subtraction and the division, so autograd still multiplies a zero incoming gradient
+by a NaN local one. The pre-existing `dcos` term never hit this precisely because it slices
+first (`dp[has]` before the cosine) -- the new terms now copy that pattern exactly.
+
+⚠️ **A finite loss with a non-finite gradient is the failure mode to look for here.** The
+nan-guard caught every instance and dropped the batch, so the run looked healthy (1 batch of
+312, 0.32%) while one term silently contributed nothing on those steps. Without the
+per-epoch `[disp]` print reading `nan`, this would have shipped as "the term did not help".
+
+### The three terms, as implemented
+
+| term | what it matches | target | weight, 1× parity | 5× |
+|---|---|---|---|---|
+| `dcos_conc_weight` | per-cell cos(Δpred, group Δ) → the group's real mean cosine | `cos_mean` | **13.09** | 65.47 |
+| `radial_spread_weight` | batch-mean of ((r − EMA_r)/`rad_std`)² → 1 | `rad_mean`, `rad_std` | **0.512** | 2.56 |
+| `gene_var_weight` | batch-mean of ((pred − EMA_μ)/`real_std`)² → 1 | `gvar` | **0.473** | 2.37 |
+
+Parity is against **Q02's own DCOS contribution**, `0.5 × 0.924964 = 0.4625` — the term that
+dominates Q02's gradient today — so a 1× arm adds a term of that size.
+
+⚠️ **Two design choices that are the difference between a dispersion term and another
+mean-error term**, both forced by a measured fact: a 2,048-row batch holds a **median of ONE
+cell per perturbation** (1,169 distinct perturbations per batch, measured on the corpus, which
+is not sorted by perturbation — mean run length 1.0).
+
+1. **Batch-level moment matching, not a per-row penalty.** `(x_i − target)²` on a *spread*
+   would drive every cell to the same value, i.e. reinforce the collapse. Both moment terms
+   are `(m2 − 1)²` on a normalised second moment pooled over the batch.
+2. **The centre is the model's OWN per-group mean, tracked as a detached EMA**
+   (`disp_ema_momentum` 0.99, warm-started on the real mean, ~90 samples/group/epoch).
+   Centring on the *real* mean would let a constant bias satisfy the term with no dispersion
+   at all — `tests/test_dispersion_terms.py` pins exactly that property.
+
+A set-to-set objective (MMD, Sinkhorn) is **not** implementable on this sampler for the same
+reason: with one cell per group there is no set. It would need grouped batches, which changes
+the gradient even with the old loss and so needs its own control arm.
+
+### Plumbing, and what is printed
+
+* `scripts/pert_group_dispersion.py` → `cache/pert_disp/*.npz` (1.28 GB gene-variance table
+  per source), keyed and ORDERED like `cache/pert_means/*.npz`.
+* `stream_v2.load_group_dispersion` places every row **through the group-mean index**, never by
+  glob order, and RAISES if the two tables share no key.
+* The table-loading gate now includes all three weights, and **refuses to train** without the
+  table rather than matching a variance target of zero — which would be an instruction to
+  collapse, the very pathology being fixed. (F-loss1's lesson, applied in advance.)
+* Three config layers wired: dataclass, `configs/rhj_fewshot.yaml`, `VCELL_SCHEMA['loss']`.
+  `tests/test_dispersion_terms.py` asserts all three for every new key.
+* **Training stdout, every epoch:** `[disp] cos(pred delta, group delta)=… vs REAL …
+  radial std_pred/std_real=…  per-gene std_pred/std_real=…`, printed outside any
+  `if wandb_run:` (these arms run offline).
+* **Eval stdout, next to every arm's metrics:** `[disp] <arm>: per-gene within-pert std pred …
+  real … RATIO …  |  FDR-significant genes/pert pred … real … RATIO …`, also stored in
+  `metrics.json` under `disp_*`. Skippable with `OCCAM_SKIP_DISP_DIAG=1`; costs ~20–40 s/arm.
+### ⭐ The collapse is LEARNED, not architectural — measured at epoch 1
+
+The 2-epoch smoke run prints the diagnostics from the very first epoch, and they are nothing
+like the trained model's:
+
+| | epoch 1 (smoke) | trained `W23` | real |
+|---|---|---|---|
+| radial std_pred / std_real | **0.998** | 0.2225 | 1.0 |
+| per-gene std_pred / std_real | **0.745** | 0.1079 | 1.0 |
+| cos(pred Δ, group Δ) | 0.138 | 0.075 | 0.200–0.238 |
+
+**An almost-untrained model is already close to the right dispersion; 90 epochs of Q02's loss
+drive it down by 4–7×.** So the 2.6% collapse F-disp1 measured is not a property of the
+architecture, the decoder or the streaming path — it is something the objective TEACHES, which
+is consistent with `dcos` + `delta_mag` asking for parallel, equal-magnitude deltas while
+`smooth_l1` (the only per-cell term) carries ~2% of the weight.
+
+⚠️ This reframes what the three terms are for: they do not have to CREATE dispersion the model
+cannot express, only stop the rest of the loss from removing it. It also predicts that their
+effect will grow with schedule length, and that on a 30-epoch base they would look weaker —
+the opposite of the VICReg pattern (F-vicreg3), where the gain shrank with length.
+
+### Two bugs the 2-epoch smoke test caught, before any GPU was spent on an arm
+
+Both were invisible to the unit tests and would have produced a plausible-looking null result.
+
+1. **`0 * NaN = NaN` poisoned one batch per epoch.** Exactly ONE group of 7,179 has
+   `n_cells < 2`, so its dispersion targets are NaN by design. The gene-variance term masked
+   per ELEMENT (`_uu * row_mask`), and a NaN times a zero mask is still NaN, so the whole
+   batch's loss went non-finite: `[nan-guard] epoch 1 batch 77: NON-FINITE LOSS — batch
+   dropped` (1 of 312, 0.32%, every epoch), and the epoch's own diagnostic printed
+   `per-gene std_pred/std_real=nan`. Fixed twice over: `load_group_dispersion` now
+   `nan_to_num`s the gene table, and the term ROW-SELECTS instead of multiply-masking (which
+   is also cheaper). ⚠️ The nan-guard did its job — it dropped the batch instead of poisoning
+   the weights — which is precisely why this would have shipped unnoticed as "a term that
+   didn't help".
+2. **The EMA warm start made the epoch-1 diagnostic read a bias as a spread.** Starting the
+   centre at the REAL group mean printed `radial std_pred/std_real=1.0380` on epoch 1 — which
+   looks like "dispersion already matched" and is actually the model's radius sitting ~1 real
+   std away from the real radius. That is the exact confound the EMA centre exists to remove.
+   Both centres are now initialised LAZILY from the model's own first observation per group
+   (momentum 0 on first touch), and a group whose centre has not been set yet is skipped for
+   that batch rather than measured against a centre of 0.
+
+* Launcher: 3 new columns (`dcos_conc_weight radial_spread_weight gene_var_weight`) appended
+  **after** `base`, so all 22-column grids parse unchanged, plus a field-count guard that
+  refuses a row with more columns than the launcher reads — the failure that put
+  `1e-7<TAB>M03` inside `eta_min` and was only caught by a tab in a directory name.
+
+## ⭐⭐⭐ F-sched2 — **COMPLETE, 24/24 arms. 90 > 60 > 30 epochs on BOTH bases at EVERY `eta_min` (8/8 paired contrasts, 5/5 splits each). Within 1e-7…1e-4, `eta_min` is ±0.003 of seed-like VARIANCE.** `W22` (Q02, 90 ep, `eta_min` 1e-6) = **0.3985** is the best arm in THIS grid.
+
+⚠️ **SUPERSEDED IN TWO PLACES BY F-sched3 — read that first.** (1) `eta_min` IS a direction *above* this grid's band: 3e-4 beats every floor here at both 120 and 150 epochs. (2) The epochs plateau depends on the floor, so this grid's "90 is best" holds only for floors ≤1e-4. The campaign best is now `Y06` (150 ep, 3e-4) = **0.4043**.
+
+**Objective.** Best model on SEEN perturbations in an UNSEEN context — here, 611 held-out HepG2
+perturbations predicted from one half-B control cell, scored by cell-eval 0.6.0 on the paired
+split-half protocol (5 splits, uncalibrated `model_nocal`).
+
+**Question this answers.** F-sched1 found that 60 epochs + `eta_min` 1e-5 beat the 30-epoch
+default on all three bases (`E3` = 0.3933), but it changed BOTH knobs at once. This grid
+separates them: is the gain training LENGTH, or the LR FLOOR?
+
+**Varied:** `epochs` ∈ {30, 60, 90} × `eta_min` ∈ {1e-7, 1e-6, 1e-5, 1e-4}, on two bases
+(M03, Q02). **Held fixed:** everything else in each base's loss composition, the cohort, the
+axis, the seeded control draw.
+
+**Pre-registered reading (written before the numbers):** gain tracks epochs at every floor →
+it is training length and `eta_min` is incidental. Gain tracks `eta_min` at every length → it
+is the floor, and F-sched1's extra epochs were wasted compute. Only the (long, high-floor)
+corner wins → genuine interaction. 90 no better than 60 → 60 is the plateau.
+
+**Anchors:** `ctrlcell` −0.0018 · `ctrlmean` 0.0016 · `meanpert` 0.1324 · `transfer` 0.2323 ·
+`experimental` 0.3722 (`mae` 0.0257) · M03 base (30 ep) 0.3679 · Q02 base (30 ep) 0.3783 ·
+`E1` (M03, 60 ep/1e-5) 0.3749 · `E3` (Q02, 60 ep/1e-5) 0.3933.
+
+### The outcome: **epochs, not `eta_min`**
+
+| contrast | `pearson_delta` | `mae` ↓ | `ovl@N` | `disc_l1` | sign |
+|---|---|---|---|---|---|
+| M03 30 → 60 ep (`W05`−`W03`, 1e-7 vs 1e-5) | **+0.0108** ± 0.0018 | −0.0005 | +0.0039 | +0.0023 | 4/4 |
+| M03 60 → 90 ep (`W11`−`W05`) | **+0.0049** ± 0.0019 | +0.0002 | +0.0050 | +0.0111 | 4/4 |
+| M03 30 → 90 ep (`W11`−`W03`, both 1e-5) | **+0.0161** ± 0.0017 | −0.0003 | +0.0089 | +0.0135 | 5/5 |
+| M03 30 → 60 ep at 1e-6 (`W06`−`W02`) | **+0.0128** ± 0.0030 | −0.0006 | +0.0035 | +0.0088 | 5/5 |
+| Q02 60 → 90 ep (`W23`−`E3`, both 1e-5) | **+0.0025** ± 0.0018 | −0.0001 | +0.0070 | +0.0094 | 5/5 |
+| **`eta_min` 1e-5 → 1e-4 at 90 ep, M03** (`W12`−`W11`) | **−0.0001** ± 0.0018 | −0.0002 | −0.0015 | −0.0015 | 3/5 |
+| **`eta_min` 1e-5 → 1e-4 at 90 ep, Q02** (`W24`−`W23`) | **−0.0002** ± 0.0027 | +0.0005 | +0.0002 | **+0.0049** | 2/5 |
+
+**Reading: the epochs axis is the only reproducible DIRECTION.** 30 → 90 epochs moves
+`pearson_delta` +0.0161 on M03 (5/5) and 60 → 90 moves Q02 +0.0025 (5/5), monotonically and on
+every metric. F-sched1's `E3` gain was **training length**, not the floor.
+
+⚠️ The `eta_min` contrasts in the two rows above are ≈0 **at 90 epochs specifically**; across
+the filled-in grid the within-row spread is 0.0051–0.0103 with no consistent winner. See
+"Reading the surface" below — the honest statement is that `eta_min` cannot be tuned, not that
+it is negligible.
+
+⚠️ **CORRECTION to what validation suggested.** Mid-flight I noted the validation composite
+ranked `eta_min` 1e-4 ABOVE 1e-5 on both bases (W12 0.4284 > W11 0.4212; W24 0.4430 > W23
+0.4419) and flagged it as "never tried in F-sched1". On TEST that ordering does not survive:
+both contrasts are −0.0002/−0.0001 with 2–3 of 5 positive. The validation margin was noise.
+This is the same validation-misranks-ARMS / selects-EPOCHS-well pattern as F-ckpt4.
+
+✅ **The returns decelerate but have not stopped.** M03: +0.0108 (30→60) then +0.0049 (60→90).
+Q02: +0.0150 (30→60, `Q02`→`E3`) then +0.0025 (60→90). 90 epochs is NOT the plateau on either
+base, but the next step would buy ~0.002.
+
+✅ **`eta_min` 1e-4 does buy `disc_l1` on Q02** (+0.0049, 5/5) at zero `pearson_delta` cost, so
+`W24` is the arm to pick if discrimination is the target. `W24`'s `disc_l1` 0.7190 ties `X02`
+for the campaign maximum.
+
+⚠️ **`mae` is flat-to-slightly-worse with length.** M03's 90-epoch arms hold the best `mae` of
+any model arm (`W12` 0.0208, `W11` 0.0210 — against `experimental` 0.0257), and the Q02 family
+stays at 0.0216–0.0221. Length is not an `mae` lever in either direction.
+
+### Every arm scored so far, ranked (snapshot 2026-09-21, eval array 18249983 COMPLETE)
+
+| arm | base | epochs | `eta_min` | n | `pearson_delta` ↑ | `mae` ↓ | `ovl@N` ↑ | `disc_l1` ↑ |
+|---|---|---|---|---|---|---|---|---|
+| `W22` | Q02 | **90** | 1e-6 | 5/5 | **0.3985** ± 0.0025 | 0.0215 | 0.0868 | 0.7156 |
+| `W21` | Q02 | **90** | 1e-7 | 5/5 | **0.3981** ± 0.0018 | 0.0216 | 0.0855 | 0.7183 |
+| `W23` | Q02 | **90** | 1e-5 | 5/5 | **0.3959** ± 0.0031 | 0.0216 | 0.0887 | 0.7142 |
+| `W24` | Q02 | **90** | 1e-4 | 5/5 | **0.3957** ± 0.0022 | 0.0221 | 0.0889 | 0.7190 |
+| `W19` = `E3` | Q02 | 60 | 1e-5 | 5/5 | **0.3933** ± 0.0027 | 0.0217 | 0.0817 | 0.7047 |
+| `W18` | Q02 | 60 | 1e-6 | 5/5 | **0.3921** ± 0.0030 | 0.0216 | 0.0819 | 0.7089 |
+| `W20` | Q02 | 60 | 1e-4 | 5/5 | **0.3921** ± 0.0034 | 0.0216 | 0.0792 | 0.7068 |
+| `W17` | Q02 | 60 | 1e-7 | 5/5 | **0.3898** ± 0.0026 | 0.0216 | 0.0811 | 0.7040 |
+| `W09` | M03 | **90** | 1e-7 | 5/5 | **0.3842** ± 0.0033 | 0.0209 | 0.0816 | 0.6852 |
+| `W11` | M03 | **90** | 1e-5 | 5/5 | **0.3805** ± 0.0023 | 0.0210 | 0.0814 | 0.6852 |
+| `W12` | M03 | **90** | 1e-4 | 5/5 | **0.3805** ± 0.0023 | 0.0208 | 0.0799 | 0.6836 |
+| `W08` | M03 | 60 | 1e-4 | 4/5 ⚠️ | **0.3800** ± 0.0021 | 0.0208 | 0.0765 | 0.6814 |
+| `W16` | Q02 | 30 | 1e-4 | 5/5 | **0.3794** ± 0.0026 | 0.0229 | 0.0795 | 0.7017 |
+| `W13` = `Q02` base | Q02 | 30 | 1e-7 | 5/5 | **0.3783** ± 0.0027 | 0.0225 | 0.0774 | 0.7029 |
+| `W06` | M03 | 60 | 1e-6 | 5/5 | **0.3777** ± 0.0020 | 0.0208 | 0.0745 | 0.6750 |
+| `W10` | M03 | **90** | 1e-6 | 5/5 | **0.3773** ± 0.0022 | 0.0208 | 0.0812 | 0.6791 |
+| `W14` | Q02 | 30 | 1e-6 | 5/5 | **0.3769** ± 0.0017 | 0.0227 | 0.0767 | 0.7015 |
+| `W05` | M03 | 60 | 1e-7 | 4/5 ⚠️ | **0.3754** ± 0.0031 | 0.0208 | 0.0763 | 0.6739 |
+| `W07` | M03 | 60 | 1e-5 | 5/5 | **0.3749** ± 0.0021 | 0.0210 | 0.0708 | 0.6800 |
+| `W01` | M03 | 30 | 1e-7 | 4/5 ⚠️ | **0.3683** ± 0.0018 | 0.0212 | 0.0721 | 0.6715 |
+| `W15` | Q02 | 30 | 1e-5 | 4/5 ⚠️ | **0.3679** ± 0.0025 | 0.0231 | 0.0702 | 0.6936 |
+| `W02` | M03 | 30 | 1e-6 | 5/5 | **0.3650** ± 0.0031 | 0.0214 | 0.0711 | 0.6663 |
+| `W03` | M03 | 30 | 1e-5 | 5/5 | **0.3644** ± 0.0012 | 0.0213 | 0.0725 | 0.6716 |
+| `W04` | M03 | 30 | 1e-4 | 5/5 | **0.3622** ± 0.0024 | 0.0214 | 0.0694 | 0.6701 |
+
+✅ **All 24 arms scored.**  ⚠️ Rows below 5/5 are PARTIAL (F-infra1 pdex race); their means may move.
+
+### The full surface, all four metrics (`mae` is an ERROR: LOWER is better)
+
+Cell = mean over the splits scored so far, `(n)` beside it. `—` = not yet scored.
+
+**`pearson_delta` ↑**
+
+| base | epochs | 1e-7 | 1e-6 | 1e-5 | 1e-4 | row spread |
+|---|---|---|---|---|---|---|
+| M03 | 30 | 0.3683 (4) | 0.3650 (5) | 0.3644 (5) | 0.3622 (5) | 0.0061 |
+| M03 | 60 | 0.3754 (4) | 0.3777 (5) | 0.3749 (5) | 0.3800 (4) | 0.0051 |
+| M03 | **90** | 0.3842 (5) | 0.3773 (5) | 0.3805 (5) | 0.3805 (5) | 0.0069 |
+| Q02 | 30 | 0.3783 (5) | 0.3769 (5) | 0.3679 (4) | 0.3794 (5) | 0.0114 |
+| Q02 | 60 | 0.3898 (5) | 0.3921 (5) | 0.3933 (5) | 0.3921 (5) | 0.0035 |
+| Q02 | **90** | 0.3981 (5) | 0.3985 (5) | 0.3959 (5) | 0.3957 (5) | 0.0028 |
+
+**`mae` ↓ (ERROR)**
+
+| base | epochs | 1e-7 | 1e-6 | 1e-5 | 1e-4 | row spread |
+|---|---|---|---|---|---|---|
+| M03 | 30 | 0.0212 (4) | 0.0214 (5) | 0.0213 (5) | 0.0214 (5) | 0.0002 |
+| M03 | 60 | 0.0208 (4) | 0.0208 (5) | 0.0210 (5) | 0.0208 (4) | 0.0002 |
+| M03 | **90** | 0.0209 (5) | 0.0208 (5) | 0.0210 (5) | 0.0208 (5) | 0.0002 |
+| Q02 | 30 | 0.0225 (5) | 0.0227 (5) | 0.0231 (4) | 0.0229 (5) | 0.0006 |
+| Q02 | 60 | 0.0216 (5) | 0.0216 (5) | 0.0217 (5) | 0.0216 (5) | 0.0001 |
+| Q02 | **90** | 0.0216 (5) | 0.0215 (5) | 0.0216 (5) | 0.0221 (5) | 0.0006 |
+
+**`overlap_at_N` ↑**
+
+| base | epochs | 1e-7 | 1e-6 | 1e-5 | 1e-4 | row spread |
+|---|---|---|---|---|---|---|
+| M03 | 30 | 0.0721 (4) | 0.0711 (5) | 0.0725 (5) | 0.0694 (5) | 0.0030 |
+| M03 | 60 | 0.0763 (4) | 0.0745 (5) | 0.0708 (5) | 0.0765 (4) | 0.0056 |
+| M03 | **90** | 0.0816 (5) | 0.0812 (5) | 0.0814 (5) | 0.0799 (5) | 0.0017 |
+| Q02 | 30 | 0.0774 (5) | 0.0767 (5) | 0.0702 (4) | 0.0795 (5) | 0.0093 |
+| Q02 | 60 | 0.0811 (5) | 0.0819 (5) | 0.0817 (5) | 0.0792 (5) | 0.0026 |
+| Q02 | **90** | 0.0855 (5) | 0.0868 (5) | 0.0887 (5) | 0.0889 (5) | 0.0035 |
+
+**`disc_l1` ↑ (chance 0.5)**
+
+| base | epochs | 1e-7 | 1e-6 | 1e-5 | 1e-4 | row spread |
+|---|---|---|---|---|---|---|
+| M03 | 30 | 0.6715 (4) | 0.6663 (5) | 0.6716 (5) | 0.6701 (5) | 0.0054 |
+| M03 | 60 | 0.6739 (4) | 0.6750 (5) | 0.6800 (5) | 0.6814 (4) | 0.0075 |
+| M03 | **90** | 0.6852 (5) | 0.6791 (5) | 0.6852 (5) | 0.6836 (5) | 0.0061 |
+| Q02 | 30 | 0.7029 (5) | 0.7015 (5) | 0.6936 (4) | 0.7017 (5) | 0.0093 |
+| Q02 | 60 | 0.7040 (5) | 0.7089 (5) | 0.7047 (5) | 0.7068 (5) | 0.0049 |
+| Q02 | **90** | 0.7183 (5) | 0.7156 (5) | 0.7142 (5) | 0.7190 (5) | 0.0049 |
+
+
+### The complete Q02 epochs ladder — 8/8 paired contrasts positive, 5/5 splits each
+
+| `eta_min` | 30 → 60 ep | 60 → 90 ep |
+|---|---|---|
+| 1e-7 | **+0.0116** (5/5) | **+0.0083** (5/5) |
+| 1e-6 | **+0.0152** (5/5) | **+0.0063** (5/5) |
+| 1e-5 | **+0.0264** (4/4) | **+0.0025** (5/5) |
+| 1e-4 | **+0.0127** (5/5) | **+0.0036** (5/5) |
+
+**Every cell is positive at 5/5 (4/4 where a split is missing). There is no `eta_min` at which
+lengthening the schedule fails.** 60 → 90 is worth +0.0025…+0.0083, still positive and still
+decelerating, so 90 is not the plateau. ⚠️ The 1e-5 column's +0.0264 is inflated by `W15`
+being a 4/5 partial — the other three columns bracket the 30 → 60 step at +0.0116…+0.0152.
+
+### ⚠️ The campaign best moved: `W22` (Q02, 90 ep, `eta_min` **1e-6**) = 0.3985
+
+| contrast | `pearson_delta` | `mae` ↓ | `ovl@N` | `disc_l1` | sign |
+|---|---|---|---|---|---|
+| `W22` − `W23` (1e-6 vs 1e-5, both 90 ep) | **+0.0026** ± 0.0016 | −0.0001 | −0.0020 | +0.0015 | 5/5 |
+| `W21` − `W23` (1e-7 vs 1e-5, both 90 ep) | **+0.0022** ± 0.0015 | +0.0001 | −0.0033 | +0.0042 | 4/5 |
+| `W22` − `W19`/`E3` (90 ep vs 60 ep) | **+0.0051** ± 0.0013 | −0.0001 | +0.0050 | +0.0109 | 5/5 |
+
+`W22` 0.3985 and `W21` 0.3981 both beat `W23` 0.3959 at 5/5 and 4/5. ⚠️ **This does NOT make
+`eta_min` 1e-6 the right floor** — it makes the point below sharper. The Q02 90-epoch row is
+0.3981 / **0.3985** / 0.3959 / 0.3957 (spread 0.0028, best at 1e-6); the Q02 60-epoch row is
+0.3898 / 0.3921 / **0.3933** / 0.3921 (spread 0.0035, best at **1e-5**); the M03 90-epoch row
+is **0.3842** / 0.3773 / 0.3805 / 0.3805 (spread 0.0069, best at **1e-7**). Three rows, three
+different winners, every row non-monotone.
+
+✅ **SECOND DETERMINISM CHECK PASSED.** `W19` is configuration-identical to `E3` and reproduces
+it to **+0.0000 ± 0.0000 on all four metrics, 0/5 splits differing** — from a different run
+directory, a different job, a different day. Together with `W13` = the `Q02` base (also exact),
+that means every contrast in this file is free of run-to-run drift, and the `eta_min` spread
+discussed here is genuinely attributable to `eta_min`.
+
+### Reading the surface — **epochs is a DIRECTION, `eta_min` is VARIANCE**
+
+**Down the epochs axis, every column improves, on every metric, on both bases.** M03's
+90-epoch row is the best or tied-best cell in `pearson_delta`, `ovl@N` and `disc_l1`; `mae` sits
+at 0.0208–0.0210 for the whole 60/90 block against 0.0212–0.0214 at 30 epochs, so even `mae`,
+flat in the paired contrasts, prefers the longer schedule to the 30-epoch default.
+
+⚠️ **CORRECTION to the first version of this finding, which said `eta_min` "does nothing".**
+With the rows now filled in, the within-row spread on `pearson_delta` is **0.0051–0.0103** —
+comparable to the 30→60 epochs gain (+0.0108) and LARGER than the 60→90 gain (+0.0049). What
+it is not is a *direction*: the winning value differs in every row (1e-7 on M03 90 ep and Q02
+30 ep, 1e-4 on M03 60 ep, 1e-5 on Q02 90 ep by 0.0002) and every row is non-monotone — on the
+M03 90-epoch row 1e-6 is the WORST cell (0.3773) while its neighbours 1e-7 and 1e-5 give
+0.3842 and 0.3805.
+
+**So the correct statement is: `eta_min` is not tunable, but it is not free either.** It behaves
+like a seed — an unpredictable ±0.003 that cannot be optimised on n=1 and can cost up to 0.0069
+if the unlucky value is picked. That is the strongest available argument for seed replicates:
+the campaign has been reading 0.0025 margins off single runs whose LR-floor nuisance alone
+spans more than that.
+
+⚠️ **The best arm of each family is a different `eta_min`.** `W09` (M03, 90 ep, **1e-7**)
+0.3842 leads M03 — above `W11`/`W12` (0.3805), which an earlier version of this finding named —
+and `W22` (Q02, 90 ep, **1e-6**) 0.3985 leads everything. Q02 still beats M03 at every length
+and every floor.
+
+✅ **Two determinism checks passed on the way** — `W13` = the `Q02` base and `W19` = `E3`,
+both exact on all four metrics from different run directories. See the section above.
+
+
+⚠️ **Arm-id map** (so the surface can be cross-checked against `runs/`): `W01`–`W04` = M03 30 ep
+at 1e-7/1e-6/1e-5/1e-4, `W05`–`W08` = M03 60 ep, `W09`–`W12` = M03 90 ep, `W13`–`W16` = Q02
+30 ep, `W17`–`W20` = Q02 60 ep, `W21`–`W24` = Q02 90 ep.
+
+## ⛔ F-vicreg3 — **VICReg does NOT compound with the longer schedule.** `X01`/`X02` are at or below the no-VICReg arm at the same length; the +0.0060 of F-vicreg2 was something the long schedule already buys.
+
+**Question this answers.** F-vicreg2 found `V09` (variance + covariance together, on `delta_z`)
+worth +0.0060 over `Q02` at 30 epochs, and F-sched1 found 60 epochs worth +0.0150 on the same
+base. Are those two gains INDEPENDENT (the mechanisms differ → they add), or the SAME gain
+reached two ways?
+
+**Varied:** VICReg on/off × schedule length. **Held fixed:** the Q02 loss composition,
+`eta_min` 1e-5, cohort, axis, control draw.
+
+**Pre-registered reading (verbatim from the launch grid):** "X01 ~ 0.3996 → the two gains are
+independent and both mechanisms are real. X01 ~ 0.393 (i.e. no better than E3) → VICReg's gain
+was the same thing the longer schedule already buys. X01 > 0.400 → positive interaction.
+X02 > X01 → the epochs effect is still unsaturated even with VICReg on."
+
+### The outcome: **the second branch. The gains are the same gain.**
+
+| arm | what it is | n | `pearson_delta` ↑ | `mae` ↓ | `ovl@N` ↑ | `disc_l1` ↑ |
+|---|---|---|---|---|---|---|
+| `W23` | Q02, 90 ep, **no VICReg** | 5/5 | **0.3959** ± 0.0031 | 0.0216 | 0.0887 | 0.7142 |
+| `X02` | Q02 + VICReg, 90 ep | 5/5 | **0.3943** ± 0.0021 | 0.0220 | 0.0843 | **0.7189** |
+| `E3` | Q02, 60 ep, **no VICReg** | 5/5 | **0.3933** ± 0.0027 | 0.0217 | 0.0817 | 0.7047 |
+| `X01` | Q02 + VICReg, 60 ep | 5/5 | **0.3920** ± 0.0034 | 0.0217 | 0.0793 | 0.7079 |
+| `V09` | Q02 + VICReg, 30 ep | 5/5 | **0.3843** ± 0.0016 | 0.0225 | 0.0808 | 0.7065 |
+| `Q02` | base, 30 ep | 5/5 | **0.3783** ± 0.0027 | 0.0225 | 0.0774 | 0.7029 |
+
+**Naive independent sum predicted 0.3993 at 60 epochs. Measured `X01` = 0.3920.**
+
+| paired contrast | `pearson_delta` | `mae` ↓ | `ovl@N` | `disc_l1` | sign |
+|---|---|---|---|---|---|
+| `X01` − `E3` (VICReg at 60 ep) | **−0.0014** ± 0.0018 | +0.0000 | −0.0024 | +0.0032 | 2/5 |
+| `X02` − `W23` (VICReg at 90 ep) | **−0.0016** ± 0.0012 | +0.0004 | −0.0045 | **+0.0048** | 0/5 |
+| `X02` − `E3` (VICReg **and** +30 ep) | +0.0009 ± 0.0019 | +0.0003 | +0.0025 | **+0.0142** | 4/5 |
+| `X02` − `X01` (epochs, VICReg on) | **+0.0023** ± — | +0.0003 | +0.0050 | +0.0110 | 5/5 |
+
+**Reading.** Held at fixed length, VICReg is **negative on `pearson_delta` and `ovl@N`** and
+**positive on `disc_l1`** — 0/5 and 5/5 respectively at 90 epochs, i.e. consistent, not noise.
+Its 30-epoch gain was a faster approach to the same place the longer schedule reaches on its
+own; adding both does not add their margins. `X02` − `E3` looks positive (+0.0009) only because
+it bundles the +30 epochs, and `X02` loses to `W23`, the same length without VICReg.
+
+✅ **What VICReg does durably buy is `disc_l1`**: +0.0048 (5/5) at 90 ep, +0.0032 (5/5) at
+60 ep, +0.0142 vs `E3`. `X02` 0.7189 and `W24` 0.7190 are the campaign maximum. If the target
+is discrimination rather than delta correlation, the variance+covariance terms are still worth
+carrying; on the headline metric they are not.
+
+✅ **The epochs effect IS still unsaturated with VICReg on** (`X02` − `X01` = +0.0023 at 5/5,
+matching `W23` − `E3` = +0.0025 without it) — consistent with F-sched2. Length and VICReg do
+not interact; length just dominates.
+
+### The full 3x2 surface, all four metrics
+
+`delta` = VICReg ON minus OFF at the same length. **The sign flips between 30 epochs and
+60/90 on `pearson_delta` and `overlap_at_N`, and does NOT flip on `disc_l1`.**
+
+| metric | 30 ep OFF→ON | 60 ep OFF→ON | 90 ep OFF→ON |
+|---|---|---|---|
+| `pearson_delta` ↑ | 0.3783 → 0.3843 (**+0.0060**) | 0.3933 → 0.3920 (−0.0014) | 0.3959 → 0.3943 (**−0.0016**) |
+| `mae` ↓ (ERROR) | 0.0225 → 0.0225 (+0.0000) | 0.0217 → 0.0217 (+0.0000) | 0.0216 → 0.0220 (+0.0004) |
+| `overlap_at_N` ↑ | 0.0774 → 0.0808 (**+0.0034**) | 0.0817 → 0.0793 (−0.0024) | 0.0887 → 0.0843 (**−0.0045**) |
+| `disc_l1` ↑ | 0.7029 → 0.7065 (+0.0036) | 0.7047 → 0.7079 (+0.0032) | 0.7142 → 0.7189 (**+0.0048**) |
+
+OFF arms are `Q02` / `E3` / `W23`; ON arms are `V09` / `X01` / `X02`. The paired per-split
+contrasts for the 60- and 90-epoch columns are in the table above; the 30-epoch column is
+F-vicreg2.
+
+**Reading: VICReg buys `disc_l1` at every length (+0.0032…+0.0048, and it GROWS with length),
+and it buys `pearson_delta`/`ovl@N` only at 30 epochs, where it is substituting for training
+the model has not done yet.** `mae` is untouched at 30 and 60 and marginally worse at 90.
+That is a regulariser behaving exactly like a regulariser: it helps an under-trained model and
+gets in the way of a well-trained one, except on the metric its terms actually target —
+`disc_l1` rewards separating perturbations from each other, which is what the covariance term
+does by construction.
+
+✅ **`X01` is now 5/5.** Its split 4 was lost to the pdex shm race in `18247298` and was
+re-scored by backfill job `18252613` (nocal only — the calibrated mode is retired). The
+completed mean is **0.3920** ± 0.0034, against 0.3926 ± 0.0036 on the 4 splits, and the
+`X01` − `E3` contrast firms up to **−0.0014** ± 0.0018 at **2/5** positive on five paired
+splits. **The conclusion is unchanged and no longer rests on a partial arm.** For the record,
+`X01` − `W23` (VICReg + 60 ep vs no VICReg + 90 ep) is −0.0039 on `pearson_delta`, −0.0095 on
+`ovl@N` and −0.0062 on `disc_l1`, all 0/5 — the long schedule alone beats VICReg plus the
+short one on every metric that matters. Its −0.0017 against
+`E3` is computed on the 4 common splits and is the weaker of the two VICReg-at-fixed-length
+contrasts; the 90-epoch pair (`X02` − `W23`, 5/5 paired, 0/5 positive) carries the conclusion.
+A one-task backfill would complete it.
 
 ## ⛔ F-latent1 — the latent loss has NEVER been swept, and its diagnostics were never read
 

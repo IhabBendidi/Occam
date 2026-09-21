@@ -203,6 +203,13 @@ stages:
       # perturbation shares -- two predictions that disagree completely about the effect can
       # still score ~0.99 there. 0.0 = off.
       delta_cos_weight: 0.0
+      # F-disp1 dispersion terms. 0.0 = off. Weights must be SCALE-MATCHED against the
+      # measured magnitude of each term (scripts/loss_scale_disp.py), never guessed --
+      # `dcos` is ~100x `smooth_l1` and these are all dimensionless O(1) quantities.
+      dcos_conc_weight: 0.0        # calibrate the effect-direction concentration to the real 0.246
+      radial_spread_weight: 0.0    # match the spread of ||pred - ctrl_mean|| to the real one
+      gene_var_weight: 0.0         # match per-gene within-group variance to the real one
+      disp_ema_momentum: 0.99      # EMA of the model's own per-group mean, used as the centre
       # nb_smooth_l1 only: recon = (1 - nb_weight) * smooth_l1 + nb_weight * nb / nb_scale.
       # ⚠️ The two terms differ by a MEASURED ~6.5x in scale, which is exactly the confound
       # F6 recorded: at cosine_loss_weight 0.5 its smooth_l1 arms were genuinely half-cosine

@@ -61,7 +61,7 @@ from occam.vcell.panel.panel_io import Panel
 from occam.vcell.panel.run import score_arm
 from occam.vcell.panel.splithalf import (
     CONTROL, HalfSplit, assert_disjoint_halves, meanpert_arm, panel_for_split,
-    train_pert_grand_mean, transfer_arm,
+    train_pert_grand_mean, transfer_arm, sum_of_singles_arm,
 )
 
 __all__ = ["PROTOCOL", "UNDEFINED", "ProtocolError", "run_split", "run_splithalf_protocol"]
@@ -102,6 +102,11 @@ def run_split(
     grand_mean_info: Optional[Mapping[str, object]] = None,
     transfer_deltas: Optional[Mapping[str, np.ndarray]] = None,
     transfer_info: Optional[Mapping[str, object]] = None,
+    # norman_combo: the additivity baseline. Structurally like `transfer` (ctrl + a per-pert
+    # delta) but a different quantity, so it gets its own tag rather than reusing that one --
+    # "transfer" on a single-cell-line benchmark would be a lie in every output file.
+    sos_deltas: Optional[Mapping[str, np.ndarray]] = None,
+    sos_info: Optional[Mapping[str, object]] = None,
     predict_fn=None,
     calibrate: str = "none",
     center_delta: bool = False,
@@ -205,6 +210,12 @@ def run_split(
         extra["transfer"] = tp
         transfer_meta = dict(transfer_info or {})
         transfer_meta["clipped_fraction"] = tclip
+    sos_meta: Dict[str, object] = {}
+    if sos_deltas is not None:
+        sp, sclip = sum_of_singles_arm(ctrl_used, arm_labels, sos_deltas)
+        extra["sum_of_singles"] = sp
+        sos_meta = dict(sos_info or {})
+        sos_meta["clipped_fraction"] = sclip
 
     arms = build_arms(pred, arm_labels, ctrl_used, panel, center_delta=center_delta,
                       calibrate=calibrate,
@@ -242,6 +253,7 @@ def run_split(
         "anchor_arms": anchor_tags, "reference_arms": ref_tags, "model_arms": model_tags,
         "meanpert": meanpert_info,
         "transfer": transfer_meta,
+        "sum_of_singles": sos_meta,
         "arms": {}, "timings_s": {}, "notes": {},
         # The order arms were actually SCORED in, which is `build_arms`' fixed emission
         # order and not the caller's request order. The real-side DE is computed by the

@@ -1,0 +1,77 @@
+# Y GRID -- extend the WINNING schedule past 90 epochs: Q02 base x epochs {120, 150} x eta_min {1e-5, 1e-4, 3e-4}
+#
+# WHAT WE ARE TRYING TO ACHIEVE OVERALL
+# -------------------------------------
+# Predict a perturbation's effect in a cellular context where that perturbation was never
+# measured, from a single control cell. Headline: split-half paired `pearson_delta` on the
+# 611-perturbation rhj_fewshot HepG2 cohort, 6,983-gene axis, cell-eval 0.6.0, uncalibrated.
+#
+# WHAT THIS GRID ANSWERS
+# ----------------------
+# F-sched2 found that `epochs` is the strongest lever in the campaign and `eta_min` is inert
+# across 1e-7...1e-4. Its best arm, W23 (Q02, 90 ep, eta_min 1e-5) = 0.3959, is the campaign
+# best. But the series DECELERATES: Q02 gains +0.0150 from 30->60 and only +0.0025 from
+# 60->90. THIS GRID ASKS WHETHER THE EPOCHS AXIS IS STILL LIVE PAST 90, and re-tests the
+# `eta_min` axis at a length where the floor could finally matter -- the cosine spends
+# proportionally longer near its floor as the schedule lengthens.
+#
+# WHAT IS VARIED / HELD FIXED
+# ---------------------------
+# VARIED: epochs (120, 150) x eta_min (1e-5, 1e-4, 3e-4).
+# HELD FIXED: the Q02 loss composition exactly as W23 -- smooth_l1 + delta_cos 0.5 +
+#   delta_mag 0.01363 + latent MSE (delta_z) 0.0044, no VICReg, no recon split. Everything
+#   else is arm s313: adjacency_map, batch 2048, lr 1e-3, decoder_lr 1e-3, cosine schedule,
+#   warmup 5 epochs, seed 42.
+#
+# WHY THESE THREE eta_min VALUES
+# ------------------------------
+# lr = 1e-3 AND decoder_lr = 1e-3 in this base, so eta_min must stay strictly below 1e-3 or
+# the cosine never decays at all. 1e-7...1e-4 is MEASURED FLAT (F-sched2: within-row spread
+# 0.0006-0.0033 pearson_delta, no monotone direction), so re-spending three values inside that
+# band buys nothing. 1e-5 and 1e-4 are kept as CONTINUITY CONTROLS against W23 and W24; the
+# third, 3e-4, is the only untested regime -- the LR never falls below 0.3x peak.
+#
+# ⚠️ W23's SELECTED weights sit at EPOCH 60 OF 90 (`best_model.pth` holds epoch=60, val
+# pearson_delta 0.4419; the final 30 epochs never beat it). So the 90-over-60 gain was NOT
+# "more steps" -- it was the GENTLER COSINE SLOPE that a 90-epoch schedule gives at epoch 60.
+# That is the mechanism these arms extend. Expect their useful checkpoint at ~2/3 of the
+# schedule too, i.e. ~epoch 80 (120 ep) and ~epoch 100 (150 ep), not at the end.
+#
+# HOW TO READ THE RESULT -- PRE-REGISTERED, before any number is seen
+# -------------------------------------------------------------------
+# Y01/Y04 > 0.3959 by >=0.002 at 4-5/5 -> the epochs axis is STILL LIVE past 90; keep climbing.
+# Y01/Y04 ~ 0.3959 (|delta| < 0.002)   -> 90 IS THE PLATEAU and the decelerating series
+#                                         (+0.0150, +0.0025) has converged. Stop tuning length.
+# Y01 > Y04                            -> 120 is the optimum and 150 over-trains.
+# Y03/Y06 (3e-4) beats the 1e-5 column -> the flat eta_min surface was flat only because the
+#                                         whole tested band was too low to matter; the floor
+#                                         becomes a real knob at long schedules.
+# disc_l1 keeps rising with length while pearson_delta plateaus -> length TRADES discrimination
+#                                         against delta correlation, and the pick depends on
+#                                         which metric is the target.
+#
+# ANCHORS (part of the context, not a footnote) -- test, uncalibrated, 5/5 splits
+# -------------------------------------------------------------------------------
+# ctrlcell -0.0018 · ctrlmean 0.0016 · meanpert 0.1324 · transfer 0.2323 · experimental 0.3722
+# (mae 0.0257, ovl@N 0.1942, disc_l1 0.7821) · Q02 base (30 ep) 0.3783 · E3 (60 ep) 0.3933 ·
+# W23 (90 ep, 1e-5) 0.3959 · W24 (90 ep, 1e-4) 0.3957 · X02 (90 ep + VICReg) 0.3943.
+# Directions: pearson_delta UP · mae DOWN (it is an ERROR) · ovl@N UP · disc_l1 UP (chance 0.5).
+#
+# COST, MEASURED (W23: 41 s/epoch, 1:15:14 wall for 90 ep incl. eval)
+# -------------------------------------------------------------------
+# 120 ep ~= 1 h 40 · 150 ep ~= 2 h 05 -> ⚠️ SUBMIT WITH --time=04:00:00; the sbatch default of
+# 02:00:00 WOULD KILL THE 150-EPOCH ARMS a few minutes from the end. 6 arms ~= 11 GPU-h train,
+# plus 30 eval tasks at ~9 min on a %6 throttle (F-infra1) ~= 4.5 GPU-h.
+#
+#   GRID=scripts/grids/rhj_epochs_ext.tsv \
+#   sbatch --qos=vco --wckey=vco --time=04:00:00 --array=0-5 scripts/slurm/rhj_loss_sweep.sbatch
+#
+# ⚠️ EPOCHS AND ETA_MIN ARE PER-ROW (columns 20-21). The EPOCHS/ETA_MIN env vars are global to
+# a job and cannot express a grid that varies them.
+arm	loss_type	nb_weight	nb_scale	delta_cos_weight	delta_mag_weight	latent_loss_type	latent_loss_weight	latent_cos_weight	latent_cos_target	recon_split	recon_ctrl_weight	recon_delta_weight	recon_split_mode	recon_delta_target	vicreg_var_weight	vicreg_cov_weight	vicreg_gamma	vicreg_target	epochs	eta_min	base
+Y01	smooth_l1	0	1.0	0.5	0.01363	delta_z	0.0044	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	120	1e-5	Q02
+Y02	smooth_l1	0	1.0	0.5	0.01363	delta_z	0.0044	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	120	1e-4	Q02
+Y03	smooth_l1	0	1.0	0.5	0.01363	delta_z	0.0044	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	120	3e-4	Q02
+Y04	smooth_l1	0	1.0	0.5	0.01363	delta_z	0.0044	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	150	1e-5	Q02
+Y05	smooth_l1	0	1.0	0.5	0.01363	delta_z	0.0044	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	150	1e-4	Q02
+Y06	smooth_l1	0	1.0	0.5	0.01363	delta_z	0.0044	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	150	3e-4	Q02

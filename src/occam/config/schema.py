@@ -376,6 +376,13 @@ VCELL_SCHEMA: Dict[str, Dict[str, Optional[str]]] = {
         # `cosine_loss_weight`, which is cos(prediction, target) and is dominated by the
         # baseline expression every perturbation shares.
         "delta_cos_weight": "delta_cos_weight",
+        # F-disp1 dispersion terms. Routed here as well as in the dataclass and the YAML:
+        # three independent layers, and a key missing from ANY of them is silently unsettable
+        # (the F-loss1 failure -- three DCOS arms produced bit-identical curves).
+        "dcos_conc_weight": "dcos_conc_weight",
+        "radial_spread_weight": "radial_spread_weight",
+        "gene_var_weight": "gene_var_weight",
+        "disp_ema_momentum": "disp_ema_momentum",
         # nb_smooth_l1: the two recon terms differ by a measured ~6.5x in scale, so the blend
         # weight and the pre-scaling are both sweep axes. Without `nb_scale`, `nb_weight`
         # sweeps over one order of magnitude of the NB term's own size rather than over the

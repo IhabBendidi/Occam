@@ -142,7 +142,10 @@ def main(argv=None) -> int:
     os.makedirs(args.de_real_cache_dir, exist_ok=True)
 
     # No encoder vocabulary: competitors are natively 6,983 wide, no padding.
-    base, labels, split, cohort, grand, man, transfer = es.load_frozen(
+    # ⚠️ 8 values. `load_frozen` grew `sos` (the norman_combo additivity baseline) and this
+    # call site must grow with it -- unpacking 7 from an 8-tuple raises here, which is the
+    # good case; the bad case is a silent shift, which is why the arity test covers it.
+    base, labels, split, cohort, grand, man, transfer, sos = es.load_frozen(
         args.panel_dir, args.split, encoder_gene_names=None)
     print(f"[compet] {args.arm} s{args.seed} · panel {base.real_X_model.shape[0]:,} x "
           f"{base.n_keep:,} · cohort {cohort['n_perts']} · split {split.index}")
@@ -188,6 +191,7 @@ def main(argv=None) -> int:
         predict_fn=predict_fn,
         grand_mean=grand, grand_mean_info=man.get("train_grand_mean"),
         transfer_deltas=transfer, transfer_info=man.get("transfer"),
+        sos_deltas=sos, sos_info=man.get("sum_of_singles"),
         calibrate="none", batch_size=4096, seed=args.seed,
         celleval_kwargs={"num_threads": args.num_threads,
                          "de_batch_size": args.de_batch_size,

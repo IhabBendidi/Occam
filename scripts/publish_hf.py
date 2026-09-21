@@ -50,7 +50,14 @@ ARTIFACTS = [
     ("checkpoints/MANIFEST.json", "checkpoints/MANIFEST.json",
      "checksums, parameter counts and the verified recipe"),
     ("MODEL_CARD.md", "checkpoints/MODEL_CARD.md", "model card"),
-    ("data/eval", "eval", "evaluation bundle: 6 datasets"),
+    ("data/eval", "eval", "evaluation bundle: 6 datasets + the Norman-2019 combo source"),
+    # The frozen split-half benchmarks. Without these the .h5ad files are just data: the
+    # cohort, the seeded splits, the axis and the baselines are what make a number comparable
+    # between two people. ⚠️ `data/benchmarks/rhj_fewshot` is NOT staged here -- it carries
+    # absolute source paths in its `files/*.json`, which would break on a consumer's machine;
+    # norman_combo stores only basenames and checksums.
+    ("data/benchmarks/norman_combo", "benchmarks/norman_combo",
+     "the Norman-2019 double-perturbation benchmark: axis, cohort, 5 splits, baselines"),
     ("data/diverserna", "diverserna", "pretraining corpus shards"),
 ]
 
