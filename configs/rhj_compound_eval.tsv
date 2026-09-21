@@ -1,0 +1,6 @@
+# TEST cell-eval for the compounding arms (train 18247265). NOCAL ONLY.
+# X01 = Q02 + V09's VICReg + E3's schedule (60ep/1e-5). X02 = same at 90 epochs.
+# READ AGAINST: Q02 0.3783 · E3 0.3933 · V09 0.3846 (4/5). Naive independent sum ~0.3996.
+arm_id	kind	tag
+X01	loss	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_vvar0.0487g0.55_vcov0.0081-delta_z_e60_em1e-5_s42
+X02	loss	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_vvar0.0487g0.55_vcov0.0081-delta_z_e90_em1e-5_s42

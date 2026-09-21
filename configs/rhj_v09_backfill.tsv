@@ -1,0 +1,5 @@
+# V09 backfill: the VICReg var1x+cov10x arm, the only one above the Q02 base (+0.0063).
+# At 4/5 its lead is not final, and the arm spread (0.0119) is smaller than the 0.1744
+# consecutive-epoch swing (F-ckpt3), so the fifth split is load-bearing.
+arm_id	tag	split	calibrate	missing_modes
+V09	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_vvar0.0487g0.55_vcov0.0081-delta_z_s42	4	none	nocal
