@@ -286,12 +286,39 @@ def main(argv=None) -> int:
             "graph_dict means the checkpoint's knowledge graphs are not being rebuilt, and "
             "the arm would be scored without the prior it trained on.")
 
-    missing = sorted({p for p in split.labels} - set(base_dm.pert2id))
+    def _pert_ids(label):
+        """The perturbation ids for a label, resolving `"A+B"` into its components.
+
+        ⚠️ TxPert's `pert2id` is per SINGLE GENE -- `_extend_pert_vocabulary` splits every
+        observed `"A+B"` on `+` and adds the components -- so a combinatorial label is
+        NEVER a key. Looking one up whole made all 111 cohort pairs "absent from the
+        checkpoint's vocabulary" (job 18363660, 5/5 splits lost) even though the model was
+        trained on exactly them.
+
+        Returning BOTH ids is also TxPert's NATIVE pair mechanism, not our invention:
+        `gspp/models/gears_derivative.py:256-275` iterates the ids for a row and SUMS
+        their embeddings into one latent shift before decoding. A GEARS condition is
+        `"A+B"`; a single gene is `"A+ctrl"`. So a two-id list is what the model expects.
+        """
+        text = str(label)
+        if text in base_dm.pert2id:
+            return [base_dm.pert2id[text]]
+        parts = [q for q in text.split("+") if q and q != "ctrl"]
+        if parts and all(q in base_dm.pert2id for q in parts):
+            return [base_dm.pert2id[q] for q in parts]
+        return None
+
+    missing = sorted({str(p) for p in split.labels if _pert_ids(p) is None})
     if missing:
         raise SystemExit(
-            f"{len(missing)} cohort perturbation(s) are absent from the checkpoint's "
-            f"vocabulary, e.g. {missing[:5]}. The frozen 611-perturbation cohort is not "
-            f"negotiable; a partial arm would be scored on a different panel.")
+            f"{len(missing)} cohort perturbation(s) cannot be resolved against the "
+            f"checkpoint's {len(base_dm.pert2id):,}-symbol vocabulary, e.g. "
+            f"{missing[:5]}. The frozen cohort is not negotiable; a partial arm would be "
+            f"scored on a different panel.")
+    _n_pairs = sum(1 for p in {str(q) for q in split.labels} if len(_pert_ids(p) or []) > 1)
+    if _n_pairs:
+        print(f"[{ARM}] {_n_pairs} multi-gene condition(s) resolve to 2+ ids; the model "
+              f"SUMS their embeddings (its own additive mechanism)")
 
     paired_cls = _paired_dataset_class()
     cell_type = str(getattr(base_dm, "test_cell_type", "hepg2"))
@@ -315,11 +342,16 @@ def main(argv=None) -> int:
             cs.BATCH_RAW: np.full(n, "occam_panel"),
             # `evaluate` parses this as "{cell_type}_{pert}+ctrl_{dose}" by splitting on "_",
             # taking [1] for the perturbation and [-1] for the dose. Build it the same way.
-            "condition_name": [f"{cell_type}_{p}+ctrl_1+1" for p in pert_names],
+            # ⚠️ A GEARS condition name is `{cell_type}_{A}+{B}_{dose}`; a SINGLE gene
+            # fills the unused second slot with `ctrl`. Appending `+ctrl` to a pair would
+            # make `A+B+ctrl` -- three slots in a two-slot format -- which is the same
+            # mistake `data_utils.py` made globally.
+            "condition_name": [
+                f"{cell_type}_{p}_1+1" if "+" in str(p)
+                else f"{cell_type}_{p}+ctrl_1+1" for p in pert_names],
         }, index=[str(i) for i in range(n)])
         ad = sc_ad.AnnData(X=X, obs=obs)
-        conditions = pd.Series([[base_dm.pert2id[str(p)]] for p in pert_names],
-                               index=obs.index)
+        conditions = pd.Series([_pert_ids(p) for p in pert_names], index=obs.index)
 
         ds = paired_cls(
             ad, ad, conditions, obs["condition_name"], args.device,

@@ -205,10 +205,24 @@ def build_occam_controls(cfg, genes, logger):
 
     keep = np.asarray(a.obs["is_control"], dtype=bool)
     n = int(keep.sum())
-    if n != 4976:
+    # ⚠️ The expected count comes from THE BENCHMARK's own per-source manifest, not a
+    # literal. It was `!= 4976` -- HepG2's control count on rhj_fewshot -- so every other
+    # benchmark failed here with its own correct number (norman_combo: 9,702). The check
+    # itself is worth keeping: a silently truncated control pool changes every delta
+    # while nothing downstream looks wrong. What was wrong was hardcoding the answer.
+    _rec = bench.files.get(bench.evaluated_line) or {}
+    want = int(_rec.get("n_controls") or 0)
+    if want and n != want:
         raise ValueError(
-            f"expected 4,976 HepG2 controls -- the benchmark's own count, and what upstream's "
-            f"replogle branch asserts -- but got {n}")
+            f"expected {want:,} {bench.evaluated_line} controls -- the count recorded in "
+            f"{bench.dir}/files/*.json -- but got {n:,}. A truncated control pool changes "
+            f"every delta while nothing downstream looks wrong.")
+    if not want:
+        raise ValueError(
+            f"{bench.dir}/files/*.json records no `n_controls` for "
+            f"{bench.evaluated_line!r}, so the control pool cannot be verified. Rebuild "
+            f"the per-source manifest (scripts/norman/norman_write_file_manifest.py for "
+            f"norman_combo).")
 
     X_ctrl = np.asarray(a.X, dtype=np.float32)[keep]
     if X_ctrl.shape[1] != len(genes):
