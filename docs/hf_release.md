@@ -142,6 +142,23 @@ seconds.
 | 2026-09-15 | pass 2: DiverseRNA | 27 files, **8.83 GB**, all 20 shards present |
 | 2026-09-15 | whole repo re-read from the Hub | **39 files, 15.36 GB, `private: True`**, every size matched |
 
+| 2026-09-22 | pass 3: both vcell checkpoints + cards + `metrics/` | sha256 of BOTH checkpoints verified before upload; re-read from the Hub |
+| 2026-09-22 | pass 4: `graphs/`, `benchmarks/rhj_fewshot/`, `metrics_all/`, `repro/` | **332 files, 21.235 GB, `private: True`** |
+
+Re-read from the Hub after pass 4, with `files_metadata=True`:
+
+| folder | files | size |
+|---|---|---|
+| `diverserna/` | 27 | 8.832 GB |
+| `eval/` | 10 | 6.247 GB |
+| `checkpoints/` | 7 | 5.354 GB |
+| `graphs/` | 5 | 0.399 GB |
+| `benchmarks/` | 34 | 0.343 GB |
+| `metrics_all/` | 119 | 0.038 GB |
+| `metrics/` | 119 | 0.022 GB |
+| `repro/` | 10 | <0.001 GB |
+| **total** | **332** | **21.235 GB** |
+
 The corpus export is self-consistent against the source, checked after the fact from
 `shards.json` rather than trusted from the exporter's own exit code:
 
