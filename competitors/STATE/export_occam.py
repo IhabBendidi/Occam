@@ -69,7 +69,21 @@ for _p in (os.path.join(_HERE, "state", "src"),
         sys.path.insert(0, _p)
 
 
-def _resolve_checkpoint(seed: int, explicit: str) -> str:
+def _bench_tag(bench_dir: str) -> str:
+    """`""` for rhj_fewshot, `"__<bench>"` otherwise -- the run-directory suffix.
+
+    ⚠️ The training legs tag their run directory by benchmark and the export legs did
+    NOT, so an export defaulted to the rhj_fewshot run and would have scored the WRONG
+    CHECKPOINT on the right panel. CellFlow's emission-space guard caught its version of
+    this ("the gene axis is not ours: 6983 vs 8000"); an arm whose axis happened to match
+    would have produced a plausible number instead. Measured 2026-09-22, job 18328366.
+    """
+    import os as _os
+    name = _os.path.basename(_os.path.normpath(str(bench_dir)))
+    return "" if name == "rhj_fewshot" else f"__{name}"
+
+
+def _resolve_checkpoint(seed: int, explicit: str, bench_dir: str = "") -> str:
     """The checkpoint STATE itself selected on VALIDATION, never the last step.
 
     Its training leg writes `best_celleval.ckpt`, chosen on
@@ -81,7 +95,8 @@ def _resolve_checkpoint(seed: int, explicit: str) -> str:
         if not os.path.isfile(explicit):
             raise SystemExit(f"no checkpoint at {explicit}")
         return explicit
-    d = os.path.join(_REPO, "runs", "competitors", "state", f"occam_s{seed}", "checkpoints")
+    d = os.path.join(_REPO, "runs", "competitors", "state",
+                     f"occam_s{seed}{_bench_tag(bench_dir)}", "checkpoints")
     p = os.path.join(d, "best_celleval.ckpt")
     if not os.path.isfile(p):
         have = sorted(os.listdir(d)) if os.path.isdir(d) else []
@@ -93,6 +108,27 @@ def _resolve_checkpoint(seed: int, explicit: str) -> str:
     return p
 
 
+def _evaluated_line(bench_dir: str) -> str:
+    """The cell line whose perturbations are held out and scored, from the artifact."""
+    import json as _json
+    import os as _os
+    b = _json.load(open(_os.path.join(bench_dir, "benchmark.json")))
+    line = b.get("cell_line") or ""
+    if not line:
+        for rec in (b.get("sources") or {}).values():
+            if rec.get("cell_line"):
+                line = rec["cell_line"]
+                break
+    if not line:
+        ecl = b.get("eval_cell_lines") or []
+        line = ecl[0] if ecl else ""
+    if not line:
+        raise SystemExit(
+            f"{bench_dir}/benchmark.json records no `cell_line` or `eval_cell_lines`, so "
+            f"the evaluated line cannot be resolved. Pass --cell-type explicitly.")
+    return str(line)
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -102,7 +138,11 @@ def main(argv=None) -> int:
     ap.add_argument("--panel-dir", required=True)
     ap.add_argument("--bench-dir", required=True)
     ap.add_argument("--checkpoint", default="")
-    ap.add_argument("--cell-type", default="HEPG2")
+    ap.add_argument("--cell-type", default="",
+                    help="the EVALUATED cell line. Empty (the default) resolves it from "
+                         "--bench-dir, which is the only place that knows: it was pinned "
+                         "to rhj_fewshot's held-out line, and every other benchmark then "
+                         "asked for a line its artifact does not have.")
     ap.add_argument("--sentence-len", type=int, default=64)
     ap.add_argument("--sentences-per-batch", type=int, default=4)
     ap.add_argument("--device", default="cuda")
@@ -119,6 +159,10 @@ def main(argv=None) -> int:
                          "norman_combo; a no-op on a single-perturbation panel, where "
                          "every label passes straight through.")
     args = ap.parse_args(argv)
+    if not args.cell_type:
+        args.cell_type = _evaluated_line(args.bench_dir)
+        print(f"[export] evaluated cell line from the benchmark: "
+              f"{args.cell_type!r}")
 
     import torch
 
@@ -126,7 +170,7 @@ def main(argv=None) -> int:
                                  load_panel_split)
     from state.tx.data import get_datamodule
 
-    ckpt = _resolve_checkpoint(args.seed, args.checkpoint)
+    ckpt = _resolve_checkpoint(args.seed, args.checkpoint, args.bench_dir)
     print(f"[{ARM}] checkpoint {ckpt}")
 
     split = load_panel_split(args.panel_dir, args.split, target_sum=TRAIN_TARGET_SUM)

@@ -62,7 +62,21 @@ for _p in (_HERE, os.path.join(_REPO, "competitors", "shared")):
         sys.path.insert(0, _p)
 
 
-def _resolve_checkpoint(seed: int, explicit: str) -> str:
+def _bench_tag(bench_dir: str) -> str:
+    """`""` for rhj_fewshot, `"__<bench>"` otherwise -- the run-directory suffix.
+
+    ⚠️ The training legs tag their run directory by benchmark and the export legs did
+    NOT, so an export defaulted to the rhj_fewshot run and would have scored the WRONG
+    CHECKPOINT on the right panel. CellFlow's emission-space guard caught its version of
+    this ("the gene axis is not ours: 6983 vs 8000"); an arm whose axis happened to match
+    would have produced a plausible number instead. Measured 2026-09-22, job 18328366.
+    """
+    import os as _os
+    name = _os.path.basename(_os.path.normpath(str(bench_dir)))
+    return "" if name == "rhj_fewshot" else f"__{name}"
+
+
+def _resolve_checkpoint(seed: int, explicit: str, bench_dir: str = "") -> str:
     """The checkpoint TxPert itself selected on VALIDATION, never the last epoch.
 
     Its training leg writes `best_ckpt_path.txt` beside the checkpoints, chosen on
@@ -75,7 +89,8 @@ def _resolve_checkpoint(seed: int, explicit: str) -> str:
             raise SystemExit(f"no checkpoint at {explicit}")
         return explicit
     marker = os.path.join(_REPO, "runs", "competitors", "txpert", "ckpt",
-                          f"occam_s{seed}", "best_ckpt_path.txt")
+                          f"occam_s{seed}{_bench_tag(bench_dir)}",
+                          "best_ckpt_path.txt")
     if not os.path.isfile(marker):
         raise SystemExit(
             f"no selection marker at {marker}. Either training has not finished for seed "
@@ -154,7 +169,7 @@ def main(argv=None) -> int:
     from gspp.evaluation import evaluate
     from export_predictions import TRAIN_TARGET_SUM, export_split, load_panel_split
 
-    ckpt_path = _resolve_checkpoint(args.seed, args.checkpoint)
+    ckpt_path = _resolve_checkpoint(args.seed, args.checkpoint, args.bench_dir)
     print(f"[{ARM}] checkpoint {ckpt_path}")
 
     split = load_panel_split(args.panel_dir, args.split, target_sum=TRAIN_TARGET_SUM)
@@ -177,8 +192,38 @@ def main(argv=None) -> int:
     from hydra.core.hydra_config import HydraConfig
 
     with initialize_config_dir(config_dir=os.path.join(_HERE, "configs"), version_base=None):
+        # ⚠️ THE BENCHMARK-DERIVED OVERRIDES ARE COMPUTED HERE, not passed in. The train
+        # leg sets `hvg_number` and `test_cell_type` from the artifact; if the export does
+        # not set the SAME values it rebuilds a datamodule pinned to the config's
+        # `test_cell_type: hepg2`, and on a benchmark whose evaluated line is anything else
+        # the validation mask is all-False -> "Validation split is empty." after the
+        # training had already completed (measured: job 18328675, 5/5 splits lost).
+        # Deriving them from `--bench-dir` here means the two legs cannot disagree and a
+        # launcher cannot forget one.
+        _bench = json.load(open(os.path.join(args.bench_dir, "benchmark.json")))
+        _axis = _bench.get("gene_axis") or {}
+        _n_genes = (_axis.get("n_genes") or _axis.get("n_axis_genes")
+                    or _bench.get("n_axis_genes"))
+        if _n_genes is None:
+            with open(os.path.join(args.bench_dir, "gene_axis.csv")) as _fh:
+                _n_genes = sum(1 for _ in _fh) - 1
+        _line = _bench.get("cell_line") or ""
+        if not _line:
+            for _rec in (_bench.get("sources") or {}).values():
+                if _rec.get("cell_line"):
+                    _line = _rec["cell_line"]
+                    break
+        if not _line:
+            _ecl = _bench.get("eval_cell_lines") or []
+            _line = _ecl[0] if _ecl else "HEPG2"
+        # TxPert's own OCCAM_CELL_LINE_RENAME lowercases HEPG2 and passes everything else.
+        _test_ct = "hepg2" if _line == "HEPG2" else _line
+        print(f"[export] benchmark-derived: hvg_number={int(_n_genes)} "
+              f"test_cell_type={_test_ct!r} (evaluated line {_line!r})")
         cfg = compose(config_name=args.config_name, overrides=[
             f"datamodule.occam_bench_dir={args.bench_dir}",
+            f"datamodule.hvg_number={int(_n_genes)}",
+            f"datamodule.test_cell_type={_test_ct}",
             f"training.seed={args.seed}",
         ], return_hydra_config=True)
         HydraConfig.instance().set_config(cfg)

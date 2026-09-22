@@ -148,6 +148,27 @@ def _resolve_checkpoint(seed: int, explicit: str, penc: str = "") -> str:
     return path
 
 
+def _evaluated_line(bench_dir: str) -> str:
+    """The cell line whose perturbations are held out and scored, from the artifact."""
+    import json as _json
+    import os as _os
+    b = _json.load(open(_os.path.join(bench_dir, "benchmark.json")))
+    line = b.get("cell_line") or ""
+    if not line:
+        for rec in (b.get("sources") or {}).values():
+            if rec.get("cell_line"):
+                line = rec["cell_line"]
+                break
+    if not line:
+        ecl = b.get("eval_cell_lines") or []
+        line = ecl[0] if ecl else ""
+    if not line:
+        raise SystemExit(
+            f"{bench_dir}/benchmark.json records no `cell_line` or `eval_cell_lines`, so "
+            f"the evaluated line cannot be resolved. Pass --cell-type explicitly.")
+    return str(line)
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -161,7 +182,11 @@ def main(argv=None) -> int:
                     help="perturbation encoding in the run name (genept | onehot). Narrows the "
                          "checkpoint glob when several encodings share a seed.")
     ap.add_argument("--config-name", default="rawdata_diffusion_sampling")
-    ap.add_argument("--cell-type", default="HEPG2")
+    ap.add_argument("--cell-type", default="",
+                    help="the EVALUATED cell line. Empty (the default) resolves it from "
+                         "--bench-dir, which is the only place that knows: it was pinned "
+                         "to rhj_fewshot's held-out line, and every other benchmark then "
+                         "asked for a line its artifact does not have.")
     ap.add_argument("--sets-per-batch", type=int, default=8)
     ap.add_argument("--device", default="cuda")
     # ⛔ HOW A PAIR IS ANSWERED. This arm has no multi-perturbation mechanism of its own,
@@ -177,6 +202,10 @@ def main(argv=None) -> int:
                          "norman_combo; a no-op on a single-perturbation panel, where "
                          "every label passes straight through.")
     args = ap.parse_args(argv)
+    if not args.cell_type:
+        args.cell_type = _evaluated_line(args.bench_dir)
+        print(f"[export] evaluated cell line from the benchmark: "
+              f"{args.cell_type!r}")
 
     import torch
     from hydra import compose, initialize_config_dir

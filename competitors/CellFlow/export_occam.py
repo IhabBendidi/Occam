@@ -71,7 +71,20 @@ for _p in (_HERE, os.path.join(_REPO, "competitors", "shared")):
         sys.path.insert(0, _p)
 
 
-def _resolve_run_dir(seed: int, explicit: str) -> str:
+def _bench_tag(bench_dir: str) -> str:
+    """`""` for rhj_fewshot, `"__<bench>"` otherwise -- the run-directory suffix.
+
+    ⚠️ The training legs tag their run directory by benchmark, and this export did NOT,
+    so it defaulted to `occam_s42` -- the rhj_fewshot run -- and loaded a 6,983-component
+    PCA basis to export an 8,000-gene panel. The emission-space guard caught it ("the gene
+    axis is not ours: 6983 genes vs the frozen 8000"), which is the only reason it was not
+    a plausible-looking wrong number. Measured: job 18328366, 5/5 splits lost.
+    """
+    name = os.path.basename(os.path.normpath(str(bench_dir)))
+    return "" if name == "rhj_fewshot" else f"__{name}"
+
+
+def _resolve_run_dir(seed: int, explicit: str, bench_dir: str = "") -> str:
     """The run directory whose pickle holds the state CellFlow selected on VALIDATION.
 
     ⚠️ Unlike the other three arms there is no `best_*.ckpt`: CellFlow keeps the best
@@ -80,7 +93,8 @@ def _resolve_run_dir(seed: int, explicit: str) -> str:
     and that must be said beside the number rather than assumed away -- so this prints which
     it is instead of failing.
     """
-    d = explicit or os.path.join(_REPO, "runs", "competitors", "cellflow", f"occam_s{seed}")
+    d = explicit or os.path.join(_REPO, "runs", "competitors", "cellflow",
+                                 f"occam_s{seed}{_bench_tag(bench_dir)}")
     if not os.path.isdir(d):
         raise SystemExit(
             f"no run directory at {d}. Either training has not finished for seed {seed}, or "
@@ -100,6 +114,27 @@ def _resolve_run_dir(seed: int, explicit: str) -> str:
     return d
 
 
+def _evaluated_line(bench_dir: str) -> str:
+    """The cell line whose perturbations are held out and scored, from the artifact."""
+    import json as _json
+    import os as _os
+    b = _json.load(open(_os.path.join(bench_dir, "benchmark.json")))
+    line = b.get("cell_line") or ""
+    if not line:
+        for rec in (b.get("sources") or {}).values():
+            if rec.get("cell_line"):
+                line = rec["cell_line"]
+                break
+    if not line:
+        ecl = b.get("eval_cell_lines") or []
+        line = ecl[0] if ecl else ""
+    if not line:
+        raise SystemExit(
+            f"{bench_dir}/benchmark.json records no `cell_line` or `eval_cell_lines`, so "
+            f"the evaluated line cannot be resolved. Pass --cell-type explicitly.")
+    return str(line)
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -109,9 +144,17 @@ def main(argv=None) -> int:
     ap.add_argument("--panel-dir", required=True)
     ap.add_argument("--bench-dir", required=True)
     ap.add_argument("--checkpoint", default="", help="the run directory, not a file")
-    ap.add_argument("--cell-type", default="HEPG2")
+    ap.add_argument("--cell-type", default="",
+                    help="the EVALUATED cell line. Empty (the default) resolves it from "
+                         "--bench-dir, which is the only place that knows: it was pinned "
+                         "to rhj_fewshot's held-out line, and every other benchmark then "
+                         "asked for a line its artifact does not have.")
     ap.add_argument("--batch-size", type=int, default=2048)
     args = ap.parse_args(argv)
+    if not args.cell_type:
+        args.cell_type = _evaluated_line(args.bench_dir)
+        print(f"[export] evaluated cell line from the benchmark: "
+              f"{args.cell_type!r}")
 
     import anndata as ad
     import pandas as pd
@@ -121,7 +164,7 @@ def main(argv=None) -> int:
     from occam_bridge import load_pca_artifacts, reconstruct_from_pca
     from occam_bridge.occam import assert_axis_order
 
-    run_dir = _resolve_run_dir(args.seed, args.checkpoint)
+    run_dir = _resolve_run_dir(args.seed, args.checkpoint, args.bench_dir)
     split = load_panel_split(args.panel_dir, args.split, target_sum=TRAIN_TARGET_SUM)
 
     pca = load_pca_artifacts(os.path.join(run_dir, "pca"))
@@ -154,6 +197,14 @@ def main(argv=None) -> int:
 
         # centre and project through the TRAIN-FIT basis, never a refitted one
         x_pca_all = (X - means) @ pcs
+
+        # How many perturbation slots the TRAINED model has, read off its own obs columns.
+        _NULL_TOKEN = "NULL"
+        _slot_cols = sorted(c for c in cf.adata.obs.columns
+                            if str(c).startswith("gene_") and str(c)[5:].isdigit())
+        _n_slots = len(_slot_cols) or 1
+        print(f"[{ARM}] condition slots from the trained object: {_n_slots} "
+              f"({_slot_cols or ['gene_1 (assumed)']})")
 
         for pert in pd.unique(names):
             rows = np.flatnonzero(names == pert)
@@ -188,8 +239,28 @@ def main(argv=None) -> int:
             # pickled training AnnData.
             block.uns.update(cf.adata.uns)
 
+            # ⚠️ ONE SLOT PER `max_combination_length`, built exactly as
+            # occam_bridge/schema.py builds it at TRAINING time: the component ids
+            # SORTED (so `A+B` and `B+A` are one condition), then padded with the same
+            # NULL token. A single `gene_1` column is only right when
+            # max_combination_length == 1; against a model trained at 2 the predict call
+            # raised `KeyError: "['gene_2'] not in index"` -- after training had already
+            # completed. Measured: job 18363662.
+            #
+            # The slot count comes from the TRAINED object's own condition vocabulary, not
+            # from a constant here, so this adapter follows whatever the run was trained
+            # at instead of asserting a number.
+            parts = sorted(p for p in str(pert).split("+") if p)
+            padded = parts + [_NULL_TOKEN] * max(0, _n_slots - len(parts))
+            if len(parts) > _n_slots:
+                raise RuntimeError(
+                    f"{pert!r} has {len(parts)} genes but the trained model has "
+                    f"{_n_slots} slot(s). Retrain with max_combination_length >= "
+                    f"{len(parts)}.")
             cov = pd.DataFrame({"pert_str": [pert], ct_col: [args.cell_type],
-                                "is_control": [False], "gene_1": [pert]})
+                                "is_control": [False],
+                                **{f"gene_{i + 1}": [padded[i]]
+                                   for i in range(_n_slots)}})
             preds = cf.predict(block, covariate_data=cov, sample_rep="X_pca",
                                condition_id_key="pert_str", key_added_prefix=None)
             if not preds or pert not in {str(k) for k in preds}:

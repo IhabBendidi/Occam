@@ -345,3 +345,52 @@ invisible without a guard.
 ⚠️ `rhj_fewshot` is unregressed throughout: `tests/test_occam_data_reader.py` still
 reproduces its splits exactly (finetune 612,122 / val 6,731 / test 37,490), and the
 bench tag is EMPTY on it so all 296 existing run directories keep their names.
+
+---
+
+## The EXPORT leg had its own five hardcodes (2026-09-22, later)
+
+Training completing is not a score. TxPert trained to completion (15m37s) and CellFlow too
+(36m45s), and **both then lost all 5 splits in the export** — because the Norman-derived
+settings had only been threaded into the TRAIN leg.
+
+| # | what | where | what it did |
+|---|---|---|---|
+| 9 | the datamodule overrides | TxPert `export_occam.py` composed hydra with only `bench_dir` + `seed`, so `test_cell_type: hepg2` came from the config | "Validation split is empty." **after** training completed — 5/5 splits lost |
+| 10 | the run directory | CellFlow's export defaulted to `occam_s42`, the **rhj** run | loaded a 6,983-component PCA basis for an 8,000-gene panel |
+| 11 | the checkpoint directory | TxPert and STATE resolved `occam_s{seed}` with no bench tag | would have scored the **wrong checkpoint** on the right panel |
+| 12 | `--cell-type default="HEPG2"` | all three of CellFlow / STATE / PerturbDiff | next failure in line |
+| 13 | the sampler's control pool | PerturbDiff `sampling_generation_helpers.py:188`, `cell_lines=["HEPG2"]` | validation cell-eval raised, the callback **swallowed it**, and the run died 43 min later inside `ModelCheckpoint` looking for a score that was never published |
+
+**#10 is the one worth remembering.** An export that silently loads the wrong run's
+artifacts produces a number, not an error. It was caught only because the emission-space
+guard compares the axis (`"the gene axis is not ours: 6983 genes vs the frozen 8000"`).
+An arm whose two benchmarks happened to share a gene count would have reported a
+plausible, wrong result.
+
+**#13 is the one that cost the most wall clock.** The validation callback catches its own
+exceptions and logs `"validation cell-eval failed at epoch 43; not publishing a score"`,
+so the actual cause was two steps removed from the crash. The fix is one line; finding it
+meant reading past a `MisconfigurationException` about a monitored key.
+
+### The design lesson, applied
+
+Every one of #9–#13 is the same mistake: **a benchmark-dependent value passed in by a
+launcher instead of derived where it is used.** The fixes derive them inside the adapter,
+from `--bench-dir`, which the adapter already receives:
+
+* TxPert's export computes `hvg_number` and `test_cell_type` from `benchmark.json` itself,
+  so the two legs cannot disagree and no launcher can forget one.
+* All three exports resolve the evaluated cell line from the artifact when `--cell-type`
+  is empty (now the default).
+* CellFlow's and STATE's and TxPert's run/checkpoint directories carry the bench tag,
+  computed from `--bench-dir`.
+
+### CellFlow needed one genuine piece of combinatorial work
+
+`KeyError: "['gene_2'] not in index"`. Its export built a **one-slot** covariate frame
+(`gene_1` only) against a model trained at `max_combination_length: 2`. Now it builds every
+slot exactly as `occam_bridge/schema.py` does at training time — components **sorted** (so
+`A+B` and `B+A` are one condition) and padded with the same `NULL` token — and it reads the
+slot count off **the trained object's own obs columns** rather than a constant, so the
+adapter follows whatever the run was trained at.

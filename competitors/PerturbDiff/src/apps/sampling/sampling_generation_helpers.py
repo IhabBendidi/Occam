@@ -185,8 +185,14 @@ def build_occam_controls(cfg, genes, logger):
 
     batch_col = str(getattr(cfg.data, "perturbseq_batch_col", "batch_center"))
     ct_col = str(getattr(cfg.data, "cell_type_key", "cell_type"))
+    # ⚠️ The EVALUATED line, from the benchmark -- not the literal "HEPG2". The controls
+    # here are the basal pool the sampler predicts from, and pinning HepG2 made the
+    # validation cell-eval raise on a K562-only benchmark. That callback SWALLOWS its own
+    # errors ("validation cell-eval failed at epoch 43; not publishing a score"), so the
+    # run then died 43 minutes in inside ModelCheckpoint, which could not find the
+    # selection score it monitors -- two steps removed from the actual cause.
     a = od.load_occam_adata(
-        bench, cell_lines=["HEPG2"],
+        bench, cell_lines=[bench.evaluated_line],
         target_sum=float(getattr(cfg.data, "occam_target_sum", 10_000.0)),
         log1p=bool(getattr(cfg.data, "occam_log1p", True)),
         control_label=str(getattr(cfg.data, "control_pert", "empty")),
