@@ -216,10 +216,20 @@ def load_occam_benchmark(bench_dir: str = _DEFAULT_BENCH, *,
                     f"something else.")
         files[line] = rec
 
-    missing = [c for c in OCCAM_CELL_LINES if c not in files]
+    # ⚠️ The required cell lines come from the BENCHMARK, not from a module constant.
+    # `OCCAM_CELL_LINES` is rhj_fewshot's trio, and hardcoding it made this reader refuse
+    # every other benchmark outright -- norman_combo died here with "no per-file manifest
+    # for cell line(s) ['HEPG2', 'jurkat', 'RPE1']; found []" even once its manifest
+    # existed. Found 2026-09-22 while wiring the competitors onto norman_combo.
+    want = sorted({str(rec.get("cell_line")) for rec in (raw.get("sources") or {}).values()
+                   if rec.get("cell_line")}) or list(OCCAM_CELL_LINES)
+    missing = [c for c in want if c not in files]
     if missing:
-        raise OccamDataError(f"no per-file manifest for cell line(s) {missing}; "
-                             f"found {sorted(files)}")
+        raise OccamDataError(
+            f"no per-file manifest for cell line(s) {missing}; found {sorted(files)}. "
+            f"{bench_dir}/files/<source>.json is written by the benchmark builder "
+            f"(rhj_fewshot) or by scripts/norman/norman_write_file_manifest.py "
+            f"(norman_combo).")
 
     return OccamBenchmark(
         dir=bench_dir, benchmark_sha256=got,
@@ -229,7 +239,7 @@ def load_occam_benchmark(bench_dir: str = _DEFAULT_BENCH, *,
 
 
 def _read_one(path: str, axis_ensembl: Sequence[str], target_sum: float, log1p: bool,
-              pert_col: str, batch_col: str, chunk: int = 8192,
+              pert_col: str, batch_col: str, chunk: int = 8192, gene_col: str = "",
               max_cells: Optional[int] = None,
               ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """One h5ad -> (X on the axis, perturbation labels, batch labels).
@@ -244,9 +254,24 @@ def _read_one(path: str, axis_ensembl: Sequence[str], target_sum: float, log1p: 
     from occam.h5ad_columns import read_column
 
     with h5py.File(path, "r") as f:
-        ens = read_column(f["var"], "ensembl_gene_id")
+        # ⚠️ The column holding the Ensembl ids is NOT the same in every corpus:
+        # rhj_fewshot's three files use `ensembl_gene_id`, norman_2019_k562 uses
+        # `gene_id`. Hardcoding the first name made this reader refuse the Norman
+        # corpus outright ("var has no ensembl_gene_id column"), found 2026-09-22.
+        # The per-source manifest may name it; otherwise try the known aliases in
+        # order, and say which ones were tried rather than just the first.
+        tried = [gene_col] if gene_col else []
+        tried += [c for c in ("ensembl_gene_id", "gene_id", "ensembl_id") 
+                  if c not in tried]
+        ens = None
+        for cand in tried:
+            ens = read_column(f["var"], cand)
+            if ens is not None:
+                break
         if ens is None:
-            raise OccamDataError(f"{path}: var has no ensembl_gene_id column")
+            raise OccamDataError(
+                f"{path}: var has none of {tried}. Name the right column in the "
+                f"benchmark's files/<source>.json as `gene_col`.")
         pos = {g: i for i, g in enumerate(ens)}
         absent = [g for g in axis_ensembl if g not in pos]
         if absent:
@@ -325,6 +350,7 @@ def load_occam_adata(bench: OccamBenchmark,
             rec["path"], bench.axis_ensembl, target_sum, log1p,
             pert_col=str(rec.get("pert_col", "gene_name")),
             batch_col=str(rec.get("batch_col", "dataset_batch_num")),
+            gene_col=str(rec.get("gene_col", "")),
             max_cells=max_cells_per_line)
         is_ctrl = perts == CONTROL_LABEL
         out_perts = np.where(is_ctrl, control_label, perts)

@@ -1,106 +1,266 @@
 # Occam
 
-A masked autoencoder for single-cell transcriptomes. It uses **all genes** in
-the input rather than a highly-variable subset, corrupts them with **swap
-noise** rather than zeros, and jointly predicts which genes were corrupted and
-reconstructs the expression. A separate high-capacity decoder is trained on the
-frozen encoder.
+A masked autoencoder for single-cell transcriptomes, and a perturbation-prediction model
+built on it. The encoder uses **all genes** in the input rather than a highly-variable
+subset, corrupts them with **swap noise** rather than zeros, and jointly predicts which
+genes were corrupted and reconstructs the expression. A separate high-capacity decoder is
+trained on the frozen encoder. A **virtual-cell** head on top predicts what a perturbation
+does to a cell.
 
-Two things live here:
+## What do you want to do?
 
-1. **One end-to-end pipeline** — pretrain → finetune → decoder, driven by a
-   single config file, in one command.
-2. **One single-cell perturbation evaluation** — single cell in, single cell
-   out, scored with cell-eval v1, with the control cells the model sees strictly
-   disjoint from the control cells it is scored against.
-
-```bash
-pip install -e ".[eval]"
-cp configs/paths.example.yaml configs/paths.yaml   # relative defaults; no edit needed
-./scripts/bootstrap_assets.sh                      # copies checkpoints + BMDB
-python scripts/verify_checkpoint.py                # 28 checks on the release
-python scripts/verify_checkpoint.py --profile legacy  # 24 checks, the port gate
-```
-
-Evaluation data goes in `data/eval/` — 6 datasets, 5.6 GB, repacked from 1,031 GB
-of source files. The shipped config uses **relative** paths resolved against the
-repo root, so downloading the bundle into place is the whole of the setup. See
-[data/eval/DATASET_CARD.md](data/eval/DATASET_CARD.md).
-
-## Contents
-
-| | |
+| I want to… | go to |
 |---|---|
-| [Get the weights and the data](#get-the-weights-and-the-data) | one private HuggingFace repo |
-| [Quickstart](#quickstart) | embed and reconstruct with the released weights |
-| [The published recipe](#the-published-recipe) | what produced the released model |
-| [Train it yourself](#train-it-yourself) | the three-stage pipeline |
-| [Evaluation](#evaluation) | the panel, and how to read its numbers |
-| [Gotchas](#gotchas-that-will-bite-you) | read this before changing anything |
-| [What is not here](#what-is-not-here) | and where it went |
+| **use a checkpoint** — embed cells, reconstruct, predict a perturbation | [1. Install](#1-install) → [2. Get the weights](#2-get-the-weights-and-the-data) → [3. Use it](#3-use-it-the-python-api) |
+| **reproduce the data and splits** exactly as we use them | [4. Rebuild the benchmarks](#4-rebuild-the-benchmarks-data--splits) |
+| **reproduce a training run** | [5. Train](#5-train) |
+| **evaluate a checkpoint**, ours or yours | [6. Evaluate](#6-evaluate) |
+| **see every number we report** | [7. The results](#7-the-results) |
 
-## Get the weights and the data
+Every path in this repo is **relative** to the repo root, so there is nothing to configure
+beyond putting the downloads in place.
 
-Everything is in **one private HuggingFace repo**, `bendidiihab/Occam`. Every
-path in this repo is relative, so downloading the folders to the destinations
-below is the entire setup — there is nothing to configure afterwards.
+---
+
+## 1. Install
+
+Python **3.8+**, a CUDA GPU for training (CPU is fine for inference on a few thousand
+cells).
 
 ```bash
-hf download bendidiihab/Occam --include 'checkpoints/*' --local-dir /tmp/occam_dl
-mv /tmp/occam_dl/checkpoints/occam_small_encoder_decoder.pth checkpoints/release/
-
-hf download bendidiihab/Occam --include 'eval/*'       --local-dir /tmp/occam_dl
-mv /tmp/occam_dl/eval/pert/* data/eval/pert/ && mv /tmp/occam_dl/eval/scib/* data/eval/scib/
-
-hf download bendidiihab/Occam --include 'diverserna/*' --local-dir /tmp/occam_dl
-mv /tmp/occam_dl/diverserna/* data/diverserna/
+git clone git@github.com:IhabBendidi/Occam.git && cd Occam
+python -m venv .venv && source .venv/bin/activate     # or conda / pyenv
+pip install -e ".[eval]"
+cp configs/paths.example.yaml configs/paths.yaml       # relative defaults; no edit needed
 ```
 
-| what | size | needed for |
+`".[eval]"` adds the evaluation extras. Plain `pip install -e .` is enough to *use* a
+checkpoint.
+
+**Scoring needs cell-eval 0.6.0 in its own environment**, because it pins versions that
+conflict with training. Every script that scores shells out to it:
+
+```bash
+python -m venv .venv-celleval && .venv-celleval/bin/pip install 'cell-eval==0.6.0'
+export OCCAM_CELLEVAL_PYTHON="$PWD/.venv-celleval/bin/python"   # or set PYENV_VERSION
+```
+
+Check the install:
+
+```bash
+python scripts/verify_checkpoint.py      # 28 checks on the released weights
+python scripts/_run_tests.py             # the full suite, ~4 min, no GPU needed
+```
+
+The suite runs under a minimal in-repo runner (`scripts/_run_tests.py`) so it works
+without pytest; `pytest tests/` also works if you have it.
+
+---
+
+## 2. Get the weights and the data
+
+Everything is in **one private HuggingFace repo**, `bendidiihab/Occam` (21.2 GB, 334
+files). Download only what you need:
+
+```bash
+hf auth login                      # a read token for the private repo
+
+# the released encoder + decoder (0.93 GB) -- needed for everything
+hf download bendidiihab/Occam --include 'checkpoints/*.pth' 'checkpoints/*.json' \
+    'checkpoints/*.md' --local-dir /tmp/dl && mv /tmp/dl/checkpoints/* checkpoints/release/
+
+# the two perturbation-prediction checkpoints (2.23 GB each)
+hf download bendidiihab/Occam --include 'checkpoints/vcell/*' --local-dir /tmp/dl
+```
+
+| folder | size | needed for |
 |---|---|---|
-| `checkpoints/` | 0.93 GB | everything |
-| `eval/` | 5.6 GB | `occam-benchmark`, `occam-scib` |
-| `diverserna/` | ~8.8 GB | retraining from scratch only |
+| `checkpoints/` | 5.35 GB | the released encoder+decoder **and** both vcell checkpoints + their cards |
+| `eval/` | 6.25 GB | evaluation data — 7 datasets incl. `norman_2019_k562.h5ad` |
+| `benchmarks/` | 0.34 GB | the frozen `rhj_fewshot` and `norman_combo` benchmarks |
+| `graphs/` | 0.40 GB | the perturbation graph — **required to train or to rebuild a benchmark** |
+| `metrics/` | 22 MB | every cell-eval metric, per arm, per split (also in git) |
+| `metrics_all/` | 38 MB | the same for all 422 eval roots |
+| `repro/` | — | the scripts in `scripts/repro/`, for convenience |
+| `diverserna/` | 8.83 GB | retraining the MAE from scratch only |
 
-**The repo is private, and must stay private.** Neither dataset has had its
-licensing resolved: the pretraining corpus has 7 of 9 constituent blocks
-unattributed and the two identified (GTEx, TCGA) carry redistribution
-conditions, and none of the six evaluation datasets has a recorded licence.
-`scripts/check_upload_gate.py` gates *public* release and currently refuses,
-which is the correct state. `scripts/publish_hf.py` refuses to upload to a repo
-that is not private.
+Destinations: `checkpoints/*` → `checkpoints/release/` · `eval/pert|scib` →
+`data/eval/pert|scib/` · `benchmarks/*` → `data/benchmarks/*` · `graphs/*` →
+`data/graphs/` · `diverserna/*` → `data/diverserna/`.
 
-See [docs/hf_release.md](docs/hf_release.md).
+**The repo is private and must stay private.** Neither dataset's licensing is resolved:
+the pretraining corpus has 7 of 9 constituent blocks unattributed and the two identified
+(GTEx, TCGA) carry redistribution conditions, and none of the evaluation datasets has a
+recorded licence. `scripts/check_upload_gate.py` gates *public* release and currently
+refuses, which is the correct state. See [docs/hf_release.md](docs/hf_release.md).
 
-## Quickstart
+---
+
+## 3. Use it: the Python API
+
+`occam.api` is the **stable surface** — three loaders, three objects. Everything else in
+the package is training and benchmarking machinery whose signatures move with the
+campaign; this does not. Full reference: [docs/api.md](docs/api.md).
+
+It handles the two things that are easy to get silently wrong: **gene alignment** (the
+checkpoint's vocabulary is the truth, not your column order) and **preprocessing**
+(library-normalise to the checkpoint's own `target_sum`, then log1p, honouring its skip
+flags).
+
+### Embed cells
 
 ```python
-import torch
-from occam.inference.loader import load_encoder_wrapper
+import anndata as ad
+from occam.api import load_encoder
 
-w = load_encoder_wrapper("checkpoints/release/occam_small_encoder_decoder.pth")
-# x: (n_cells, 44728), library-normalised to 2000 then log1p,
-#    columns in w._gene_names order
-with torch.no_grad():
-    embeddings = w.model.feature(x)      # (n_cells, 512)
+enc = load_encoder("checkpoints/release/occam_small_encoder_decoder.pth")
+cells = ad.read_h5ad("my_cells.h5ad")             # RAW COUNTS
+z = enc.encode(cells, gene_col="gene_id", verbose=True)    # (n_cells, 512)
 ```
 
-From the shell:
+`gene_col` names the `.var` column holding gene ids; omit it to use `.var_names`. The
+released checkpoints use **Ensembl** ids. `verbose=True` prints what alignment did:
+
+```
+[occam] 12 cell(s) · 29,187/33,694 input genes matched · 4,507 dropped ·
+        15,541/44,728 vocabulary genes zero-filled (34.7%) ·
+        normalize=True (target_sum 2000) log1p=True
+```
+
+### Decode with the simple decoder
+
+```python
+from occam.api import load_decoder
+
+dec = load_decoder("checkpoints/release/occam_small_encoder_decoder.pth")
+x_hat = dec.decode(z)                                    # (n_cells, 44728), LOG1P
+x_hat = dec.reconstruct(cells, gene_col="gene_id")       # encode then decode
+counts = dec.reconstruct(cells, gene_col="gene_id", counts=True)   # back to counts
+```
+
+### Predict a perturbation with a virtual cell
+
+Works on the two published checkpoints **and on any you train yourself** — nothing here is
+specialised to ours.
+
+```python
+from occam.api import load_virtual_cell
+
+vc = load_virtual_cell("checkpoints/vcell/norman_combo_NQ02/best_model.pth")
+vc.perturbations[:5]        # the vocabulary it knows (18,216 genes)
+vc.compose_modes            # the 12 multi-perturbation composition modes
+
+pred = vc.predict(controls, ["FOXA1", "CBL+CNN1"], gene_col="gene_id")
+# AnnData, one row per (control cell x perturbation); obs['target_gene'] is the label
+
+effect = vc.delta(controls, ["CBL+CNN1"], gene_col="gene_id")   # (1, n_genes)
+```
+
+- `"A+B"` is a **pair**, composed with `mode=` (default `decode_seq_mean`, the adopted
+  default — [docs/default_recipe.md](docs/default_recipe.md)). `mode` has no effect on a
+  single perturbation: every reconstruction-based mode is algebraically identical there.
+- `predict` returns a **profile**; `delta` returns the **effect**. `delta(baseline=...)`
+  chooses what is subtracted — `"reconstructed"` (default, cancels the decoder's own
+  error) or `"real"` (relative to the measured control). The two are not comparable; read
+  each against its own family.
+
+### From the shell
 
 ```bash
 occam-embed       --model_dir checkpoints/release --input_data cells.h5ad --output emb
 occam-reconstruct --model_dir checkpoints/release --input_data cells.h5ad --output recon.h5ad
 occam-benchmark   --checkpoint checkpoints/release/occam_small_encoder_decoder.pth
 occam-scib        --checkpoint checkpoints/release/occam_small_encoder_decoder.pth
-occam-speed       --checkpoint checkpoints/release/occam_small_encoder_decoder.pth
 occam-verify
-occam-celleval    --checkpoint checkpoints/release/occam_small_encoder_decoder.pth \
-                  --eval-data data/eval/pert/nadig_2024_jurkat.h5ad \
-                  --output-dir runs/celleval/released --pert-col gene_name \
-                  --calibrate quantile --output-activation rectified_sigmoid
+
+# perturbation prediction from your own control cells
+python scripts/repro/occam_predict.py \
+    --checkpoint checkpoints/vcell/norman_combo_NQ02/best_model.pth \
+    --controls my_controls.h5ad --gene-col gene_id \
+    --perts FOXA1 "CBL+CNN1" --out predictions.h5ad
 ```
 
-## The published recipe
+---
+
+## 4. Rebuild the benchmarks (data + splits)
+
+Two benchmarks, both **frozen artifacts** — the axis, the cohort, the seeded splits and
+the baselines are what make one person's number comparable to another's.
+
+| | `rhj_fewshot` | `norman_combo` |
+|---|---|---|
+| question | unseen perturbation, seen cell-line family | unseen PAIR, from singles only |
+| data | HepG2 + Jurkat + RPE1 | K562 (Norman 2019, rebuilt from GEO) |
+| axis | 6,983 genes | 8,000 genes |
+| test | 611 held-out HepG2 perturbations | 111 pairs, in two effect-controlled strata |
+
+**You do not need to rebuild them** — downloading `benchmarks/` gives you the exact
+artifacts. Rebuild to *verify* them, or to build from a different source revision:
+
+```bash
+OUT=/tmp/check_rhj    bash scripts/repro/build_benchmark_rhj.sh      # ~25 min, ~120 GB RAM
+OUT=/tmp/check_norman bash scripts/repro/build_benchmark_norman.sh   # ~15 min, ~60 GB RAM
+```
+
+Each rebuilds the axis, cohort, splits, the 5 seeded split-halves and (Norman) the
+additivity strata, then runs `scripts/repro/verify_benchmark.py`, which compares **every
+scientific quantity** against the published artifact — the axis digest, the builder's own
+per-file content digests, the perturbation counts, the input `.h5ad` checksums, the cohort
+digest and all seven panel memberships pair by pair. It prints *REPRODUCED* or exits 3
+naming each difference.
+
+**Both reproduce exactly** (measured 2026-09-22).
+
+⚠️ The check is **semantic, not a byte hash**, and it has to be: `benchmark.json` embeds
+`git_sha`, the build date and the output path, so hashing the file reports a mismatch on a
+rebuild that is bit-identical in content. `axis.npz` is a zip and carries per-entry
+timestamps.
+
+⚠️ Both scripts **refuse to write over a frozen benchmark**. Build into a scratch `OUT`,
+or `FORCE=1` to replace it deliberately.
+
+✅ **A rebuilt panel can score a published checkpoint** — no flag needed. See
+[6. Evaluate](#6-evaluate).
+
+---
+
+## 5. Train
+
+### The perturbation model (virtual cell)
+
+The config **is** the recipe — no `--set` overrides:
+
+```bash
+sbatch scripts/repro/rhj_train.sh        # ~4.5 h, 1x H100
+sbatch scripts/repro/norman_train.sh     # ~3 h,   1x H100
+```
+
+or directly:
+
+```bash
+python -m occam.train --config configs/rhj_fewshot.yaml --stages vcell \
+    --run-suffix my_run
+```
+
+Both configs ship the **default recipe** adopted 2026-09-22: Q02 loss base, **150
+epochs**, `eta_min` **3e-4**, batch 2048, lr and decoder_lr 1e-3. The schedule is worth
+more than any loss term measured (+0.026 `pearson_delta` on `rhj_fewshot`, and +0.0840 on
+`norman_combo`), so **compare a new idea against this, not against the old 30-epoch
+number**. Full evidence and the procedure for a new dataset:
+[docs/default_recipe.md](docs/default_recipe.md).
+
+⚠️ **The three loss weights are scale-matched per corpus and must not be copied.** RHJ
+uses dcos 0.5 / mag 0.01363 / latent-MSE 0.0044; Norman uses 0.32977 / 0.0400866 /
+0.00198826 for the *same* base. `tests/test_default_recipe.py` fails if the two ever match.
+
+⚠️ `best_model.pth` is selected on **validation** `pearson_delta`. Validation picks the
+epoch well but **misranks arms** (finding F-ckpt4, held on 5 consecutive grids) — do not
+use a validation number to compare two configurations. `final_model.pth` is written only
+at the very end, so its presence is the completion marker.
+
+### The MAE itself
+
+#### The published MAE recipe
 
 > **The released decoder is the softplus + NB one as of 2026-09-16.** It beat
 > the previous `rectified_sigmoid` + smooth-L1 decoder by **+0.3747 calibrated
@@ -131,7 +291,8 @@ recipe does not produce the released weights.
 **[docs/reproducing_chain_a.md](docs/reproducing_chain_a.md) has the evidence.**
 It is worth reading before you trust any number about this model.
 
-## Train it yourself
+
+#### Training the MAE, stage by stage
 
 ```bash
 python -m occam.train --config configs/occam_small.yaml              # all three stages
@@ -172,7 +333,8 @@ when you want it. Read the config header first — **calibration, not the loss, 
 the dominant term** (~0.37 pearson_delta against ~0.02), so an uncalibrated run
 of this arm is no better than the released decoder.
 
-## Evaluation
+
+### Building a panel from your own corpus
 
 Build a panel from any perturbation corpus, then score a checkpoint on it:
 
@@ -195,6 +357,108 @@ run rather than asserting it in general.
 
 See [docs/evaluation.md](docs/evaluation.md).
 
+
+## 6. Evaluate
+
+Everything is scored under **one protocol**: the paired split-half. For each perturbation
+its cells are split in two — half A is the reference the metrics are computed against,
+half B is the target, and the model is fed **half-B controls**, so it never sees a cell
+that appears on the scoring side. 5 seeded splits, cell-eval 0.6.0, `--calibrate none`
+(`nocal`) throughout.
+
+```bash
+# our checkpoint (defaults to the published one; pass a path for yours)
+sbatch scripts/repro/rhj_eval.sh
+sbatch scripts/repro/norman_eval.sh                       # compose=decode_seq_mean
+sbatch scripts/repro/norman_eval.sh path/to/best_model.pth
+
+# the baselines -- the scale every score is read against
+sbatch scripts/repro/baselines.sh
+BENCHMARK=norman_combo sbatch scripts/repro/baselines.sh
+
+# a competitor, train -> export -> score chained
+ARM=txpert bash scripts/repro/competitors_rhj.sh          # also state|cellflow|perturbdiff
+```
+
+Then collect **all 35** cell-eval metrics, per arm, per split, per panel:
+
+```bash
+python scripts/export_split_metrics.py                    # -> data/release/metrics/
+```
+
+### Scoring a published checkpoint on a panel you built
+
+This works with no flag. `benchmark_sha256` is `sha256(benchmark.json)`, which embeds
+`git_sha`, the build date and the output path, so a verified rebuild can never reproduce
+it. Rather than refuse, the guard checks the property that digest stands in for, which is
+**stronger** than the digest:
+
+1. the **scoring axis** is identical (`gene_axis_sha256` is a content hash), and the
+   benchmark `id`, `n_axis_genes` and `axis_scope` agree; **and**
+2. **every perturbation the panel will score is held out of that checkpoint** — absent
+   from its `split_info.train`, present in its `benchmark.excluded_perts`.
+
+A different axis fails (1); a different split fails (2). The acceptance is printed, never
+silent. `--require-exact-benchmark` demands byte equality instead.
+
+Measured: the published Norman checkpoint on a rebuilt panel gives `pearson_delta` 0.7782
+/ `overlap_at_N` 0.3065 / `mae` 0.0137 on split 0 — **identical to the published run** on
+all three.
+
+### Reading a score
+
+⚠️ **A score is meaningless without its anchors**, and `pearson_delta` is a rank *within
+its own panel* — a `norman_combo` number and an `rhj_fewshot` number are not comparable.
+
+`rhj_fewshot`, `pearson_delta`, mean of 5 splits:
+
+| arm | score |
+|---|---|
+| `ctrlcell` / `ctrlmean` (zero-signal floors) | −0.0018 / 0.0016 |
+| `meanpert` (predict one constant delta) | 0.1324 |
+| `transfer` (same perturbation, other cell line) | 0.2323 |
+| **Occam `Y06`** | **0.4043** ± 0.0019 |
+| `experimental` (replicate agreement) | 0.3722 |
+
+`norman_combo`, `pearson_delta` (additive / non-additive panel):
+
+| arm | score |
+|---|---|
+| `meanpert` | 0.4634 / 0.4016 |
+| **Occam `NQ02` × `decode_seq_mean`** | **0.8169 / 0.7380** |
+| **`sum_of_singles`** ⭐ the bar | **0.8824 / 0.7757** |
+| `experimental` | 0.9165 / 0.8377 |
+
+⚠️ `experimental` is replicate agreement at the panel's own cell counts, **not an upper
+bound** — a model predicting the group mean can beat a noisy empirical half, and on
+`rhj_fewshot` ours does.
+
+⚠️ On `norman_combo`, `sum_of_singles` (`Δ_A + Δ_B`) **is this architecture's hypothesis
+in closed form**. Our model does not beat it on `pearson_delta`; it does beat it on `mae`
+and `overlap_at_N`.
+
+⚠️ Do **not** rank on `overlap_at_N` on `rhj_fewshot`: a zero-signal predictor beats a
+real model on it.
+
+---
+
+## 7. The results
+
+| file | what is in it |
+|---|---|
+| [docs/default_recipe.md](docs/default_recipe.md) | the adopted recipe, its evidence, and how to start a new dataset |
+| [docs/norman_results.md](docs/norman_results.md) | the 72-cell composition matrix (6 arms × 12 modes × 2 panels) and six aggregations |
+| [docs/rhj_scoreboard.md](docs/rhj_scoreboard.md) | every `rhj_fewshot` arm, ours and the competitors' |
+| [docs/rhj_splithalf.md](docs/rhj_splithalf.md) | the findings log — what was tried, what held, what was withdrawn |
+| [docs/competitors_on_doubles.md](docs/competitors_on_doubles.md) | how each competitor handles doubles in its own paper |
+| [docs/norman_benchmark.md](docs/norman_benchmark.md) | the Norman QC, the provenance correction, and the two test strata |
+| `data/release/metrics/` | **all 35 metrics** for our published arms, every baseline and every competitor, per split and panel |
+
+Superseded numbers stay in the docs beside their correction, never deleted — the history
+of what was believed when is itself evidence, and three findings have been withdrawn.
+
+---
+
 ## Gotchas that will bite you
 
 1. **`decoder_num_blocks` must be 5** for the released decoder. The code default
@@ -215,6 +479,7 @@ See [docs/evaluation.md](docs/evaluation.md).
 7. **Trust checkpoints, not sidecar JSON.** See
    [docs/reproducing_chain_a.md](docs/reproducing_chain_a.md).
 
+
 ## What is not here
 
 * **The XCell benchmark modes**, and the four dataset-specific prediction
@@ -229,19 +494,26 @@ See [docs/evaluation.md](docs/evaluation.md).
   for resolution before it is quoted again. It is retired, and the test suite
   fails if it reappears.
 
+
+---
+
 ## Layout
 
 ```
-configs/     occam_small.yaml is the published recipe; paths.yaml is machine-local
-src/occam/   mae/ decoder_train/ vcell/ evaluation/ inference/ config/ pipeline/ cli/
-scripts/     bootstrap, verification, panel building, dataset export, porting tools
-data/        diverserna/ (dataset card + export) and panels/
-golden/      numerical fixtures; the release must reproduce them
-docs/        architecture, training, evaluation, checkpoints, provenance, hf_release
+configs/       occam_small.yaml (MAE recipe) · rhj_fewshot.yaml · norman_combo.yaml
+src/occam/     api.py <- the public surface
+               mae/ decoder_train/ vcell/ evaluation/ inference/ config/ pipeline/ cli/
+scripts/repro/ the reproduction path: build, train, eval, baselines, competitors, predict
+scripts/       panel building, dataset export, verification, metric export, porting
+competitors/   the four ported methods (STATE, TxPert, CellFlow, PerturbDiff)
+data/          eval/ benchmarks/ graphs/ diverserna/ release/metrics/
+docs/          the recipe, the findings, the benchmarks, the release
+golden/        numerical fixtures; the release must reproduce them
+tests/         ~270 tests; scripts/_run_tests.py runs them without pytest
 ```
 
 ## Citation
 
 Pending. See [MODEL_CARD.md](MODEL_CARD.md) and
-[data/diverserna/DATASET_CARD.md](data/diverserna/DATASET_CARD.md); the
-pretraining corpus is **not** cleared for redistribution.
+[data/diverserna/DATASET_CARD.md](data/diverserna/DATASET_CARD.md); the pretraining corpus
+is **not** cleared for redistribution.

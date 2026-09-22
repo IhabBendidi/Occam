@@ -145,3 +145,65 @@ Stated before any run, so the conclusion is not written after seeing the numbers
 TxPert Pearson Δ, State neither on genetics), so **only a re-run under our scorer on our
 frozen panel is comparable**. Nothing in their papers can be quoted into our table.
 
+---
+
+## Wiring them onto `norman_combo` — what was blocking, and what is left
+
+**Status 2026-09-22: the shared data layer now works on `norman_combo`. No competitor is
+training on it yet.** Written down so the remaining work is a list rather than a
+rediscovery.
+
+### Two blockers found by trying, both in the ONE reader all four competitors use
+
+`competitors/shared/occam_data.py::load_occam_benchmark` refused `norman_combo` outright.
+
+1. **No per-source manifest.** The reader needs `<bench>/files/<source>.json` — the path,
+   the frozen sha256, the perturbation and batch columns, the per-perturbation cell
+   counts. `rhj_fewshot`'s builder writes those; Norman's never did, so the reader failed
+   with *"no per-file manifest for cell line(s) … found []"*.
+   → `scripts/norman/norman_write_file_manifest.py` (new) derives it from
+   `benchmark.json`'s own `sources` block and the source `.h5ad`, and **re-reads the
+   sha256 and asserts it** against the frozen one rather than copying it. Run by
+   `scripts/repro/build_benchmark_norman.sh`.
+2. **The required cell lines were a module constant.** `OCCAM_CELL_LINES` is
+   `("HEPG2", "jurkat", "RPE1")`, and the check was `for c in OCCAM_CELL_LINES` — so even
+   with the manifest in place Norman died asking for HepG2. → the required lines now come
+   from the benchmark's own `sources`.
+3. **The Ensembl column name is not universal.** `rhj_fewshot`'s three files use
+   `ensembl_gene_id`; `norman_2019_k562` uses `gene_id`. The reader hardcoded the first
+   and refused with *"var has no ensembl_gene_id column"*. → the per-source manifest may
+   name it (`gene_col`), otherwise known aliases are tried in order and the error lists
+   all of them.
+
+Verified after the fixes — RHJ unregressed, Norman reads:
+
+| benchmark | axis | sources | exclusions |
+|---|---|---|---|
+| `rhj_fewshot` | 6,983 | HEPG2, RPE1, jurkat | 724 |
+| `norman_combo` | 8,000 | K562 | 131 pairs |
+
+and `load_occam_adata(..., cell_lines=["K562"])` returns a frame with **130 pairs
+visible**, controls labelled, both `ensembl_gene_id` and `gene_symbol` in `.var`.
+
+### What is left, per arm
+
+The training legs still hardcode `data/benchmarks/rhj_fewshot`
+(`scripts/slurm/competitor_train_*.sbatch`, `competitor_export.sbatch`,
+`competitor_score.sbatch`, `scripts/eval_competitor.py:PANEL_DIR`).
+
+| step | work | cost |
+|---|---|---|
+| thread a `BENCH` variable through the 4 train legs + export + score + `eval_competitor.py` | mechanical, one variable, but it touches every leg | ~1 h |
+| **TxPert** — native additive sum; its GEARS condition is already `"A+B"` → two ids | config + export only, probably no model change | ~4 h/seed train |
+| **CellFlow** — `max_combination_length=2` and a Norman config | the bridge is already written for two slots | ~10 h train |
+| **State** — `decode_seq_mean`: predict A, feed the prediction back as the control, predict B, average both orders | new code in its adapter, at the EXPORT layer — no model change, because its own combinatorial design is consecutive forward passes | ~6 h train |
+| **PerturbDiff** — same sequential `decode_seq_mean` | same, and it has **no published combinatorial protocol**, so this is our rule and must be labelled as one | ~8 h train |
+
+⚠️ For State and PerturbDiff the sequential composition is implementable **entirely in the
+export**, because export controls what is fed in: `pred_A = f(ctrl, A)`, then
+`pred_AB = f(pred_A, B)`, averaged over both orders. Nothing inside either model changes,
+which is what keeps the arm faithful to the method rather than to our port of it.
+
+⚠️ Order matters for that family: on our own matrix `decode_seq_ba` beats `decode_seq_ab`
+on all 6 arms and both panels (max |ab − ba| = 8.96e-02), which is why the mean of the two
+orders is the default rather than either one.

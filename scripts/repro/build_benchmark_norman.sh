@@ -124,9 +124,17 @@ echo "--- step 2/3: additivity strata (the additive / nonadditive panels)"
 python scripts/norman/norman_stratify_panels.py --panel "$OUT/splithalf"
 
 echo
-echo "--- step 3/3: benchmark definition (stamps the panel manifest)"
+echo "--- step 3/4: benchmark definition (stamps the panel manifest)"
 python scripts/norman/norman_build_benchmark.py \
     --source "$SRC" --axis "$AXIS" --panel "$OUT/splithalf" --out-dir "$OUT"
+
+# ⚠️ REQUIRED for the competitors, and it used to be missing. The ONE reader all four
+# ported methods share needs `files/<source>.json`; without it
+# `competitors/shared/occam_data.py` refuses the whole benchmark and no competitor can be
+# trained on it. rhj_fewshot's builder writes these; Norman's did not.
+echo
+echo "--- step 4/4: per-source manifest (what the competitors read)"
+python scripts/norman/norman_write_file_manifest.py --bench-dir "$OUT" --source "$SRC"
 
 echo
 echo "--- verifying against the published benchmark"
