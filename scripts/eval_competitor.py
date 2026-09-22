@@ -187,7 +187,19 @@ def main(argv=None) -> int:
 
     rec = run_split(
         base, labels, split, cohort, out_dir,
-        model=None, pert2id={p: 0 for p in cohort["perts"]}, device="cpu",
+        # ⚠️ PER GENE, not per label. This map exists only to satisfy
+        # `_assert_in_pert2id` -- a competitor arm has no model and no perturbation
+        # vocabulary, its predictions come from `pred.npy` -- but the guard deliberately
+        # refuses a whole `"A+B"` key, because for a REAL model that would mean
+        # conditioning on a spurious single "A+B" perturbation and scoring it as a
+        # composition. Keying this by the full labels therefore made every one of
+        # norman_combo's 111 pairs unresolvable and killed all 5 score tasks of all three
+        # arms at ~25 s (jobs 18363762, 18363764). Building it from the COMPONENTS mirrors
+        # what a real per-gene vocabulary looks like, so the guard checks what it is meant
+        # to check -- that the cohort is expressible -- without being weakened.
+        model=None, device="cpu",
+        pert2id={g: 0 for p in cohort["perts"]
+                 for g in str(p).split("+") if g},
         predict_fn=predict_fn,
         grand_mean=grand, grand_mean_info=man.get("train_grand_mean"),
         transfer_deltas=transfer, transfer_info=man.get("transfer"),
