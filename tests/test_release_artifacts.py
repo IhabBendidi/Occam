@@ -204,3 +204,67 @@ def test_the_metric_export_defaults_to_the_published_scope():
     # `reference`, which matches neither PUBLISHED_ARMS nor the competitor pattern.
     assert 'and kind == "occam"' in src, \
         "the scope filter is not restricted to our own arms"
+
+
+def test_a_rebuilt_panel_can_score_a_published_checkpoint():
+    """The normal thing a reader does must work, and it must still refuse leakage.
+
+    `benchmark_sha256` is sha256(benchmark.json), which embeds git_sha, the build date
+    and the output path -- so a verified rebuild CANNOT reproduce it. Requiring byte
+    equality made every published checkpoint unusable on a panel the reader built.
+    Measured 2026-09-22: the published norman checkpoint on a rebuilt panel gives
+    pearson_delta 0.7782 / overlap_at_N 0.3065 / mae 0.0137 on split 0 -- identical to
+    the published run on all three.
+    """
+    src = open(os.path.join(REPO, "scripts/eval_splithalf.py")).read()
+    # The digest is no longer in the hard-refusal set.
+    assert '("benchmark_sha256", manifest["benchmark_sha256"])' not in src, \
+        "benchmark_sha256 is back in the strict set; rebuilt panels are refused again"
+    # The fallback must verify the property the digest stands in for.
+    assert "def _leakage_check" in src
+    assert "split_info" in src and "excluded_perts" in src, \
+        "the fallback does not check the hold-out against the checkpoint's own records"
+    # And it must still be possible to demand byte equality.
+    assert "--require-exact-benchmark" in src
+    # Silence is not acceptance: the acceptance must be announced.
+    assert "accepted as a REBUILD" in src
+
+
+def test_the_leakage_fallback_refuses_a_trained_perturbation():
+    """A different SPLIT must not pass as a rebuild, or the guard is decorative."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "_eval_sh", os.path.join(REPO, "scripts/eval_splithalf.py"))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    ckpt = {"benchmark": {"excluded_perts": {"f.h5ad": ["A+B", "C+D"]}},
+            "split_info": {"train": ["A", "B", "C", "D"]}}
+    ok, lines = mod._leakage_check(ckpt, ["A+B", "C+D"])
+    assert ok and not lines, lines
+
+    # a pair the checkpoint trained on
+    ok, lines = mod._leakage_check(
+        {"benchmark": {"excluded_perts": {"f.h5ad": ["A+B"]}},
+         "split_info": {"train": ["A", "C+D"]}}, ["A+B", "C+D"])
+    assert not ok and any("TRAINING LIST" in l for l in lines), lines
+
+    # a pair that was never deliberately held out
+    ok, lines = mod._leakage_check(
+        {"benchmark": {"excluded_perts": {"f.h5ad": ["A+B"]}},
+         "split_info": {"train": ["A"]}}, ["A+B", "E+F"])
+    assert not ok and any("excluded_perts" in l for l in lines), lines
+
+
+def test_the_competitor_doubles_research_is_recorded():
+    """Each competitor must be run ITS OWN way on norman_combo, so record which way."""
+    doc = os.path.join(REPO, "docs/competitors_on_doubles.md")
+    assert os.path.isfile(doc)
+    text = open(doc).read()
+    for method in ("TxPert", "CellFlow", "State", "PerturbDiff"):
+        assert method in text, method
+    # The three facts that decide how each is launched.
+    assert "sum the perturbation embeddings" in text or "summed embeddings" in text
+    assert "max_combination_length" in text
+    assert "consecutive forward passes" in text
+    assert "no combinatorial" in text.lower() or "NO" in text

@@ -184,12 +184,70 @@ def load_model(ckpt_path: str, device: str, output_activation=None):
     return trainer, loaded
 
 
-def assert_checkpoint_matches(ckpt_path: str, manifest, ckpt=None) -> None:
+def _cohort_labels(panel_dir: str):
+    """Every perturbation the panel will score, from cohort.json. None if unavailable."""
+    p = os.path.join(panel_dir or "", "cohort.json")
+    if not panel_dir or not os.path.isfile(p):
+        return None
+    with open(p) as fh:
+        cohort = json.load(fh)
+    per = cohort.get("cells_per_pert") or {}
+    return sorted(str(k) for k in per) or None
+
+
+def _leakage_check(ckpt, cohort):
+    """(ok, lines) -- is every scored perturbation actually held out of this checkpoint?
+
+    This is the property the benchmark digest is a PROXY for, checked directly: a
+    perturbation the model trained on must not appear on the scoring side. Verified
+    against both records the checkpoint carries -- `benchmark.excluded_perts` (what the
+    training stage deliberately held out, per source file) and `split_info.train` (the
+    perturbations it actually trained on).
+    """
+    excluded = set()
+    for v in (ckpt.get("benchmark", {}).get("excluded_perts") or {}).values():
+        excluded |= {str(x) for x in v}
+    trained = {str(x) for x in (ckpt.get("split_info", {}).get("train") or [])}
+    missing = [q for q in cohort if q not in excluded]
+    leaked = sorted(q for q in cohort if q in trained)
+    lines = []
+    if leaked:
+        lines.append(f"{len(leaked)} scored perturbation(s) are in this checkpoint's "
+                     f"OWN TRAINING LIST, e.g. {leaked[:5]} -- scoring here would be "
+                     f"measuring memorisation")
+    if missing:
+        lines.append(f"{len(missing)} scored perturbation(s) are not in the "
+                     f"checkpoint's `excluded_perts`, e.g. {missing[:5]} -- the training "
+                     f"run did not deliberately hold them out")
+    return (not leaked and not missing), lines
+
+
+def assert_checkpoint_matches(ckpt_path: str, manifest, ckpt=None, panel_dir=None,
+                              require_exact: bool = False) -> None:
     """Refuse a checkpoint trained on a different gene axis or a different benchmark.
 
     A model trained on 6,983 input columns and scored on 9,624 is silent and severe: every
     column it never saw arrives as a real number instead of a structural zero, and nothing
     in the scoring path notices.
+
+    ⛔ REBUILT PANELS ARE ACCEPTED, deliberately, since 2026-09-22. `benchmark_sha256` is
+    `sha256(benchmark.json)`, and that file embeds `git_sha`, the build date and the
+    output path -- so a panel rebuilt with `scripts/repro/build_benchmark_*.sh` can be
+    identical in every scientific quantity and still carry a different digest (measured:
+    f458c2d9... vs 8ac7da0d...). Requiring byte equality therefore made the published
+    checkpoints unusable on a panel a reader built themselves, which is the normal thing
+    for a reader to do.
+
+    So when the digests differ, the guard does NOT give up: it checks the property the
+    digest is a proxy for, which is stronger than the digest itself --
+
+      1. the SCORING AXIS is identical (`gene_axis_sha256` is a content hash), the
+         benchmark `id`, `n_axis_genes` and `axis_scope` agree; and
+      2. every perturbation the panel will score is HELD OUT of this checkpoint: absent
+         from `split_info.train` and present in `benchmark.excluded_perts`.
+
+    A different split cannot pass (2), and a different axis cannot pass (1). Pass
+    `require_exact=True` (`--require-exact-benchmark`) to restore byte equality.
     """
     if ckpt is None:
         import torch
@@ -203,14 +261,43 @@ def assert_checkpoint_matches(ckpt_path: str, manifest, ckpt=None) -> None:
             f"retrain, or score it on the panel it was built for.")
     bad = []
     for key, want in (("gene_axis_sha256", manifest["gene_axis_sha256"]),
-                      ("benchmark_sha256", manifest["benchmark_sha256"]),
                       ("n_axis_genes", manifest["n_axis_genes"]),
                       ("id", manifest["benchmark_id"])):
         if b.get(key) != want:
             bad.append(f"{key}: checkpoint {b.get(key)!r} != panel {want!r}")
+    digest_differs = b.get("benchmark_sha256") != manifest.get("benchmark_sha256")
     if bad:
         raise SystemExit("this checkpoint was not trained on this benchmark:\n  "
                          + "\n  ".join(bad))
+    if digest_differs:
+        if require_exact:
+            raise SystemExit(
+                f"benchmark_sha256: checkpoint {b.get('benchmark_sha256')!r} != panel "
+                f"{manifest.get('benchmark_sha256')!r}, and --require-exact-benchmark "
+                f"was given. Drop that flag to accept a verified rebuild.")
+        cohort = _cohort_labels(panel_dir)
+        if cohort is None:
+            raise SystemExit(
+                f"benchmark_sha256 differs (checkpoint {str(b.get('benchmark_sha256'))[:16]}"
+                f"... != panel {str(manifest.get('benchmark_sha256'))[:16]}...) and "
+                f"{panel_dir}/cohort.json is missing, so the hold-out cannot be verified "
+                f"another way. Score against the panel the checkpoint was built for.")
+        ok, lines = _leakage_check(ckpt, cohort)
+        if not ok:
+            raise SystemExit(
+                "benchmark_sha256 differs AND the hold-out does not check out, so this "
+                "is a different benchmark rather than a rebuild of the same one:\n  "
+                + "\n  ".join(lines))
+        print(f"[splithalf] benchmark_sha256 DIFFERS "
+              f"(checkpoint {str(b.get('benchmark_sha256'))[:16]}... != panel "
+              f"{str(manifest.get('benchmark_sha256'))[:16]}...), accepted as a REBUILD:")
+        print(f"[splithalf]   same scoring axis ({b['gene_axis_sha256'][:16]}..., "
+              f"{b['n_axis_genes']:,} genes), same benchmark id, same axis scope")
+        print(f"[splithalf]   all {len(cohort):,} scored perturbation(s) held out of "
+              f"training (absent from split_info.train, present in excluded_perts)")
+        print(f"[splithalf]   that digest is sha256(benchmark.json), which embeds "
+              f"git_sha / build date / output path and so cannot survive a rebuild; the "
+              f"hold-out check above is the property it stands in for")
     print(f"[splithalf] checkpoint benchmark OK: {b['id']} · axis "
           f"{b['gene_axis_sha256'][:16]} · {b['n_axis_genes']:,} genes · "
           f"scope {b.get('axis_scope') or '?'}")
@@ -256,6 +343,15 @@ def main() -> int:
                          "convention (deltas added to the real control, not to the model's "
                          "reconstruction), so its numbers are comparable within that family "
                          "and to `delta_sum_realctrl`, not directly to `sum`.")
+    ap.add_argument("--require-exact-benchmark", action="store_true",
+                    help="refuse unless the panel's `benchmark_sha256` byte-matches the "
+                         "one the checkpoint recorded. Off by default: that digest is "
+                         "sha256(benchmark.json), which embeds git_sha, the build date "
+                         "and the output path, so a panel rebuilt by "
+                         "scripts/repro/build_benchmark_*.sh cannot reproduce it even "
+                         "when identical in content. Without this flag a rebuild is "
+                         "accepted after verifying the same scoring axis AND that every "
+                         "scored perturbation is held out of the checkpoint's training.")
     ap.add_argument("--calibrate", default="none",
                     choices=["none", "quantile", "both"],
                     help="control-fit quantile calibration is worth ~0.37 pearson_delta "
@@ -382,7 +478,9 @@ def main() -> int:
         what = "PROBE" if args.probe else "REFERENCE"
         print(f"[splithalf] {what}: identity prediction, scoring {arms}")
     else:
-        assert_checkpoint_matches(args.checkpoint, man, ckpt=loaded_ckpt)
+        assert_checkpoint_matches(args.checkpoint, man, ckpt=loaded_ckpt,
+                                  panel_dir=args.panel_dir,
+                                  require_exact=args.require_exact_benchmark)
         if args.mode == "model":
             arms = None      # build_arms emits them; score_only filters below
 

@@ -54,7 +54,9 @@ artifact: the axis digest, the builder's own per-file content digests, the pertu
 counts, the input `.h5ad` checksums, the cohort digest and the membership of all seven
 panels, pair by pair. Exit 3 naming each difference; exit 0 prints *REPRODUCED*.
 
-Measured on 2026-09-22: the Norman rebuild reproduces the published benchmark exactly.
+Measured on 2026-09-22: **both** rebuilds reproduce the published benchmark exactly —
+Norman (all 7 panel memberships, every digest) and RHJ (3/3 source checksums,
+`artifact_sha256`, `counts`).
 
 ⚠️ **The verification is semantic, not a byte hash, and it has to be.** `benchmark.json`
 embeds `git_sha`, the build date and the output path, so hashing the file reports a
@@ -62,11 +64,29 @@ mismatch on a rebuild that is bit-identical in content — which is exactly what
 version of these scripts did. `axis.npz` is worse: it is a zip and carries per-entry
 timestamps.
 
-⚠️ **A rebuilt panel cannot score a published checkpoint.** `manifest.benchmark_sha256`
-is literally `sha256(benchmark.json)`, so a rebuild can never reproduce it, and
-`eval_splithalf.assert_checkpoint_matches` refuses on a mismatch — correctly, since that
-guard is what stops a checkpoint being scored on a benchmark it was not trained on. Use
-the rebuild to **verify**, then score against the **downloaded** panel.
+✅ **A rebuilt panel CAN score a published checkpoint** — this is the normal thing to do
+and it needs no flag. `manifest.benchmark_sha256` is `sha256(benchmark.json)`, which
+embeds `git_sha`, the build date and the output path, so a verified rebuild can never
+reproduce it. Rather than refuse, the guard checks the property that digest stands in for,
+which is stronger than the digest:
+
+1. the **scoring axis** is identical (`gene_axis_sha256` is a content hash), and the
+   benchmark `id`, `n_axis_genes` and `axis_scope` agree; **and**
+2. **every perturbation the panel will score is held out of that checkpoint** — absent
+   from its `split_info.train` and present in its `benchmark.excluded_perts`.
+
+A different axis fails (1); a different split fails (2). The acceptance is printed, never
+silent. Pass `--require-exact-benchmark` to demand byte equality instead.
+
+**Measured 2026-09-22.** The published Norman checkpoint scored on a rebuilt panel, split 0:
+
+| | rebuilt panel | published run |
+|---|---|---|
+| `pearson_delta` | 0.7782 | 0.7782 |
+| `overlap_at_N` | 0.3065 | 0.3065 |
+| `mae` | 0.0137 | 0.0137 |
+
+Identical on all three.
 
 ⚠️ Both scripts **refuse to write into a directory that already holds a
 `benchmark.json`**. Rebuild into a scratch dir (`OUT=/tmp/check bash …`), or
