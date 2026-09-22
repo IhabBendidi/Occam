@@ -68,12 +68,24 @@ ARTIFACTS = [
     ("MODEL_CARD.md", "checkpoints/MODEL_CARD.md", "model card"),
     ("data/eval", "eval", "evaluation bundle: 6 datasets + the Norman-2019 combo source"),
     # The frozen split-half benchmarks. Without these the .h5ad files are just data: the
-    # cohort, the seeded splits, the axis and the baselines are what make a number comparable
-    # between two people. ⚠️ `data/benchmarks/rhj_fewshot` is NOT staged here -- it carries
-    # absolute source paths in its `files/*.json`, which would break on a consumer's machine;
-    # norman_combo stores only basenames and checksums.
+    # cohort, the seeded splits, the axis and the baselines are what make a number
+    # comparable between two people.
     ("data/benchmarks/norman_combo", "benchmarks/norman_combo",
      "the Norman-2019 double-perturbation benchmark: axis, cohort, 5 splits, baselines"),
+    # ⚠️ CORRECTION (2026-09-22): this used to say rhj_fewshot could not be published
+    # because its `files/*.json` carry absolute source paths. Checked -- those files hold
+    # `path`, `sha256`, `mtime`, `bytes`, `n_obs` and friends, NOTHING under src/ reads
+    # them, and the absolute `path` is provenance about the machine that froze the
+    # benchmark. Withholding the benchmark meant withholding REQUESTED.json, i.e. the
+    # split definition itself, which made the headline result unreproducible. Published.
+    ("data/benchmarks/rhj_fewshot", "benchmarks/rhj_fewshot",
+     "the RPE1/HepG2/Jurkat few-shot benchmark: axis, cohort, the requested val/test "
+     "split, 5 split-halves, baselines"),
+    # The perturbation graph. Required to TRAIN (the adjacency-map perturbation model is
+    # an MLP over each gene's adjacency row) and to BUILD either benchmark (the cohort is
+    # intersected with `master_gene_set_sorted.csv`). Without it neither is reproducible.
+    ("data/graphs", "graphs",
+     "GO + STRING edge tables and the 18,216-gene master set the pert model indexes"),
     ("data/diverserna", "diverserna", "pretraining corpus shards"),
     # The two trained vcell checkpoints and their cards. These are DELIVERABLES, unlike
     # the stage-1/stage-2 MAE files: they are the models the reported numbers come from,
@@ -92,7 +104,11 @@ ARTIFACTS = [
     # reported number instead of trusting a four-metric mean. Regenerate with
     # `python scripts/export_split_metrics.py --out data/release/metrics`.
     ("data/release/metrics", "metrics",
-     "all 35 cell-eval metrics x 422 eval roots x 5 splits, per panel"),
+     "PUBLISHED scope: all 35 cell-eval metrics for our published arms, every baseline "
+     "and every competitor, per split and panel. Also tracked in git."),
+    ("data/release/metrics_all", "metrics_all",
+     "FULL scope: the same, for all 422 eval roots -- the whole rhj_fewshot sweep and "
+     "every norman base. Not in git."),
     # The four-command reproduction path: train, evaluate, read the metrics, predict.
     ("scripts/repro", "repro", "reproducibility scripts (train / eval / predict)"),
 ]

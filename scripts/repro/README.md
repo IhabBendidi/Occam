@@ -13,9 +13,13 @@ because `configs/rhj_fewshot.yaml` and `configs/norman_combo.yaml` now ship the 
 | data | HepG2 + Jurkat + RPE1 | K562 (Norman 2019, GEO rebuild) |
 | published arm | `Y06` | `NQ02` |
 | headline | `pearson_delta` **0.4043** (bar: `transfer` 0.2323) | **0.8169** / **0.7380** (bar: `sum_of_singles` 0.8824 / 0.7757) |
-| train | `rhj_train.sh` | `norman_train.sh` |
-| evaluate | `rhj_eval.sh` | `norman_eval.sh` |
-| predict | `occam_predict.py` | `occam_predict.py --compose decode_seq_mean` |
+| 0. build the data | `build_benchmark_rhj.sh` | `build_benchmark_norman.sh` |
+| 1. train | `rhj_train.sh` | `norman_train.sh` |
+| 2. evaluate | `rhj_eval.sh` | `norman_eval.sh` |
+| 2b. baselines | `baselines.sh` | `BENCHMARK=norman_combo baselines.sh` |
+| 2c. competitors | `ARM=txpert competitors_rhj.sh` | — (single-cell-line panel) |
+| 3. read metrics | `../export_split_metrics.py` | same |
+| 4. predict | `occam_predict.py` | `occam_predict.py` (`decode_seq_mean` by default) |
 
 ## Before anything
 
@@ -35,6 +39,23 @@ Inside the research cluster, `bash scripts/bootstrap_assets.sh <SOURCE_REPO>` co
 of the source tree instead. Training starts from the frozen encoder; the published checkpoints
 already contain it, so **inference and evaluation need only the checkpoint and the benchmark
 artifacts**, not the encoder file.
+
+## 0. Rebuild the data and splits exactly as we use them
+
+```bash
+bash scripts/repro/build_benchmark_rhj.sh        # ~25 min, ~120 GB RAM, no GPU
+bash scripts/repro/build_benchmark_norman.sh     # ~15 min, ~60 GB RAM, no GPU
+```
+
+Each rebuilds the gene axis, the cohort, the splits and the 5 seeded split-halves from
+the published `.h5ad` files, then **asserts the sha256** against the digest the published
+checkpoint records. That is the only answer to "are your genes and perturbations mine?"
+that means anything: if one gene, cell or perturbation differed, the digest differs and
+the script exits 3 naming which component moved.
+
+⚠️ Skip this if you downloaded `benchmarks/rhj_fewshot/` and `benchmarks/norman_combo/`
+from the Hub — those ARE the frozen artifacts. Rebuild only to verify them, or to build
+from a different source revision.
 
 ## 1. Train
 
@@ -66,15 +87,54 @@ races on `/dev/shm` and `%12` produced ~50% marginal task failures.
 
 ⚠️ All evaluation is `--calibrate none` (`nocal`). Calibrated arms are not reported.
 
+## 2b. The baselines — the scale every score is read against
+
+```bash
+sbatch scripts/repro/baselines.sh                        # rhj_fewshot
+BENCHMARK=norman_combo sbatch scripts/repro/baselines.sh
+```
+
+Deterministic given the panel and the seed (the control draw is
+`default_rng(42 + 1000 * split)`, the same one the model arms use). A baseline that does
+not reproduce means the **panel** differs, not the model — rebuild it with step 0.
+
+Two of them are the real tests: `meanpert` (predict one average delta for everything —
+a model at `meanpert` learned nothing perturbation-specific) and, on `norman_combo`,
+`sum_of_singles` (`Δ_A + Δ_B`, which IS this architecture's hypothesis in closed form).
+
+## 2c. The competitors on `rhj_fewshot`
+
+```bash
+ARM=txpert bash scripts/repro/competitors_rhj.sh   # also state | cellflow | perturbdiff
+```
+
+Submits train → export → score as three Slurm legs with `afterok` dependencies and
+returns immediately. Measured: TxPert 0.3463 · PerturbDiff 0.2449 · STATE 0.2362 ·
+CellFlow 0.2154, against our 0.4043.
+
+⚠️ None reproduces its method's published figure and none is meant to: each is retrained
+on our data at our axis and carries deliberate, recorded deviations. The script's header
+lists them per arm; the full accounting is `docs/rhj_competitors_results.md`.
+
 ## 3. Read every metric, per split
 
 ```bash
-python scripts/export_split_metrics.py --out data/release/metrics
+python scripts/export_split_metrics.py                        # published scope (default)
+python scripts/export_split_metrics.py --scope all \
+    --out data/release/metrics_all                            # every arm ever evaluated
 ```
 
-Writes, for every arm and split already evaluated, **all** cell-eval metrics — not only the
-four headline ones — as both a tidy long CSV and wide per-benchmark CSVs. See
-`data/release/metrics/README.md` for the schema and which direction is good per metric.
+Writes **all 35** cell-eval metrics — not only the four headline ones — per arm, per
+split, per panel, as a tidy long CSV plus wide (mean + SEM) and one-column-per-split
+views, and copies cell-eval's own per-perturbation rows.
+
+`--scope published` (the default, and what is tracked in git) keeps **our published
+arms** (`Y06`; `NQ02` under all 12 composition modes) plus **every baseline** and
+**every competitor arm**. `--scope all` adds the campaign's other ~360 eval roots and is
+published to the Hub as `metrics_all/`.
+
+See `data/release/metrics/README.md` for the schema, which direction is good per metric,
+which metrics must not be ranked on, and which competitor arms are withdrawn.
 
 ## 4. Predict on your own cells
 

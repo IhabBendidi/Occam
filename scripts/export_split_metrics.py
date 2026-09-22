@@ -44,6 +44,7 @@ import csv
 import glob
 import json
 import os
+import re
 import shutil
 import sys
 
@@ -74,6 +75,15 @@ CONTEXT_ONLY = ("overlap_at_N", "precision_at_N", "de_nsig_counts_pred",
 
 HEADLINE = ("pearson_delta", "mae", "overlap_at_N", "discrimination_score_l1")
 
+# `--scope published` keeps OUR published arms only, plus EVERY baseline and EVERY
+# competitor. That is the table that belongs in git: the 296 rhj_fewshot sweep arms and
+# the 66 non-published norman arms are campaign history, not results, and they are ~15x
+# the bytes. The full 422-root export (`--scope all`) goes to HuggingFace.
+#   Y06   the rhj_fewshot main checkpoint
+#   NQ02  the norman_combo main checkpoint -- ALL 12 compose modes, because they share
+#         one checkpoint and the mode comparison IS the published finding
+PUBLISHED_ARMS = {"Y06", "NQ02"}
+
 
 def benchmark_of(root: str) -> str:
     rel = os.path.relpath(root, REPO).replace(os.sep, "/")
@@ -81,6 +91,15 @@ def benchmark_of(root: str) -> str:
         if rel.startswith(prefix):
             return name
     return "unknown"
+
+
+# Competitor scorings live at `runs/rhj_splithalf/compet_<arm>_s<seed>`, and a
+# known-wrong pass keeps its `_DEFECTIVE_<why>_` prefix on disk rather than being
+# deleted -- the history of what was believed when is itself evidence. Both have to be
+# parsed, and the defective one has to be TAGGED, or a reader cannot tell a competitor
+# from one of our arms and cannot tell a withdrawn number from a live one.
+COMPETITOR_RE = re.compile(
+    r"^(?P<defective>_DEFECTIVE_[A-Za-z0-9]+_)?compet_(?P<arm>.+?)_s(?P<seed>\d+)$")
 
 
 def arm_label(root: str, benchmark: str) -> tuple:
@@ -99,6 +118,11 @@ def arm_label(root: str, benchmark: str) -> tuple:
     a 60-character loss tag.
     """
     name = os.path.basename(root)
+    m = COMPETITOR_RE.match(name)
+    if m:
+        # `compet__gate_ctrlcell_s42` -> arm `_gate_ctrlcell`; splitting on `__` here
+        # produced the arm name `compet`, which is not a method.
+        return m.group("arm"), "", f"seed{m.group('seed')}"
     arm, sep, tail = name.partition("__")
     if not sep:
         return name, "", ""
@@ -137,6 +161,12 @@ def main() -> int:
     ap.add_argument("--benchmark", default="all",
                     choices=["all", "norman_combo", "rhj_fewshot"])
     ap.add_argument("--calibration", default="nocal", choices=["nocal", "all"])
+    ap.add_argument("--scope", default="published", choices=["published", "all"],
+                    help="`published` (default) keeps our published arms "
+                         f"({', '.join(sorted(PUBLISHED_ARMS))}) plus every baseline and "
+                         "every competitor -- the table that is tracked in git. `all` "
+                         "keeps every arm ever evaluated (422 eval roots), which is what "
+                         "is published to HuggingFace.")
     ap.add_argument("--per-pert-arms", default="NQ02__decode_seq_mean,Y06",
                     help="comma-separated eval-root names whose per-perturbation "
                          "results.csv is copied verbatim; reference arms are always "
@@ -187,7 +217,17 @@ def main() -> int:
                        else "n/a")
                 if args.calibration == "nocal" and cal == "cal":
                     continue
-                kind = "model" if scored_arm.startswith("model") else "reference"
+                if not scored_arm.startswith("model"):
+                    kind = "reference"
+                else:
+                    cm = COMPETITOR_RE.match(os.path.basename(root))
+                    kind = ("competitor_DEFECTIVE" if cm and cm.group("defective")
+                            else "competitor" if cm else "occam")
+                # Scope: only OUR arms are filtered. Every baseline and every
+                # competitor is always kept, whatever the eval root is called.
+                if (args.scope == "published" and kind == "occam"
+                        and arm not in PUBLISHED_ARMS):
+                    continue
                 for metric, value in metrics.items():
                     if not isinstance(value, (int, float)):
                         continue
@@ -207,7 +247,8 @@ def main() -> int:
                 # sub-panels (rhj_fewshot) nothing was ever copied -- silently.
                 base = os.path.basename(root)
                 if (base in per_pert_want or arm in per_pert_want
-                        or f"{arm}__{mode}" in per_pert_want or kind == "reference"):
+                        or f"{arm}__{mode}" in per_pert_want
+                        or kind.startswith(("reference", "competitor"))):
                     if os.path.isfile(csv_path):
                         dst_dir = os.path.join(out_dir, "per_perturbation", bench,
                                                f"{base}__{scored_arm}")
@@ -258,7 +299,10 @@ def main() -> int:
     groups = {}
     for r in rows:
         key = (r["benchmark"], r["panel"])
-        aid = (r["arm"], r["compose_mode"], r["scored_arm"])
+        # arm_kind is IN THE KEY deliberately. `state` has both a good pass and a
+        # `_DEFECTIVE_mixedsentences_` one; without the kind they share an arm name and
+        # the wide table averaged 0.2362 with 0.1306 into a meaningless 0.1834.
+        aid = (r["arm"], r["compose_mode"], r["arm_kind"], r["scored_arm"])
         groups.setdefault(key, {}).setdefault(aid, {}).setdefault(
             r["metric"], {})[r["split"]] = r["value"]
 
@@ -271,7 +315,7 @@ def main() -> int:
         with open(os.path.join(out_dir, f"metrics_wide__{tag}.csv"), "w",
                   newline="") as fh:
             w = csv.writer(fh)
-            w.writerow(["arm", "compose_mode", "scored_arm", "n_splits"]
+            w.writerow(["arm", "compose_mode", "arm_kind", "scored_arm", "n_splits"]
                        + [f"{m}_mean" for m in ordered]
                        + [f"{m}_sem" for m in ordered])
             for aid in sorted(arms):
@@ -287,7 +331,7 @@ def main() -> int:
         splits = sorted({s for v in arms.values() for m in v.values() for s in m})
         with open(os.path.join(out_dir, f"per_split__{tag}.csv"), "w", newline="") as fh:
             w = csv.writer(fh)
-            w.writerow(["arm", "compose_mode", "scored_arm", "metric"]
+            w.writerow(["arm", "compose_mode", "arm_kind", "scored_arm", "metric"]
                        + [f"split_{s:02d}" for s in splits])
             for aid in sorted(arms):
                 for m in ordered:
@@ -330,6 +374,18 @@ def _readme(rows, groups) -> str:
         f"Benchmarks: {', '.join(benches)}. Generated by "
         "`scripts/export_split_metrics.py`.",
         "",
+        "## Scope",
+        "",
+        f"**Our published arms** ({', '.join(sorted(PUBLISHED_ARMS))} — the two main "
+        "checkpoints, `NQ02` under all 12 composition modes), plus **every baseline** "
+        "and **every competitor arm**, on both benchmarks. That is `--scope published`, "
+        "the default, and it is what is tracked in git.",
+        "",
+        "The campaign's other ~360 eval roots (the rhj_fewshot loss/schedule sweep, the "
+        "five non-published norman bases) are history rather than results. "
+        "`--scope all` includes them and is what is published to HuggingFace as "
+        "`metrics/`.",
+        "",
         "## Files",
         "",
         "| file | contents |",
@@ -358,7 +414,9 @@ def _readme(rows, groups) -> str:
         "| `scored_arm` | what was scored: `model_nocal`, or a reference arm "
         "(`meanpert`, `transfer`, `sum_of_singles`, `experimental`, `ctrlmean`, "
         "`ctrlcell`) |",
-        "| `arm_kind` | `model` or `reference` |",
+        "| `arm_kind` | `occam` (ours), `competitor` (a ported published method), "
+        "`competitor_DEFECTIVE` (a known-wrong pass, kept as evidence — **never quote "
+        "it**), or `reference` (a baseline) |",
         "| `calibration` | `nocal` throughout. `cal` appears only with "
         "`--calibration all` and is **not** what is reported |",
         "| `panel` | `all`, or a declared sub-panel (`additive`, `nonadditive` on "
@@ -398,6 +456,38 @@ def _readme(rows, groups) -> str:
         "",
         "⚠️ A `pearson_delta` is a rank within its own panel. Do not compare a "
         "`norman_combo` number to an `rhj_fewshot` one.",
+        "",
+        "## The competitor arms on `rhj_fewshot`, and which to quote",
+        "",
+        "Four published methods, each retrained on OUR data at OUR 6,983-gene axis and "
+        "scored by OUR cell-eval under the same split-half protocol. `pearson_delta`, "
+        "`nocal`, mean of 5 splits, `panel=all`:",
+        "",
+        "| arm | pearson_delta | quote it? |",
+        "|---|---|---|",
+        "| `txpert_single` | **0.3463** | ✅ TxPert headline — single-cell controls on "
+        "both sides, so it gets the same input every other arm gets |",
+        "| `txpert_mean` | 0.3343 | A/B diagnostic: `(cell_type, batch)` MEAN controls |",
+        "| `txpert_ep20` | 0.3038 | A/B diagnostic: epoch-20 checkpoint |",
+        "| `txpert` | 0.3077 | ⛔ **WITHDRAWN** — trained on mean controls, inferenced "
+        "on single cells, missing the control token. Superseded by `txpert_single` |",
+        "| `perturbdiff_genept` | **0.2449** | ✅ PerturbDiff headline |",
+        "| `state` (`arm_kind=competitor`) | **0.2362** | ✅ STATE headline |",
+        "| `state` (`arm_kind=competitor_DEFECTIVE`) | 0.1306 | ⛔ an export that packed "
+        "4 pure sentences into one 256-cell sentence, so ~8 perturbations attended to "
+        "each other. Exactly `meanpert`. **Never quote it** |",
+        "| `cellflow` | **0.2154** | ✅ CellFlow headline |",
+        "| `_gate_ctrlcell` | −0.0003 | an infrastructure gate, not a method |",
+        "",
+        "⚠️ **`arm` alone is not a key.** `state` names two passes that differ only in "
+        "`arm_kind`; the wide tables group on `(arm, compose_mode, arm_kind, "
+        "scored_arm)` for exactly this reason. Filter on `arm_kind` before aggregating.",
+        "",
+        "⚠️ None of these reproduces its method's published figure, and none is meant "
+        "to: each carries deliberate, recorded deviations "
+        "(`docs/rhj_competitors_results.md`, and the header of "
+        "`scripts/repro/competitors_rhj.sh`). Read them as \"how this architecture does "
+        "on this task under this protocol\", not as a reimplementation score.",
         "",
         "## Which `norman_combo` panel is the reported one",
         "",

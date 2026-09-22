@@ -173,9 +173,13 @@ reproducibility/**/*.pt
 cache/pert_means/
 cache/pert_disp/
 
-# Regenerable metric export (scripts/export_split_metrics.py). ~28 MB, of which
-# metrics_long.csv alone is 17 MB and is rewritten in full on every re-export -- so
-# tracking it would add a fresh 17 MB blob to the pack each time. It is published to
-# HuggingFace as `metrics/` instead; the primary records are the metrics.json and
-# results.csv files inside each run directory.
-data/release/
+# The PUBLISHED-SCOPE metric export IS tracked, by decision 2026-09-22: every score
+# -- our published arms, every baseline, every competitor -- for every cell-eval metric,
+# split and dataset must be readable from GitHub without downloading 21 GB from the Hub.
+# 3.1 MB total (scripts/export_split_metrics.py --scope published, the default).
+#
+# The FULL export (--scope all, 422 eval roots including the whole rhj_fewshot sweep) is
+# 28 MB, of which one file is 17 MB rewritten in full on every re-export. It goes to
+# HuggingFace as `metrics_all/` and is NOT tracked. The primary records for both remain
+# the metrics.json / results.csv inside each run directory.
+data/release/metrics_all/
