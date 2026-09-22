@@ -20,9 +20,16 @@ One repo rather than three so that a consumer resolves one name. `repo_type=mode
 model is the primary artifact; the two datasets ride along as folders.
 
 ```
-checkpoints/occam_small_encoder_decoder.pth    the model
+checkpoints/occam_small_encoder_decoder.pth    the pretrained encoder + decoder
 checkpoints/MANIFEST.json                      checksums, param counts, verified recipe
 checkpoints/MODEL_CARD.md
+checkpoints/vcell/rhj_fewshot_Y06/            the rhj_fewshot main checkpoint + CARD.md
+checkpoints/vcell/norman_combo_NQ02/          the norman_combo main checkpoint + CARD.md
+benchmarks/norman_combo/                       axis, cohort, 5 splits, baselines
+metrics/metrics_long.csv  metrics/*.csv        EVERY cell-eval metric, per arm, per split
+metrics/per_perturbation/                      cell-eval's per-perturbation rows
+repro/{rhj,norman}_{train,eval}.sh             the reproduction path
+repro/occam_predict.py  repro/README.md        inference on your own control cells
 eval/pert/*.h5ad  eval/scib/*.h5ad             the evaluation bundle
 eval/manifest.json  eval/DATASET_CARD.md
 diverserna/data/train-*.parquet                the pretraining corpus, sharded
@@ -37,7 +44,11 @@ points at:
 | `eval/pert/` | `data/eval/pert/` |
 | `eval/scib/` | `data/eval/scib/` |
 | `diverserna/` | `data/diverserna/` |
-| `checkpoints/` | `checkpoints/release/` |
+| `checkpoints/*.pth`, `checkpoints/*.json`, `checkpoints/*.md` | `checkpoints/release/` |
+| `checkpoints/vcell/` | anywhere — pass the path to `--checkpoint` |
+| `benchmarks/norman_combo/` | `data/benchmarks/norman_combo/` |
+| `metrics/` | `data/release/metrics/` (regenerable) |
+| `repro/` | `scripts/repro/` (also in git) |
 
 ## ⚠️ Why it is PRIVATE, and what would have to change
 
@@ -57,6 +68,24 @@ publishing them, which is why `scripts/publish_hf.py` exists *and* the gate stil
 Making this public is a licensing decision with a named human approver, not an engineering task.
 
 ## Checkpoints: one is published, two are not
+
+### The two trained vcell checkpoints ARE published (added 2026-09-22)
+
+| checkpoint | size | sha256 (first 16) | result |
+|---|---|---|---|
+| `checkpoints/vcell/rhj_fewshot_Y06/best_model.pth` | 2.23 GB | `fe93eeac08d345f3` | `pearson_delta` **0.4043** on 611 held-out HepG2 perturbations (bar: `transfer` 0.2323) |
+| `checkpoints/vcell/norman_combo_NQ02/best_model.pth` | 2.23 GB | `91aed55e3db04afb` | **0.8169** additive / **0.7380** non-additive on double perturbations (bar: `sum_of_singles` 0.8824 / 0.7757) |
+
+Both are **self-contained**: encoder (frozen, 94.2 M) + decoder (128.5 M) + perturbation
+model (334.2 M) + FiLM (0.33 M) = **557,191,681 parameters**, plus `gene_names` (44,728,
+ordered), `pert2id` (18,216), `target_sum` and the benchmark's own sha256. Nothing needs the
+absolute `training_config["encoder_checkpoint"]` path they record.
+
+⚠️ `publish_hf.py` **verifies both sha256 values before uploading anything** and refuses
+on a mismatch. The path that selects them (`runs/<arm>__<tag>/...`) is overwritten by a
+re-run of the same arm, so the path alone does not tie a file to a published number.
+
+### The MAE stage checkpoints are still NOT published
 
 | checkpoint | size | contents | published |
 |---|---|---|---|
@@ -127,3 +156,26 @@ The corpus export is self-consistent against the source, checked after the fact 
 
 Each shard carries its own `sha256`, `nnz` and `sum` in `shards.json`, so a download can be
 verified without the source.
+
+## What was added on 2026-09-22
+
+| artifact | size | why |
+|---|---|---|
+| `checkpoints/vcell/rhj_fewshot_Y06/` | 2.23 GB | the `rhj_fewshot` main checkpoint + card |
+| `checkpoints/vcell/norman_combo_NQ02/` | 2.23 GB | the `norman_combo` main checkpoint + card |
+| `metrics/` | 28 MB | **all 35** cell-eval metrics x 422 eval roots x 5 splits x panel, plus per-perturbation rows for the published and reference arms |
+| `repro/` | 40 KB | train / eval / predict, four commands per benchmark |
+
+New total **20.62 GB**; ~4.5 GB of it is new, and the upload is incremental.
+
+**Why the full metric dump.** Reports quote four metrics and their 5-split mean. cell-eval
+0.6.0 computes 35, and a mean of five numbers hides whether an effect is consistent across
+splits or carried by one. `metrics/metrics_long.csv` is tidy
+(benchmark, arm, compose_mode, config_tag, scored_arm, split, panel, metric, value), and
+every published number re-derives from it exactly — verified for all four headline metrics
+on both checkpoints.
+
+⚠️ `metrics/` is **regenerable** (`python scripts/export_split_metrics.py`) and is
+published for convenience, not as a primary artifact. The primary records are the
+`metrics.json` and `results.csv` files inside each run directory, which are not published
+(they are ~1.8 TB with their `.h5ad` intermediates).

@@ -89,6 +89,20 @@ marginal and the most per-arm wins (6 of 12 arm×panel cells), and it costs one 
 against `decode_seq_mean`'s four. Use it when compute is the constraint; it degrades faster
 into non-additivity (ratio 0.854 vs the bar's own 0.879).
 
+## Running it
+
+Four commands per benchmark, no overrides — see `scripts/repro/README.md`:
+
+```bash
+sbatch scripts/repro/rhj_train.sh          # or norman_train.sh   (~4.5 h / ~3 h, 1 H100)
+sbatch scripts/repro/rhj_eval.sh           # or norman_eval.sh    (5 splits, ~40 min)
+python scripts/export_split_metrics.py     # all 35 metrics, per arm, per split, per panel
+python scripts/repro/occam_predict.py ...  # inference on your own control cells
+```
+
+The published checkpoints and the full per-split metric tables are on HuggingFace
+(`docs/hf_release.md`).
+
 ## Starting a NEW dataset
 
 1. Copy `configs/norman_combo.yaml` (combinatorial) or `configs/rhj_fewshot.yaml` (single).

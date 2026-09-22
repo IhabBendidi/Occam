@@ -42,6 +42,22 @@ import sys
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
+# The two trained vcell checkpoints. Spelled out here rather than globbed: the run
+# directory name IS the configuration, and a glob would happily pick up a different arm
+# after a re-run and publish it under the published arm's name.
+RHJ_CKPT = ("runs/rhj_fewshot_Y06__smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_"
+            "lmse0.0044_e150_em3e-4_s42/vcell/checkpoints/best_model.pth")
+NORMAN_CKPT = ("runs/norman_combo_NQ02__smooth_l1_nbw0_nbs1.0_dcos0.32977_mag0.0400866_"
+               "lmse0.00198826_e150_em3e-4_s42/vcell/checkpoints/best_model.pth")
+
+# sha256 of each, asserted before upload: these are 2.2 GB files selected by a path that
+# a re-run can overwrite, and publishing the wrong weights under a published number is
+# not recoverable once someone has downloaded it.
+CKPT_SHA256 = {
+    RHJ_CKPT: "fe93eeac08d345f3ec53a411879d6331985b4ef9df2b5c856cfc8f2b50fce219",
+    NORMAN_CKPT: "91aed55e3db04afb49e225e6d49193c14f5bdf72b74b3815111c7da8cff26d4a",
+}
+
 # (local path, path in the repo, description). Directories are staged whole.
 ARTIFACTS = [
     ("checkpoints/release/occam_small_encoder_decoder.pth",
@@ -59,6 +75,26 @@ ARTIFACTS = [
     ("data/benchmarks/norman_combo", "benchmarks/norman_combo",
      "the Norman-2019 double-perturbation benchmark: axis, cohort, 5 splits, baselines"),
     ("data/diverserna", "diverserna", "pretraining corpus shards"),
+    # The two trained vcell checkpoints and their cards. These are DELIVERABLES, unlike
+    # the stage-1/stage-2 MAE files: they are the models the reported numbers come from,
+    # and each is self-contained (encoder + decoder + perturbation model + FiLM +
+    # gene_names + pert2id + target_sum), so nothing has to resolve the absolute
+    # `training_config["encoder_checkpoint"]` path they happen to record.
+    (RHJ_CKPT, "checkpoints/vcell/rhj_fewshot_Y06/best_model.pth",
+     "rhj_fewshot main checkpoint, arm Y06 (pearson_delta 0.4043)"),
+    ("checkpoints/cards/rhj_fewshot_Y06_CARD.md",
+     "checkpoints/vcell/rhj_fewshot_Y06/CARD.md", "its model card"),
+    (NORMAN_CKPT, "checkpoints/vcell/norman_combo_NQ02/best_model.pth",
+     "norman_combo main checkpoint, arm NQ02 (0.8169 additive / 0.7380 nonadditive)"),
+    ("checkpoints/cards/norman_combo_NQ02_CARD.md",
+     "checkpoints/vcell/norman_combo_NQ02/CARD.md", "its model card"),
+    # Every cell-eval metric, every arm, every split -- so a reader can re-derive any
+    # reported number instead of trusting a four-metric mean. Regenerate with
+    # `python scripts/export_split_metrics.py --out data/release/metrics`.
+    ("data/release/metrics", "metrics",
+     "all 35 cell-eval metrics x 422 eval roots x 5 splits, per panel"),
+    # The four-command reproduction path: train, evaluate, read the metrics, predict.
+    ("scripts/repro", "repro", "reproducibility scripts (train / eval / predict)"),
 ]
 
 # Never stage these, wherever they appear.
@@ -190,6 +226,32 @@ def main() -> int:
               f"  once they are; the upload is incremental:", file=sys.stderr)
         for local, remote, _ in missing:
             print(f"    {remote}  (expected at {local})", file=sys.stderr)
+
+    # Verify the checkpoints ARE the published weights before anything is uploaded.
+    # The path selects them, and a re-run of the same arm overwrites that path; the
+    # sha256 is the only thing that ties a file to a published number.
+    staged_ckpts = [a[0] for a in wanted if a[0] in CKPT_SHA256]
+    if staged_ckpts:
+        import hashlib
+        for rel in staged_ckpts:
+            path = os.path.join(REPO, rel)
+            if not os.path.isfile(path):
+                continue
+            h = hashlib.sha256()
+            with open(path, "rb") as fh:
+                for block in iter(lambda: fh.read(8 << 20), b""):
+                    h.update(block)
+            got, want = h.hexdigest(), CKPT_SHA256[rel]
+            if got != want:
+                print(f"\nREFUSING: {rel}\n  sha256 {got}\n  expected {want}\n"
+                      f"  This is not the checkpoint the published numbers came from. "
+                      f"Either the run was re-executed and overwrote it, or the wrong "
+                      f"arm is being published. Update CKPT_SHA256 deliberately, with "
+                      f"the card and the docs, or point at the right file.",
+                      file=sys.stderr)
+                return 4
+            print(f"[hf] sha256 verified: {os.path.basename(rel)} "
+                  f"({os.path.dirname(rel).split('/')[0]})")
 
     if args.dry_run:
         print("\n[hf] --dry-run: nothing staged, nothing uploaded")
