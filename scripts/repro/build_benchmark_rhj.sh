@@ -44,16 +44,39 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$HERE"
 export PYTHONPATH="$HERE/src${PYTHONPATH:+:$PYTHONPATH}"
 
-EXPECT_BENCH_SHA="d934211e5eb1e37e28c893fb8c5ff4211d607a1d77b0103d5c2b79221d21677f"
-EXPECT_AXIS_SHA="ef64f2ba7ff7816ed947796066cd8a68014884c6176619d750ef79462c78d4c0"
+# The reference to compare a rebuild against. Its own digests, for the record:
+#   benchmark.json  d934211e5eb1e37e28c893fb8c5ff4211d607a1d77b0103d5c2b79221d21677f
+#   gene_axis.csv   ef64f2ba7ff7816ed947796066cd8a68014884c6176619d750ef79462c78d4c0
+PUBLISHED="${PUBLISHED:-data/benchmarks/rhj_fewshot}"
 OUT="${OUT:-data/benchmarks/rhj_fewshot}"
+# REQUESTED.json is the SPLIT DEFINITION, i.e. an input. Read from its own path so that
+# `OUT=/tmp/check` verifies the published artifact without copying anything.
+REQUESTED="${REQUESTED:-data/benchmarks/rhj_fewshot/REQUESTED.json}"
+
+# ⛔ REFUSE to rebuild in place over a frozen benchmark. The default OUT is the
+# published artifact directory, and a rebuild from a different source revision would
+# overwrite it with something that no longer matches the checkpoints, the configs or
+# the scoreboard -- and the digest check below would then fail on a file the reader
+# can no longer restore. Rebuild into a scratch directory and compare, or set FORCE=1
+# if replacing the frozen artifact is genuinely what you mean.
+if [ -f "$OUT/benchmark.json" ] && [ -z "${FORCE:-}" ]; then
+    echo "$OUT already holds a frozen benchmark.json." >&2
+    echo >&2
+    echo "To VERIFY the published artifact (what you almost certainly want):" >&2
+    echo "    OUT=/tmp/bench_check bash $0" >&2
+    echo >&2
+    echo "To REPLACE it in place, knowing it invalidates every score measured" >&2
+    echo "against it unless the digests still match:" >&2
+    echo "    FORCE=1 bash $0" >&2
+    exit 2
+fi
 
 for f in data/eval/pert/nadig_2024_hepg2.h5ad \
          data/eval/pert/nadig_2024_jurkat.h5ad \
          data/eval/pert/replogle_2022_rpe1_e.h5ad \
          data/graphs/master_gene_set_sorted.csv \
          checkpoints/release/occam_small_encoder_decoder.pth \
-         "$OUT/REQUESTED.json"; do
+         "$REQUESTED"; do
     if [ ! -f "$f" ]; then
         echo "missing input: $f" >&2
         echo "download it from the HuggingFace repo -- see docs/hf_release.md for the" >&2
@@ -72,7 +95,8 @@ echo
 # definition (sources, holdout file nadig_2024_hepg2.h5ad, gene_col
 # ensembl_gene_id, pert_col gene_name, control label non-targeting).
 echo "--- step 1/2: benchmark definition"
-python scripts/build_rhj_fewshot.py --out-dir "$OUT"
+python scripts/build_rhj_fewshot.py --out-dir "$OUT" \
+    --splits-source "$REQUESTED"
 
 # Step 2/2 -- the 5 seeded split-halves, the model-visible control pool and the
 # reference-arm deltas. seed 42 and min_cells are part of the identity.
@@ -81,41 +105,18 @@ echo "--- step 2/2: split-half panel (5 splits, seed 42)"
 python scripts/build_splithalf_panel.py --bench-dir "$OUT" --out-dir "$OUT/splithalf"
 
 echo
-echo "--- verifying against the published digests"
-GOT_BENCH="$(python - "$OUT/benchmark.json" <<'PY'
-import hashlib, sys
-print(hashlib.sha256(open(sys.argv[1], "rb").read()).hexdigest())
-PY
-)"
-GOT_AXIS="$(python - "$OUT/gene_axis.csv" <<'PY'
-import hashlib, sys
-print(hashlib.sha256(open(sys.argv[1], "rb").read()).hexdigest())
-PY
-)"
-FAIL=0
-if [ "$GOT_BENCH" != "$EXPECT_BENCH_SHA" ]; then
-    echo "  benchmark.json sha256 MISMATCH" >&2
-    echo "    got      $GOT_BENCH" >&2
-    echo "    expected $EXPECT_BENCH_SHA" >&2
-    FAIL=1
+echo "--- verifying against the published benchmark"
+# ⚠️ NOT a byte hash of benchmark.json. That file embeds `git_sha`, `built` and
+# `command`, so two builds of the SAME benchmark on different days differ in bytes while
+# being identical in content -- measured on 2026-09-22, where a bit-identical norman
+# rebuild was reported as a MISMATCH by the first version of this check. The verifier
+# compares the scientific quantities instead: the axis digest, the builder's own
+# per-file content digests, the counts, the input .h5ad checksums and the cohort.
+if [ "$(cd "$OUT" && pwd)" = "$(cd "$PUBLISHED" && pwd)" ]; then
+    echo "  OUT is the published directory itself; nothing to compare against."
+    echo "  Rebuild into a scratch dir to verify:  OUT=/tmp/bench_check bash $0"
 else
-    echo "  benchmark.json sha256 OK  ($EXPECT_BENCH_SHA)"
-fi
-if [ "$GOT_AXIS" != "$EXPECT_AXIS_SHA" ]; then
-    echo "  gene_axis.csv sha256 MISMATCH -- the SCORING AXIS differs, so no score" >&2
-    echo "  produced here is comparable to a published one." >&2
-    echo "    got      $GOT_AXIS" >&2
-    echo "    expected $EXPECT_AXIS_SHA" >&2
-    FAIL=1
-else
-    echo "  gene_axis.csv  sha256 OK  ($EXPECT_AXIS_SHA)"
-fi
-if [ "$FAIL" = 1 ]; then
-    echo >&2
-    echo "A mismatch means the inputs differ, not that the build is broken. Compare" >&2
-    echo "the per-source sha256 in $OUT/files/*.json against ours (same files, on" >&2
-    echo "the Hub) to find which .h5ad moved." >&2
-    exit 3
+    python scripts/repro/verify_benchmark.py --rebuilt "$OUT" --published "$PUBLISHED"
 fi
 
 echo

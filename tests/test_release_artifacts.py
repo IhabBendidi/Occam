@@ -107,22 +107,56 @@ def test_the_train_scripts_pass_no_loss_or_schedule_overrides():
         assert sets == ["seed"], f"{rel} overrides {sets}; expected only seed"
 
 
-def test_the_rebuild_scripts_assert_the_published_digests():
-    """A rebuild that does not verify is a description, not a reproduction."""
+def test_the_rebuild_scripts_verify_and_refuse_to_overwrite():
+    """A rebuild that does not verify is a description, not a reproduction.
+
+    ⚠️ The check is SEMANTIC, not a byte hash. `benchmark.json` embeds `git_sha`,
+    `built` and the output path, so hashing the file reports a mismatch on a rebuild
+    that is bit-identical in every scientific quantity -- measured 2026-09-22.
+    """
     expect = {
-        "scripts/repro/build_benchmark_rhj.sh": (
+        "scripts/repro/build_benchmark_rhj.sh":
             "d934211e5eb1e37e28c893fb8c5ff4211d607a1d77b0103d5c2b79221d21677f",
-            "ef64f2ba7ff7816ed947796066cd8a68014884c6176619d750ef79462c78d4c0"),
-        "scripts/repro/build_benchmark_norman.sh": (
+        "scripts/repro/build_benchmark_norman.sh":
             "8ac7da0d5adb3ae49e3a3dfe084494f4dce051286d219e346b4ea11c467cb3cf",
-            "6efa91af1af5c8b88fa5b024c683a53962ab9b7aa0c02b82173babb45966c77d"),
     }
-    for rel, (bench_sha, axis_sha) in expect.items():
+    for rel, bench_sha in expect.items():
         src = open(os.path.join(REPO, rel)).read()
-        assert bench_sha in src, f"{rel} does not pin the benchmark sha256"
-        assert axis_sha in src, f"{rel} does not pin the gene-axis sha256"
-        # It must FAIL on a mismatch, not print a warning and carry on.
-        assert "exit 3" in src, f"{rel} does not exit non-zero on a digest mismatch"
+        assert bench_sha in src, f"{rel} does not record the published digest"
+        assert "verify_benchmark.py" in src, f"{rel} does not run the verifier"
+        # Refuse to overwrite a frozen benchmark in place.
+        assert "FORCE" in src and "exit 2" in src, \
+            f"{rel} would overwrite the published artifact without asking"
+
+
+def test_the_verifier_ignores_provenance_and_refuses_on_content():
+    src = open(os.path.join(REPO, "scripts/repro/verify_benchmark.py")).read()
+    for ignored in ("git_sha", "built", "command"):
+        assert ignored in src, f"{ignored} is not handled"
+    assert "return 3" in src, "the verifier does not fail on a content difference"
+    # benchmark_sha256 is sha256(benchmark.json) and can never be reproduced; it must be
+    # reported as provenance, never compared, or every rebuild fails.
+    assert "provenance, NOT compared" in src
+
+
+def test_the_norman_build_runs_the_stratifier_before_the_definition():
+    """Without it the manifest comes out with panels: [] -- unscoreable."""
+    src = open(os.path.join(REPO, "scripts/repro/build_benchmark_norman.sh")).read()
+    i_strat = src.index("norman_stratify_panels.py")
+    i_bench = src.index("norman_build_benchmark.py")
+    assert i_strat < i_bench, \
+        "the strata must be written BEFORE the benchmark stamps the manifest"
+    assert os.path.isfile(os.path.join(REPO, "scripts/norman/norman_stratify_panels.py"))
+
+
+def test_the_stratifier_pins_the_asymmetric_tercile_convention():
+    """Only one of four boundary conventions reproduces the published panels."""
+    src = open(os.path.join(REPO, "scripts/norman/norman_stratify_panels.py")).read()
+    assert "lab[values >= q_lo] = 1" in src, "lower boundary convention changed"
+    assert "lab[values > q_hi] = 2" in src, "upper boundary convention changed"
+    assert "SCORED = (\"additive\", \"nonadditive\")" in src
+    # The caveat that the strata are defined by the baseline's own residual.
+    assert "SELECTION_CAVEAT" in src
 
 
 def test_the_benchmark_digests_match_the_configs_they_are_asserted_against():

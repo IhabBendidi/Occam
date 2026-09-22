@@ -55,10 +55,33 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$HERE"
 export PYTHONPATH="$HERE/src${PYTHONPATH:+:$PYTHONPATH}"
 
-EXPECT_BENCH_SHA="8ac7da0d5adb3ae49e3a3dfe084494f4dce051286d219e346b4ea11c467cb3cf"
-EXPECT_AXIS_SHA="6efa91af1af5c8b88fa5b024c683a53962ab9b7aa0c02b82173babb45966c77d"
+# The reference to compare a rebuild against. Its own digests, for the record:
+#   benchmark.json  8ac7da0d5adb3ae49e3a3dfe084494f4dce051286d219e346b4ea11c467cb3cf
+#   axis (content)  6efa91af1af5c8b88fa5b024c683a53962ab9b7aa0c02b82173babb45966c77d
+PUBLISHED="${PUBLISHED:-data/benchmarks/norman_combo}"
 OUT="${OUT:-data/benchmarks/norman_combo}"
 SRC="${SRC:-data/eval/pert/norman_2019_k562.h5ad}"
+# The axis is an INPUT, so it is read from its own path rather than from OUT -- that way
+# `OUT=/tmp/check` verifies the published artifact without anyone copying files around.
+AXIS="${AXIS:-data/benchmarks/norman_combo/axis.npz}"
+
+# ⛔ REFUSE to rebuild in place over a frozen benchmark. The default OUT is the
+# published artifact directory, and a rebuild from a different source revision would
+# overwrite it with something that no longer matches the checkpoints, the configs or
+# the scoreboard -- and the digest check below would then fail on a file the reader
+# can no longer restore. Rebuild into a scratch directory and compare, or set FORCE=1
+# if replacing the frozen artifact is genuinely what you mean.
+if [ -f "$OUT/benchmark.json" ] && [ -z "${FORCE:-}" ]; then
+    echo "$OUT already holds a frozen benchmark.json." >&2
+    echo >&2
+    echo "To VERIFY the published artifact (what you almost certainly want):" >&2
+    echo "    OUT=/tmp/bench_check bash $0" >&2
+    echo >&2
+    echo "To REPLACE it in place, knowing it invalidates every score measured" >&2
+    echo "against it unless the digests still match:" >&2
+    echo "    FORCE=1 bash $0" >&2
+    exit 2
+fi
 
 for f in "$SRC" data/graphs/master_gene_set_sorted.csv \
          checkpoints/release/occam_small_encoder_decoder.pth; do
@@ -80,56 +103,45 @@ echo
 # gene-stats pass over the GEO mtx (scripts/norman/norman_gene_stats.py) and then
 # norman_pick_axis.py; both are in the repo. Keeping the published axis is the
 # reproducible choice -- picking it again from a different source file would move it.
-if [ ! -f "$OUT/axis.npz" ]; then
-    echo "$OUT/axis.npz is missing." >&2
+if [ ! -f "$AXIS" ]; then
+    echo "$AXIS is missing." >&2
     echo "It ships inside benchmarks/norman_combo/ on the Hub. Re-deriving it needs" >&2
     echo "the raw GEO matrix: scripts/norman/norman_gene_stats.py then" >&2
     echo "scripts/norman/norman_pick_axis.py --n-genes 8000 --min-detection 0.08" >&2
     exit 1
 fi
 
-echo "--- step 1/2: split-half panel (5 splits, seed 42, min_cells 40, 20 val pairs)"
+echo "--- step 1/3: split-half panel (5 splits, seed 42, min_cells 40, 20 val pairs)"
 python scripts/norman/norman_build_panel.py \
-    --source "$SRC" --axis "$OUT/axis.npz" --out-dir "$OUT/splithalf"
+    --source "$SRC" --axis "$AXIS" --out-dir "$OUT/splithalf"
+
+# ⚠️ REQUIRED, and it used to be missing. Without this step the manifest comes out with
+# `panels: []` and `scored_panels: null` -- a benchmark nobody can score the way we do,
+# because the two effect-size-controlled strata every result is reported on would not
+# exist. It must run BEFORE the benchmark definition, which stamps the manifest.
+echo
+echo "--- step 2/3: additivity strata (the additive / nonadditive panels)"
+python scripts/norman/norman_stratify_panels.py --panel "$OUT/splithalf"
 
 echo
-echo "--- step 2/2: benchmark definition (stamps the panel manifest)"
+echo "--- step 3/3: benchmark definition (stamps the panel manifest)"
 python scripts/norman/norman_build_benchmark.py \
-    --source "$SRC" --axis "$OUT/axis.npz" --panel "$OUT/splithalf" --out-dir "$OUT"
+    --source "$SRC" --axis "$AXIS" --panel "$OUT/splithalf" --out-dir "$OUT"
 
 echo
-echo "--- verifying against the published digests"
-GOT_BENCH="$(python - "$OUT/benchmark.json" <<'PY'
-import hashlib, sys
-print(hashlib.sha256(open(sys.argv[1], "rb").read()).hexdigest())
-PY
-)"
-GOT_AXIS="$(python - "$OUT/axis.npz" <<'PY'
-import hashlib, sys
-print(hashlib.sha256(open(sys.argv[1], "rb").read()).hexdigest())
-PY
-)"
-FAIL=0
-if [ "$GOT_BENCH" != "$EXPECT_BENCH_SHA" ]; then
-    echo "  benchmark.json sha256 MISMATCH" >&2
-    echo "    got      $GOT_BENCH" >&2
-    echo "    expected $EXPECT_BENCH_SHA" >&2
-    FAIL=1
+echo "--- verifying against the published benchmark"
+# ⚠️ NOT a byte hash of benchmark.json. That file embeds `git_sha`, `built` and the
+# output path, so two builds of the SAME benchmark on different days differ in bytes
+# while being identical in content -- the first version of this script reported a
+# MISMATCH on a rebuild that was in fact identical in every scientific quantity.
+# axis.npz is worse: it is a zip and carries per-entry timestamps.
+if [ "$(cd "$OUT" && pwd)" = "$(cd "$PUBLISHED" && pwd)" ]; then
+    echo "  OUT is the published directory itself; nothing to compare against."
+    echo "  Rebuild into a scratch dir to verify:  OUT=/tmp/bench_check bash $0"
 else
-    echo "  benchmark.json sha256 OK  ($EXPECT_BENCH_SHA)"
+    python scripts/repro/verify_benchmark.py --rebuilt "$OUT" --published "$PUBLISHED"
 fi
-if [ "$GOT_AXIS" != "$EXPECT_AXIS_SHA" ]; then
-    echo "  axis.npz sha256 MISMATCH -- the SCORING AXIS differs, so no score produced" >&2
-    echo "  here is comparable to a published one." >&2
-    echo "    got      $GOT_AXIS" >&2
-    echo "    expected $EXPECT_AXIS_SHA" >&2
-    FAIL=1
-else
-    echo "  axis.npz       sha256 OK  ($EXPECT_AXIS_SHA)"
-fi
-[ "$FAIL" = 1 ] && exit 3
 
-echo
 echo "--- the seven panels (only additive and nonadditive are scored)"
 python - "$OUT/splithalf/splits_manifest.json" <<'PY'
 import json, sys

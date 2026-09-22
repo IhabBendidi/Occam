@@ -47,15 +47,33 @@ bash scripts/repro/build_benchmark_rhj.sh        # ~25 min, ~120 GB RAM, no GPU
 bash scripts/repro/build_benchmark_norman.sh     # ~15 min, ~60 GB RAM, no GPU
 ```
 
-Each rebuilds the gene axis, the cohort, the splits and the 5 seeded split-halves from
-the published `.h5ad` files, then **asserts the sha256** against the digest the published
-checkpoint records. That is the only answer to "are your genes and perturbations mine?"
-that means anything: if one gene, cell or perturbation differed, the digest differs and
-the script exits 3 naming which component moved.
+Each rebuilds the gene axis, the cohort, the splits, the 5 seeded split-halves and (for
+Norman) the additivity strata from the published `.h5ad` files, then runs
+`verify_benchmark.py`, which compares **every scientific quantity** against the published
+artifact: the axis digest, the builder's own per-file content digests, the perturbation
+counts, the input `.h5ad` checksums, the cohort digest and the membership of all seven
+panels, pair by pair. Exit 3 naming each difference; exit 0 prints *REPRODUCED*.
 
-⚠️ Skip this if you downloaded `benchmarks/rhj_fewshot/` and `benchmarks/norman_combo/`
-from the Hub — those ARE the frozen artifacts. Rebuild only to verify them, or to build
-from a different source revision.
+Measured on 2026-09-22: the Norman rebuild reproduces the published benchmark exactly.
+
+⚠️ **The verification is semantic, not a byte hash, and it has to be.** `benchmark.json`
+embeds `git_sha`, the build date and the output path, so hashing the file reports a
+mismatch on a rebuild that is bit-identical in content — which is exactly what the first
+version of these scripts did. `axis.npz` is worse: it is a zip and carries per-entry
+timestamps.
+
+⚠️ **A rebuilt panel cannot score a published checkpoint.** `manifest.benchmark_sha256`
+is literally `sha256(benchmark.json)`, so a rebuild can never reproduce it, and
+`eval_splithalf.assert_checkpoint_matches` refuses on a mismatch — correctly, since that
+guard is what stops a checkpoint being scored on a benchmark it was not trained on. Use
+the rebuild to **verify**, then score against the **downloaded** panel.
+
+⚠️ Both scripts **refuse to write into a directory that already holds a
+`benchmark.json`**. Rebuild into a scratch dir (`OUT=/tmp/check bash …`), or
+`FORCE=1` to replace the frozen artifact deliberately.
+
+⚠️ Skip this entirely if you downloaded `benchmarks/rhj_fewshot/` and
+`benchmarks/norman_combo/` from the Hub — those ARE the frozen artifacts.
 
 ## 1. Train
 

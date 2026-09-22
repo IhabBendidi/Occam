@@ -416,3 +416,65 @@ additivity hypothesis in closed form, and our architecture composes by summing l
 embeddings — so a model that cannot beat it has learned nothing about interaction. Expect it to
 be strong: in the GEARS literature, additive baselines are hard to beat on double perturbations.
 It must be in the panel from day one, not added after a model result looks good.
+
+
+---
+
+## 2026-09-22 — the additivity strata had no script, and now do
+
+**Found by running `scripts/repro/build_benchmark_norman.sh` for the first time.** The
+rebuild came out with `panels: []` and `scored_panels: null`: the seven additivity
+strata — including `additive` and `nonadditive`, **the two panels every norman_combo
+result is reported on** — were produced by an ad-hoc pass during the campaign and were
+never committed. A consumer who rebuilt the benchmark got a cohort and splits they could
+not score the way we do.
+
+`scripts/norman/norman_stratify_panels.py` now does it, and the recipe was **recovered
+from the published artifacts rather than reinvented**. It reproduces them exactly:
+
+| quantity | max abs difference vs published |
+|---|---|
+| `residual`, `effect_norm`, `magnitude_ratio` | **0.0** |
+| `n_cells`, `tercile`, `effect_tercile`, `tercile_effect_controlled` | **0** |
+| all 7 panel memberships (36 / 39 / 36 and 37 / 37 / 37) | identical sets |
+
+Verify at any time with `python scripts/norman/norman_stratify_panels.py --verify`.
+
+### The recipe
+
+`d_real` = mean of the pair's panel cells − mean of the panel's controls, on the
+8,000-gene axis in the panel's own eval space, over **all** cells (not a half).
+`d_sum` from `sum_of_singles.npz`.
+
+| quantity | definition |
+|---|---|
+| `residual` | ‖d_sum − d_real‖ / ‖d_real‖ — how NON-additive the pair is |
+| `effect_norm` | ‖d_real‖ — how LARGE the true effect is |
+| `magnitude_ratio` | ‖d_sum‖ / ‖d_real‖ |
+| `pearson_r` | corr(d_sum, d_real) |
+
+### ⚠️ The tercile boundary convention is asymmetric and load-bearing
+
+`>=` at the lower edge, `>` at the upper. **Only one of the four combinations reproduces
+the published panels**, and the other three give 39/36/36, 39/33/39 or 36/36/39 instead
+of 36/39/36.
+
+It matters because of the sizes. With 111 values the 1/3 quantile falls *between*
+elements — index (111−1)/3 = 36.67 — so every convention agrees and the raw cut is
+37/37/37 either way. Within an effect tercile there are 37 values, index (37−1)/3 = 12.0
+lands **exactly on an element**, and the convention decides which side it falls.
+
+### ⚠️ A rebuilt panel cannot score a published checkpoint
+
+`splits_manifest.json:benchmark_sha256` is `sha256(benchmark.json)`, and that file embeds
+`git_sha`, `built` and `panel.dir`. A rebuild therefore **cannot** reproduce it even when
+every scientific quantity matches — measured: `f458c2d9…` vs the published `8ac7da0d…` on
+a rebuild that `verify_benchmark.py` passes completely. `eval_splithalf` refuses on that
+field, correctly. Verify with the rebuild; score against the downloaded artifact.
+
+**Open design question, not acted on:** the definition hash could be made reproducible by
+hashing a provenance-free projection of `benchmark.json` (dropping `git_sha`, `built`,
+`command`, `numpy`, `python`, `panel.dir`). That would let a rebuilt panel score a
+published checkpoint — but it changes the published digest, which is recorded in both
+configs and in every existing checkpoint, so it is a migration with a decision attached.
+Left as-is pending that decision.

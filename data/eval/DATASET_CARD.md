@@ -14,7 +14,9 @@ tags:
 
 # Occam evaluation bundle
 
-The 6 datasets Occam's benchmarks read, repacked into **5.6 GB** from **1,031 GB** of source files (184x smaller).
+The 7 datasets Occam's benchmarks read, repacked into **6.25 GB** from **1,031 GB** of source files.
+Six are repacks of third-party releases; the seventh, `norman_2019_k562`, is rebuilt from the
+GEO primary source because the preprocessed file we were handed is mislabelled.
 
 ## Install
 
@@ -25,6 +27,7 @@ paths that resolve against the repo root:
 ```
 data/eval/
 ├── pert/           nadig_2024_hepg2.h5ad  nadig_2024_jurkat.h5ad  replogle_2022_rpe1_e.h5ad
+│                   norman_2019_k562.h5ad  norman_2019_k562.h5ad.json
 ├── scib/           pancreas_scib.h5ad  pbmc_12k.h5ad  pbmc_68k.h5ad
 └── manifest.json
 ```
@@ -51,6 +54,52 @@ Registry key: `eval_dir`
 | `nadig_2024_hepg2` | 145,473 | 9,624 | 43.2% | 1.35 GB | 26 | 14 |
 | `nadig_2024_jurkat` | 262,956 | 8,882 | 39.4% | 2.05 GB | 25 | 14 |
 | `replogle_2022_rpe1_e` | 247,914 | 8,749 | 40.0% | 1.94 GB | 27 | 14 |
+
+### Double-perturbation composition (`norman_combo`)
+
+Used by the `norman_combo` benchmark: train on SINGLE-gene perturbations, predict the effect
+of a PAIR where both genes were seen individually and the pair never was. Not part of
+`occam-benchmark`; it is read by `configs/norman_combo.yaml` and
+`scripts/repro/build_benchmark_norman.sh`.
+
+Registry key: `eval_dir` (same folder as the perturbation benchmark)
+
+| dataset | cells | genes | nonzero | size | conditions | batches |
+|---|---|---|---|---|---|---|
+| `norman_2019_k562` | 91,168 | 33,694 | 286,342,111 (9.3%) | 0.65 GB | 237 | 8 |
+
+| | |
+|---|---|
+| sha256 | `c6cad008202666ef9fab8b2e6afcd21fd81fa580c789bdb55a06c7c30fbac02e` |
+| source | **GEO GSE133344**, the primary deposit (Norman et al. 2019, *Science* 365:786) |
+| `.X` | **RAW integer counts**, CSR int32 |
+| cells | 9,702 control · 47,269 single-gene · 34,197 double |
+| conditions | 105 single genes, 131 double pairs (73 genes appear in doubles) |
+| `.obs` | `cell_barcode`, `gene_name` (`A` or `A+B`; controls are `non-targeting`), `n_perts`, `batch` (the 8 GEO gemgroups), `is_control`, `cell_line`, `cell_type`, `perturbation_class` |
+| `.var` | `gene_id` (Ensembl — **match on this**, not `gene_name`), `gene_name`, `in_scoring_axis` |
+| provenance | `norman_2019_k562.h5ad.json` beside it: sha256, shape, nnz, cells per class, batches |
+
+⚠️ **THE CELL LINE IS K562 AND THE YEAR IS 2019.** The upstream file we were handed,
+`norman_2016_a549_preprocessed.h5ad`, says A549 and 2016; both are wrong. Three independent
+lines of evidence (full write-up in `docs/norman_benchmark.md`):
+
+1. the cohort matches Norman 2019 to the unit — 105 singles / 131 pairs / 73 genes / 8 gemgroups;
+2. Norman's own QC reproduces its cell count to 0.04% (91,168 vs 91,205);
+3. its own counts say K562 — XIST in 75.9% of cells (female; A549 is male), and HBZ 28.0% /
+   HBG2 17.2% / GYPA 87.9% (erythroid; A549 is lung).
+
+⚠️ **Rebuilt rather than repacked, for two measurable reasons.** The preprocessed file's `.X`
+is already log1p'd with its raw counts hidden in a dense layer, so our loader would have
+**double-transformed it silently**; and it exposes 4,762 genes in Occam's vocabulary against
+**29,187** in the rebuild (6.1x more scorable genes).
+
+⚠️ **`match on `gene_id`.** Matching the perturbation axis on `gene_name` resolves 3 of 5,045
+genes — the encoder's vocabulary is 99.6% Ensembl.
+
+⚠️ CRISPRa, not CRISPRi/KO. The perturbed transcription factors are **off at baseline**, which
+is why 41 of the 102 resolvable targets fail an 8% detection filter and are force-included in
+the 8,000-gene scoring axis. Without that exception the benchmark cannot see the gene that was
+perturbed.
 
 ### Batch integration (scIB)
 

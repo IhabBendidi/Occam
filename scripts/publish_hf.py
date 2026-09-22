@@ -110,7 +110,16 @@ ARTIFACTS = [
      "FULL scope: the same, for all 422 eval roots -- the whole rhj_fewshot sweep and "
      "every norman base. Not in git."),
     # The four-command reproduction path: train, evaluate, read the metrics, predict.
-    ("scripts/repro", "repro", "reproducibility scripts (train / eval / predict)"),
+    ("scripts/repro", "repro",
+     "reproducibility scripts: build the benchmarks, train, evaluate, score the "
+     "baselines and the competitors, read every metric, predict on your own cells"),
+    # Lives outside scripts/repro because it is a benchmark builder, not a driver, but it
+    # is REQUIRED to rebuild norman_combo: without it the manifest has `panels: []` and
+    # the two scored strata do not exist.
+    ("scripts/norman/norman_stratify_panels.py",
+     "repro/norman_stratify_panels.py",
+     "the additivity strata (the additive / nonadditive panels) -- run by "
+     "repro/build_benchmark_norman.sh"),
 ]
 
 # Never stage these, wherever they appear.
