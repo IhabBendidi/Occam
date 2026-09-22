@@ -60,6 +60,9 @@ source "$(dirname "${BASH_SOURCE[0]}")/_competitor_common.sh" 2>/dev/null || \
 
 HERE="$(_find_repo)" || exit 1
 cd "$HERE"
+# Resolves BENCH / BENCH_DIR / PANEL_DIR / N_AXIS_GENES and the three digests.
+# BENCH defaults to rhj_fewshot, so every pre-existing invocation is unchanged.
+competitor_resolve_bench "$HERE"
 mkdir -p runs/slurm
 
 ARM="${ARM:?set ARM=txpert|state|cellflow|perturbdiff and pass --export=ALL,ARM}"
@@ -73,7 +76,7 @@ N_SPLITS="${N_SPLITS:-5}"
 #
 # It only names directories. The adapter and the venv still resolve from the BASE arm name.
 ARM_SUFFIX="${ARM_SUFFIX:-}"
-ARM_OUT="${ARM}${ARM_SUFFIX}"
+ARM_OUT="${ARM}${ARM_SUFFIX}$(competitor_bench_tag)"
 # Extra flags handed to the adapter, e.g. --checkpoint for a specific variant.
 ADAPTER_ARGS="${ADAPTER_ARGS:-}"
 
@@ -85,10 +88,35 @@ case "$ARM" in
     *) echo "unknown ARM=$ARM" >&2; exit 1 ;;
 esac
 
+# ─── how a PAIR is answered, per arm ────────────────────────────────────────────────────────
+# On a combinatorial benchmark each arm must compose `A+B` ITS OWN WAY, or the number
+# measures our choice of rule instead of the method (docs/competitors_on_doubles.md):
+#
+#   txpert      NATIVE. Its GEARS condition is already `"A+B"`, and gears_derivative.py
+#               sums the two perturbation embeddings before decoding. Nothing to add.
+#   cellflow    NATIVE. It aggregates a perturbation SET with attention or DeepSets;
+#               `max_combination_length=2` in its config is what switches that on.
+#   state       NO genetic protocol published, but its own drug-combination experiment
+#               runs "consecutive forward passes" -> decode_seq_mean, our extension of
+#               its own design.
+#   perturbdiff NO combinatorial protocol at all -> decode_seq_mean is OURS, and is
+#               recorded as a deviation as large as any in rhj_competitors_results.md.
+#
+# ⚠️ Applied only when the panel actually has multi-gene labels, so rhj_fewshot exports
+# stay bit-identical.
+if [ "${BENCH:-rhj_fewshot}" != "rhj_fewshot" ]; then
+    case "$ARM" in
+        state|perturbdiff)
+            if ! printf '%s' "$ADAPTER_ARGS" | grep -q -- "--compose"; then
+                ADAPTER_ARGS="$ADAPTER_ARGS --compose ${COMPOSE:-decode_seq_mean}"
+            fi ;;
+    esac
+fi
+
 ADAPTER="$ARM_DIR/export_occam.py"
 if [ ! -f "$ADAPTER" ]; then
     echo "FATAL: no Phase-A adapter at $ADAPTER" >&2
-    echo "       It must expose predict(ctrl, pert_names) -> (n, 6983) and call" >&2
+    echo "       It must expose predict(ctrl, pert_names) -> (n, \$N_AXIS_GENES) and call" >&2
     echo "       competitors/shared/export_predictions.py::export_split." >&2
     exit 1
 fi
@@ -113,8 +141,8 @@ for K in $SPLITS; do
     OUT="$HERE/runs/competitors/$ARM_OUT/s${SEED}/split_${K}"
     echo "--- split $K -> $OUT"
     if "$PY" -u "$ADAPTER" --seed "$SEED" --split "$K" --out-dir "$OUT" \
-            --panel-dir "$HERE/data/benchmarks/rhj_fewshot/splithalf" \
-            --bench-dir "$HERE/data/benchmarks/rhj_fewshot" $ADAPTER_ARGS; then
+            --panel-dir "$PANEL_DIR" \
+            --bench-dir "$BENCH_DIR" $ADAPTER_ARGS; then
         echo "--- split $K OK"
     else
         echo "--- split $K FAILED (exit $?)" >&2

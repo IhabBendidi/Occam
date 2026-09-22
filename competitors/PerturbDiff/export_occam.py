@@ -164,13 +164,26 @@ def main(argv=None) -> int:
     ap.add_argument("--cell-type", default="HEPG2")
     ap.add_argument("--sets-per-batch", type=int, default=8)
     ap.add_argument("--device", default="cuda")
+    # ⛔ HOW A PAIR IS ANSWERED. This arm has no multi-perturbation mechanism of its own,
+    # so on a combinatorial panel (norman_combo) the composition rule is applied HERE, at
+    # the export boundary, by feeding the first pass's output back in as the second pass's
+    # control. `none` leaves single-perturbation panels bit-identical to before, which is
+    # why it is the default. See competitors/shared/export_predictions.py and
+    # docs/competitors_on_doubles.md.
+    ap.add_argument("--compose", default="none",
+                    choices=["none", "decode_seq_ab", "decode_seq_ba",
+                             "decode_seq_mean"],
+                    help="sequential composition for `A+B` labels. Required on "
+                         "norman_combo; a no-op on a single-perturbation panel, where "
+                         "every label passes straight through.")
     args = ap.parse_args(argv)
 
     import torch
     from hydra import compose, initialize_config_dir
     from omegaconf import OmegaConf, open_dict
 
-    from export_predictions import TRAIN_TARGET_SUM, export_split, load_panel_split
+    from export_predictions import (TRAIN_TARGET_SUM, compose_sequential, export_split,
+                                 load_panel_split)
     from src.apps.sampling.sampling_generation_helpers import (
         build_gene_embedding_cache, build_self_condition, resolve_sampling_runner,
     )
@@ -411,6 +424,13 @@ def main(argv=None) -> int:
     # Their sampler groups over the whole split (`src/data/sampler.py:89-129`) and pads only
     # the last set of each group, once. `predict` already batches internally at
     # `--sets-per-batch`, so this costs no extra GPU memory.
+        # Wrap AFTER the arm's own `predict` is fully built, so the composition sees the
+    # real model and nothing inside it changes.
+    if args.compose != "none":
+        predict = compose_sequential(predict, order=args.compose.rsplit("_", 1)[1])
+        print(f"[export] composition: {args.compose} (sequential, at the export "
+              f"boundary -- this arm has no native multi-perturbation mechanism)")
+
     export_split(predict, split, args.out_dir, arm=ARM,
                  from_target_sum=TRAIN_TARGET_SUM, from_log1p=True,
                  batch_size=len(split),

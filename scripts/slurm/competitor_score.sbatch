@@ -60,6 +60,9 @@ source "$(dirname "${BASH_SOURCE[0]}")/_competitor_common.sh" 2>/dev/null || \
 
 HERE="$(_find_repo)" || exit 1
 cd "$HERE"
+# Resolves BENCH / BENCH_DIR / PANEL_DIR / N_AXIS_GENES and the three digests.
+# BENCH defaults to rhj_fewshot, so every pre-existing invocation is unchanged.
+competitor_resolve_bench "$HERE"
 mkdir -p runs/slurm
 
 ARM="${ARM:?set ARM=txpert|state|cellflow|perturbdiff and pass --export=ALL,ARM,SEED}"
@@ -70,9 +73,9 @@ SPLIT="${SLURM_ARRAY_TASK_ID:-0}"
 # Two configurations of the same arm and seed would otherwise share one output directory and
 # the second would silently overwrite the first.
 ARM_SUFFIX="${ARM_SUFFIX:-}"
-ARM_OUT="${ARM}${ARM_SUFFIX}"
+ARM_OUT="${ARM}${ARM_SUFFIX}$(competitor_bench_tag)"
 PRED_DIR="$HERE/runs/competitors/$ARM_OUT/s${SEED}/split_${SPLIT}"
-OUT_ROOT="$HERE/runs/rhj_splithalf/compet_${ARM_OUT}_s${SEED}"
+OUT_ROOT="$HERE/$(competitor_score_root)/compet_${ARM_OUT}_s${SEED}"
 
 competitor_banner "$ARM" score "$SEED" "$HERE"
 echo "  split   $SPLIT"
@@ -96,6 +99,7 @@ export PYTHONPATH="$HERE/src:$HERE/competitors/shared"
     --split "$SPLIT" \
     --pred-dir "$PRED_DIR" \
     --out-root "$OUT_ROOT" \
+    --panel-dir "$PANEL_DIR" \
     --num-threads "${SLURM_CPUS_PER_TASK:-16}"
 
 echo "=== SCORE DONE: $ARM s$SEED split $SPLIT ==="

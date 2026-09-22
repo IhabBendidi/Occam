@@ -76,7 +76,11 @@ if [ "$TASK" -lt 0 ] || [ "$TASK" -gt 4 ]; then
     echo "SEED must be 42..46 (the array index is SEED-42), got $SEED" >&2
     exit 2
 fi
-QOS_ARGS=(${QOS:+--qos=$QOS} ${WCKEY:+--wckey=$WCKEY})
+# This cluster REFUSES a submission without a wckey, so these are defaulted rather than
+# left empty. `hooke-predict` is what every competitor launcher's header documents.
+QOS="${QOS:-hooke-predict}"
+WCKEY="${WCKEY:-hooke-predict}"
+QOS_ARGS=(--qos="$QOS" --wckey="$WCKEY")
 
 if [ ! -d data/benchmarks/rhj_fewshot/splithalf ]; then
     echo "panel not found: data/benchmarks/rhj_fewshot/splithalf" >&2

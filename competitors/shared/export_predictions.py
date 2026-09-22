@@ -176,6 +176,82 @@ def load_panel_split(panel_dir: str, split_index: int, *,
     return PanelSplit(k, ctrl_train, labels, X[a_rows], ctrl_b, cohort, man, batches=batches)
 
 
+def compose_sequential(predict: Callable[[np.ndarray, Sequence[str]], np.ndarray],
+                      order: str = "mean", sep: str = "+"):
+    """Wrap a single-perturbation `predict` so it can answer a PAIR, sequentially.
+
+    WHY THIS EXISTS
+        `norman_combo` asks for `"A+B"`, and two of the four ported arms have no
+        multi-perturbation mechanism of their own:
+
+          State        its paper's combinatorial experiment (on DRUGS) simulates a
+                       combination "by running consecutive forward passes", which is
+                       exactly this. Faithful to its own design; the genetic setting is
+                       our extension of it and is labelled as one.
+          PerturbDiff  has NO published combinatorial protocol at all. This rule is
+                       OURS and must be reported as a deviation, not as their method.
+
+        TxPert and CellFlow are NOT wrapped: TxPert sums the two perturbation embeddings
+        natively (its condition is already `"A+B"`), and CellFlow aggregates a
+        perturbation SET with attention or DeepSets. Wrapping either would measure our
+        rule instead of theirs. See docs/competitors_on_doubles.md.
+
+    THE RULE -- `decode_seq_mean`, Occam's own default
+        prediction(A) = f(ctrl, A);  prediction(A then B) = f(prediction(A), B)
+        and the same with the order reversed, then the mean of the two chains.
+
+        Nothing inside the model changes: the second pass simply receives the first
+        pass's OUTPUT as its control input. That is why this belongs in the export --
+        the export is what decides what is fed in.
+
+    ⚠️ ORDER IS NOT IMMATERIAL here. On Occam's own 72-cell matrix `decode_seq_ba` beats
+    `decode_seq_ab` on all 6 arms and both panels, with max |ab - ba| = 8.96e-02, which
+    is why `mean` is the default rather than either single order.
+
+    ⚠️ SINGLE perturbations are passed straight through, untouched, in ONE call -- so an
+    arm wrapped here produces bit-identical output to the unwrapped arm on any
+    single-perturbation panel. That is what keeps `rhj_fewshot` numbers comparable.
+    """
+    if order not in ("ab", "ba", "mean"):
+        raise ValueError(f"order must be ab|ba|mean, got {order!r}")
+
+    def _chain(ctrl: np.ndarray, first: List[str], second: List[str]) -> np.ndarray:
+        step1 = np.asarray(predict(ctrl, first), dtype=np.float32)
+        if step1.shape != ctrl.shape:
+            raise ValueError(
+                f"predict returned {step1.shape} for a {ctrl.shape} input; the "
+                f"sequential composition feeds the output back in, so the two must "
+                f"have the same width")
+        return np.asarray(predict(step1, second), dtype=np.float32)
+
+    def _predict(ctrl: np.ndarray, labels: Sequence[str]) -> np.ndarray:
+        labels = [str(l) for l in labels]
+        parts = [[p for p in l.split(sep) if p] for l in labels]
+        multi = np.array([len(p) > 1 for p in parts], dtype=bool)
+        out = np.asarray(predict(ctrl, labels), dtype=np.float32).copy()
+        if not multi.any():
+            return out
+        idx = np.flatnonzero(multi)
+        sub = ctrl[idx]
+        a = [parts[i][0] for i in idx]
+        b = [parts[i][1] for i in idx]
+        if order in ("ab", "mean"):
+            ab = _chain(sub, a, b)
+        if order in ("ba", "mean"):
+            ba = _chain(sub, b, a)
+        out[idx] = ab if order == "ab" else ba if order == "ba" else 0.5 * (ab + ba)
+        if len(idx) and len(idx) == len(labels):
+            print(f"[export]   sequential composition ({order}) on all "
+                  f"{len(idx):,} rows", flush=True)
+        elif len(idx):
+            print(f"[export]   sequential composition ({order}) on {len(idx):,} of "
+                  f"{len(labels):,} rows; the rest are single perturbations",
+                  flush=True)
+        return out
+
+    return _predict
+
+
 def export_split(predict: Callable[[np.ndarray, Sequence[str]], np.ndarray],
                  split: PanelSplit, out_dir: str, *,
                  arm: str,
@@ -201,7 +277,7 @@ def export_split(predict: Callable[[np.ndarray, Sequence[str]], np.ndarray],
             raise ValueError(
                 f"{arm}: predict returned {out.shape} for rows [{s}:{e}), expected "
                 f"{(e - s, split.ctrl.shape[1])}. Every arm must emit one row per input "
-                f"cell on the 6,983-gene axis.")
+                f"cell on the benchmark's {split.ctrl.shape[1]:,}-gene axis.")
         chunks.append(out)
         if (s // batch_size) % 4 == 0:
             print(f"[export]   {e:,}/{n:,} rows", flush=True)

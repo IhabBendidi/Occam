@@ -64,6 +64,9 @@ source "$(dirname "${BASH_SOURCE[0]}")/_competitor_common.sh" 2>/dev/null || \
 
 HERE="$(_find_repo)" || exit 1
 cd "$HERE"
+# Resolves BENCH / BENCH_DIR / PANEL_DIR / N_AXIS_GENES and the three digests.
+# BENCH defaults to rhj_fewshot, so every pre-existing invocation is unchanged.
+competitor_resolve_bench "$HERE"
 mkdir -p runs/slurm
 
 ARM=txpert
@@ -147,7 +150,8 @@ cd "$HERE/competitors/TxPert"
     training.seed="$SEED" \
     training.epochs="$EPOCHS" \
     training.check_val_every_n_epoch="$CHECK_VAL" \
-    datamodule.occam_bench_dir="$HERE/data/benchmarks/rhj_fewshot" \
+    datamodule.occam_bench_dir="$BENCH_DIR" \
+    datamodule.hvg_number="$N_AXIS_GENES" \
     datamodule.cache_dir="$TXPERT_CACHE" \
     datamodule.match_cntr="$MATCH_CNTR" \
     datamodule.avg_cntr="$AVG_CNTR" \

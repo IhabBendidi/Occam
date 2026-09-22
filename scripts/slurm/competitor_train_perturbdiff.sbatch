@@ -70,6 +70,9 @@ source "$(dirname "${BASH_SOURCE[0]}")/_competitor_common.sh" 2>/dev/null || \
 
 HERE="$(_find_repo)" || exit 1
 cd "$HERE"
+# Resolves BENCH / BENCH_DIR / PANEL_DIR / N_AXIS_GENES and the three digests.
+# BENCH defaults to rhj_fewshot, so every pre-existing invocation is unchanged.
+competitor_resolve_bench "$HERE"
 mkdir -p runs/slurm
 
 ARM=perturbdiff
@@ -113,9 +116,9 @@ rm -f "$PD_OUT/valscore/$PD_RUN_NAME/celleval_manifest.json"
 cd "$HERE/competitors/PerturbDiff"
 "$PY" ./src/apps/run/rawdata_diffusion_training.py \
     data=occam_h5ad path=occam_path cov_encoding=occam_h5ad \
-    path.occam_bench_dir="$HERE/data/benchmarks/rhj_fewshot" \
-    model.input_dim=6983 \
-    "model.hidden_num=[6983,512]" \
+    path.occam_bench_dir="$BENCH_DIR" \
+    model.input_dim="$N_AXIS_GENES" \
+    "model.hidden_num=[$N_AXIS_GENES,512]" \
     cov_encoding.replogle_gene_encoding="$PD_PENC" \
     run_name="$PD_RUN_NAME" \
     trainer.devices=[0] trainer.max_steps="$PD_MAX_STEPS" \

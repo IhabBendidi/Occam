@@ -35,6 +35,72 @@ export WANDB_MODE="${WANDB_MODE:-offline}"
 # "CUDA unknown error". Launchers pass this as --exclude; clear it once the node is drained.
 export COMPETITOR_EXCLUDE_NODES="${COMPETITOR_EXCLUDE_NODES:-hop39}"
 
+# ─── which BENCHMARK, and the axis that comes with it ───────────────────────────────────────
+# ⛔ THE ONE SOURCE OF TRUTH FOR "SAME GENES, SAME SPLITS". Every leg of every arm resolves
+# the benchmark here, and reads the AXIS WIDTH and both content digests out of the artifact
+# rather than carrying a literal. Three model configs used to hardcode 6983
+# (PerturbDiff's model.input_dim and model.hidden_num, TxPert's hvg_number), so pointing an
+# arm at norman_combo's 8,000-gene axis would have trained it on a 6,983-wide input against
+# 8,000-wide targets -- which does not crash, it just scores badly and looks like the method
+# being bad. Derive, never restate.
+#
+#   BENCH=rhj_fewshot   (default)  6,983 genes · 611 held-out HepG2 perturbations
+#   BENCH=norman_combo             8,000 genes · 111 held-out double perturbations
+competitor_resolve_bench() {
+    local repo="$1"
+    BENCH="${BENCH:-rhj_fewshot}"
+    BENCH_DIR="$repo/data/benchmarks/$BENCH"
+    PANEL_DIR="$BENCH_DIR/splithalf"
+    if [ ! -f "$BENCH_DIR/benchmark.json" ]; then
+        echo "no benchmark at $BENCH_DIR (BENCH=$BENCH)." >&2
+        echo "Download benchmarks/$BENCH from the Hub, or build it with" >&2
+        echo "scripts/repro/build_benchmark_*.sh -- see docs/hf_release.md." >&2
+        exit 1
+    fi
+    if [ ! -f "$PANEL_DIR/panel.npz" ]; then
+        echo "no split-half panel at $PANEL_DIR/panel.npz (BENCH=$BENCH)." >&2
+        exit 1
+    fi
+    # The axis width and the two digests come out of the artifact. `n_axis_genes` is what
+    # every model dimension must be set from; the digests are what makes "same genes, same
+    # splits" checkable rather than asserted in a comment.
+    local py_out
+    py_out="$(python - "$BENCH_DIR" <<'PYEOF'
+import csv, json, os, sys
+d = sys.argv[1]
+b = json.load(open(os.path.join(d, "benchmark.json")))
+axis = b.get("gene_axis") or {}
+n = (axis.get("n_genes") or axis.get("n_axis_genes") or b.get("n_axis_genes"))
+if n is None:
+    with open(os.path.join(d, "gene_axis.csv")) as fh:
+        n = sum(1 for _ in csv.reader(fh)) - 1
+sha = axis.get("sha256") or b.get("gene_axis_sha256") or ""
+m = json.load(open(os.path.join(d, "splithalf", "splits_manifest.json")))
+print(int(n))
+print(sha)
+print(m.get("benchmark_sha256", ""))
+print(m.get("cohort_sha256", ""))
+print(int(m.get("n_splits", 5)))
+PYEOF
+)" || { echo "could not read $BENCH_DIR" >&2; exit 1; }
+    N_AXIS_GENES="$(echo "$py_out" | sed -n 1p)"
+    AXIS_SHA256="$(echo "$py_out"  | sed -n 2p)"
+    BENCH_SHA256="$(echo "$py_out" | sed -n 3p)"
+    COHORT_SHA256="$(echo "$py_out" | sed -n 4p)"
+    BENCH_N_SPLITS="$(echo "$py_out" | sed -n 5p)"
+    if [ -z "${N_AXIS_GENES:-}" ] || [ "$N_AXIS_GENES" -lt 1 ] 2>/dev/null; then
+        echo "could not determine the axis width for BENCH=$BENCH" >&2
+        exit 1
+    fi
+    # Every arm already names its run `occam_s${SEED}${TAG_SUFFIX}` (TxPert, CellFlow,
+    # State) or folds TAG_SUFFIX into PD_RUN_NAME (PerturbDiff), so defaulting it here
+    # scopes all four training runs by benchmark with no per-arm edit. EMPTY on
+    # rhj_fewshot, so every existing checkpoint directory keeps its name.
+    TAG_SUFFIX="${TAG_SUFFIX:-$(competitor_bench_tag)}"
+    export BENCH BENCH_DIR PANEL_DIR N_AXIS_GENES AXIS_SHA256 BENCH_SHA256 \
+           COHORT_SHA256 BENCH_N_SPLITS TAG_SUFFIX
+}
+
 # Slurm COPIES the batch script into a node spool dir, so ${BASH_SOURCE[0]} does not point into
 # the repo. Prefer the submit dir, and verify whichever candidate wins.
 _find_repo() {
@@ -78,13 +144,35 @@ OCCAM_PY=/mnt/ps/home/CORP/ihab.bendidi/.pyenv/versions/scmae/bin/python  # noqa
 export UV_CACHE_DIR="${UV_CACHE_DIR:-/rxrx/scratch/sandbox/$USER/.uv-cache}"
 export UV_PYTHON_INSTALL_DIR="${UV_PYTHON_INSTALL_DIR:-/rxrx/scratch/sandbox/$USER/.uv-python}"
 
+# ─── run paths must carry the BENCHMARK, or two benchmarks collide on disk ───────────────────
+# `runs/competitors/<arm>/s42/split_0` and `runs/rhj_splithalf/compet_<arm>_s42` carry the arm
+# and the seed but not the benchmark, so a norman_combo export would overwrite the
+# rhj_fewshot one silently -- the same class of bug the ARM_SUFFIX comment below records.
+# The tag is EMPTY on rhj_fewshot, so every existing directory keeps its name and every
+# completed run stays resolvable; anything else appends `__<bench>`.
+competitor_bench_tag() {
+    if [ "${BENCH:-rhj_fewshot}" = "rhj_fewshot" ]; then echo ""; else echo "__${BENCH}"; fi
+}
+
+# Where the SCORED output goes. ⚠️ rhj_fewshot's scores live under `runs/rhj_splithalf/`,
+# not `runs/rhj_fewshot/` -- a historical name that `scripts/export_split_metrics.py` maps
+# to the benchmark and that 296 existing run directories use. Renaming it would orphan
+# every one of them, so it is preserved and only new benchmarks use their own name.
+competitor_score_root() {
+    if [ "${BENCH:-rhj_fewshot}" = "rhj_fewshot" ]; then echo "runs/rhj_splithalf"
+    else echo "runs/${BENCH}"; fi
+}
+
 competitor_banner() {
     local arm="$1" leg="$2" seed="$3" repo="$4"
     echo "=================================================================="
     echo "  competitor: $arm   leg: $leg   seed: $seed"
     echo "  repo   : $repo"
     echo "  node   : $(hostname)   job: ${SLURM_JOB_ID:-none}/${SLURM_ARRAY_TASK_ID:-0}"
-    echo "  data   : OUR h5ads, OUR 6,983-gene axis, OUR splits (rhj_fewshot)"
+    echo "  bench  : ${BENCH:-rhj_fewshot}  (${N_AXIS_GENES:-?}-gene axis)"
+    echo "  axis   : ${AXIS_SHA256:0:16}   <- must match Occam's for the score to compare"
+    echo "  cohort : ${COHORT_SHA256:0:16}   bench ${BENCH_SHA256:0:16}"
+    echo "  data   : OUR h5ads, OUR axis, OUR splits -- the digests above are the proof"
     echo "  scored : OUR cell-eval 0.6.0 path, uncalibrated (model_nocal)"
     echo "  anchors: ctrlcell -0.0018 · meanpert 0.1324 · transfer 0.2323 ·"
     echo "           experimental 0.3722   (pearson_delta, all 5 splits)"

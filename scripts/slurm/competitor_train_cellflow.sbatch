@@ -73,6 +73,9 @@ source "$(dirname "${BASH_SOURCE[0]}")/_competitor_common.sh" 2>/dev/null || \
 
 HERE="$(_find_repo)" || exit 1
 cd "$HERE"
+# Resolves BENCH / BENCH_DIR / PANEL_DIR / N_AXIS_GENES and the three digests.
+# BENCH defaults to rhj_fewshot, so every pre-existing invocation is unchanged.
+competitor_resolve_bench "$HERE"
 mkdir -p runs/slurm
 
 ARM=cellflow
@@ -85,6 +88,16 @@ CELLFLOW_ROOT="$HERE/competitors/CellFlow"
 CF_PKG="$CELLFLOW_ROOT/cellflow"
 
 PY="$(competitor_venv_python "$ARM" "$HERE")" || exit 1
+CF_CONFIG="$HERE/competitors/CellFlow/configs/occam_${BENCH}.yaml"
+if [ ! -f "$CF_CONFIG" ]; then
+    echo "no CellFlow config for BENCH=$BENCH at $CF_CONFIG" >&2
+    echo "CellFlow's combinatorial mechanism is switched on by that file's" >&2
+    echo "max_combination_length, so it cannot be inferred -- copy" >&2
+    echo "configs/occam_rhj_fewshot.yaml and set occam_bench_dir and" >&2
+    echo "max_combination_length for the new benchmark." >&2
+    exit 1
+fi
+
 competitor_banner "$ARM" train "$SEED" "$HERE"
 echo "  iterations $ITERATIONS · valid_freq $VALID_FREQ · out $OUT_ROOT/$TAG"
 
@@ -101,13 +114,13 @@ rm -f "$OUT_ROOT/$TAG/celleval_manifest.json"
 # Keep every comment ABOVE this invocation. See the warning in _competitor_common.sh.
 cd "$CF_PKG"
 "$PY" -u ../train_cellflow.py \
-    --config "$CELLFLOW_ROOT/configs/occam_rhj_fewshot.yaml" \
+    --config "$CELLFLOW_ROOT/configs/occam_${BENCH}.yaml" \
     --output-dir "$OUT_ROOT" \
     --run-name "$TAG" \
     --num-iterations "$ITERATIONS" \
     --set "train.valid_freq=$VALID_FREQ" \
     --set "model.seed=$SEED" \
-    --set "data.occam_bench_dir=$HERE/data/benchmarks/rhj_fewshot"
+    --set "data.occam_bench_dir=$BENCH_DIR"
 
 echo "=== TRAIN DONE ==="
 RUN_DIR="$OUT_ROOT/$TAG"

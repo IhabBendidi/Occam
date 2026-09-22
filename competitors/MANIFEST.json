@@ -1,7 +1,7 @@
 {
   "arms": {
     "CellFlow": {
-      "bytes": 1427326,
+      "bytes": 1436686,
       "files": {
         ".python-version": {
           "bytes": 5,
@@ -199,6 +199,10 @@
           "bytes": 25924,
           "sha256": "303f78f3a3ec92a5d2f4db0306a98cab17aeb58c144d294fd18085e5938c756d"
         },
+        "configs/occam_norman_combo.yaml": {
+          "bytes": 9360,
+          "sha256": "272e84e1655b327a4496cc02fba81a99c7ec7e1b047c53c551b34e5334e27a25"
+        },
         "configs/occam_rhj_fewshot.yaml": {
           "bytes": 6898,
           "sha256": "c2a5afe4ad61aaf212208623989d0660e08d804efbefd50cd852c046205a2e50"
@@ -244,10 +248,10 @@
           "sha256": "9a6983bfa14c8c9f242810ff8485647c79630ea8e2aa9a1753599e4e28621009"
         }
       },
-      "n_files": 60
+      "n_files": 61
     },
     "PerturbDiff": {
-      "bytes": 2795362,
+      "bytes": 2796716,
       "files": {
         ".python-version": {
           "bytes": 5,
@@ -362,8 +366,8 @@
           "sha256": "2dc0ac264b54bd6ce287f9a0cbd3ce5001f9ef482798a9cc8ee471055f639476"
         },
         "export_occam.py": {
-          "bytes": 24234,
-          "sha256": "d6a6726adf4499f3b4c837673fa2d5cb406ef6bf2f407d18689cbf4d29ba7e58"
+          "bytes": 25588,
+          "sha256": "7fb95551e7faa2a90251e50b4508c2a722b4e363d2e6add498633b690e78a816"
         },
         "pyproject.toml": {
           "bytes": 3559,
@@ -665,11 +669,11 @@
       "n_files": 103
     },
     "STATE": {
-      "bytes": 1167203,
+      "bytes": 1168557,
       "files": {
         "export_occam.py": {
-          "bytes": 20372,
-          "sha256": "20ce752baefe95ffeba5d0b1716e839ec68e25148692b98881d8798230f08e25"
+          "bytes": 21726,
+          "sha256": "192aeaaabcfb0586e173519e99c9cf0c14832e885cf4333df6375118f23454b3"
         },
         "state/.python-version": {
           "bytes": 5,
