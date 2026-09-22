@@ -1,0 +1,23 @@
+# AA-GRID EVAL -- push the winning corner: 180/150 epochs x eta_min {3e-4, 5e-4, 7e-4}.
+#
+# QUESTION: F-sched3's best arm Y06 (Q02, 150 ep, eta_min 3e-4) = 0.4043 sits at the EDGE of
+# both axes with both margins still positive, which F-loss3 flags as a range problem rather
+# than a finished tuning. These 5 arms extend both edges one step.
+#
+# ⚠️ VALIDATION MISRANKS ARMS (F-ckpt4). AA03 has the highest validation score in the whole
+# campaign (0.4613) and Y06 -- the best TEST arm -- had 0.4390, lower than four of these five.
+# Do not pre-read the ordering from validation.
+#
+# ANCHORS (test, uncalibrated, 5/5): W22 (90 ep, 1e-6) 0.3985 · Y03 (120 ep, 3e-4) 0.4015 ·
+# Y06 (150 ep, 3e-4) 0.4043 / mae 0.0215 / ovl@N 0.0946 / disc_l1 0.7288 <- THE BAR.
+#
+# NOCAL only. best_model.pth. 25 tasks = 5 arms x 5 splits. THROTTLE %6 (F-infra1).
+#
+#   GRID=configs/rhj_AA_eval.tsv CALIBRATE=none \
+#   sbatch --qos=vco --wckey=vco --array=0-24%6 scripts/slurm/rhj_splithalf_models.sbatch
+arm_id	kind	tag
+AA01	loss	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_e180_em3e-4_s42
+AA02	loss	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_e180_em5e-4_s42
+AA03	loss	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_e180_em7e-4_s42
+AA04	loss	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_e150_em5e-4_s42
+AA05	loss	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_e150_em7e-4_s42

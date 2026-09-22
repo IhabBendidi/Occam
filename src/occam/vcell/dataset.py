@@ -2069,7 +2069,13 @@ def build_eval_dataset(
             if cell_lines is not None and row_cl not in cell_lines:
                 continue
             pname = fm.pert_gene_names[i]
-            if pname in split_pert_names and pname in pert2id:
+            # ⚠️ `resolve_pert_indices`, NOT `pname in pert2id`. A combinatorial label
+            # ('GENE_A+GENE_B') is not itself a graph node, so the bare membership test
+            # dropped EVERY double and this builder then raised "No perturbation cells found
+            # for this split" -- on the norman_combo val split, which is made entirely of
+            # doubles. The resolver already existed and every other call site used it; this
+            # one did not, which is the same consumer-without-the-gate shape as F-loss1.
+            if pname in split_pert_names and resolve_pert_indices(pname, pert2id) is not None:
                 if exclude_cl_perts and row_cl in exclude_cl_perts:
                     if pname in exclude_cl_perts[row_cl]:
                         continue
@@ -2095,7 +2101,8 @@ def build_eval_dataset(
 
         all_expr.append(expr)
         all_pert_names.extend(row_pert_names)
-        all_pert_indices.extend([[pert2id[pn]] for pn in row_pert_names])
+        # one entry per row, each a LIST of ids: [id] for a single, [id_A, id_B] for a double
+        all_pert_indices.extend([resolve_pert_indices(pn, pert2id) for pn in row_pert_names])
         all_cell_types.extend(row_cell_types)
         all_gene_masks.append(fm.gene_mask.unsqueeze(0).expand(len(row_indices), -1))
 

@@ -243,6 +243,19 @@ def main() -> int:
                          "discrimination UP, mae/mse DOWN. On H1 it SPLIT the checkpoints "
                          "(+0.1394 on one, -0.3335 on others), so a single-base result says "
                          "nothing about the others.")
+    ap.add_argument("--compose", default="decode_seq_mean",
+                    help="multi-perturbation composition mode (norman_combo). DEFAULT "
+                         "`decode_seq_mean` since 2026-09-22: best mean rank (2.08/8) and "
+                         "best single cell over the 72-cell matrix in docs/norman_results.md, "
+                         "and a NO-OP on single-perturbation panels. One of "
+                         "sum | latent_seq_{ab,ba,mean} | decode_seq_{ab,ba,mean} | "
+                         "delta_sum | delta_sum_realctrl | resid_seq_{ab,ba,mean}. "
+                         "⚠️ The modes are IDENTICAL on a single perturbation, so this is a "
+                         "no-op on rhj_fewshot; it only changes doubles. ⚠️ The "
+                         "`*_realctrl`/`resid_seq_*` family also changes the EMISSION "
+                         "convention (deltas added to the real control, not to the model's "
+                         "reconstruction), so its numbers are comparable within that family "
+                         "and to `delta_sum_realctrl`, not directly to `sum`.")
     ap.add_argument("--calibrate", default="none",
                     choices=["none", "quantile", "both"],
                     help="control-fit quantile calibration is worth ~0.37 pearson_delta "
@@ -327,6 +340,21 @@ def main() -> int:
         model, pert2id, device = trainer.model, trainer.pert2id, trainer.device
         encoder_genes = trainer.encoder_gene_names
         calibrate, batch_size = args.calibrate, args.batch_size
+        # `sum` is `forward()` itself, so the wrapper is only installed for the other
+        # modes -- keeping the rhj_fewshot call path byte-for-byte what it was when
+        # --compose defaulted to `sum`. The default is now `decode_seq_mean`, which takes
+        # this branch and returns pred1 unchanged on a single perturbation.
+        if args.compose != "sum":
+            from occam.vcell.model import VirtualCellModel
+            if args.compose not in VirtualCellModel.COMPOSE_MODES:
+                raise SystemExit(f"--compose {args.compose!r} is not a mode; expected "
+                                 f"{list(VirtualCellModel.COMPOSE_MODES)}")
+            _m, _mode = model, args.compose
+
+            def predict_fn(ctrl_t, pert_idx):
+                return _m.forward_composed(ctrl_t, pert_idx, _mode)["prediction"]
+            print(f"[splithalf] composition mode: {args.compose} "
+                  f"({'REAL-control emission -- read within its own family' if args.compose in VirtualCellModel.REAL_BASE_MODES else 'reconstruction-based emission'})")
 
     base, labels, split, cohort, grand, man, transfer, sos = load_frozen(
         args.panel_dir, args.split, encoder_gene_names=encoder_genes)

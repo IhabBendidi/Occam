@@ -75,16 +75,27 @@ class ProtocolError(RuntimeError):
 
 
 def _assert_in_pert2id(cohort: Mapping[str, object], pert2id: Mapping[str, int]) -> None:
-    """Refuse BEFORE predicting: `predict_panel` drops unknown perturbations silently."""
-    missing = [p for p in cohort["perts"] if int(pert2id.get(p, -1)) < 0]
+    """Refuse BEFORE predicting: `predict_panel` drops unknown perturbations silently.
+
+    ⚠️ THE CHECK MUST MIRROR WHAT THE PREDICTION PATH DOES, so it calls the same helper.
+    `int(pert2id.get(p, -1)) < 0` was a bare membership test, and a COMBINATORIAL label
+    ('GENE_A+GENE_B') is not itself a graph node -- so on norman_combo this refused all 111
+    cohort pairs while `predict_panel` would have predicted every one of them perfectly well
+    by splitting on '+'. A guard that is stricter than the thing it guards is still a bug: it
+    blocks correct work, and the next person's fix is to weaken the guard.
+    """
+    from occam.vcell.panel.predict import _can_resolve
+
+    missing = [p for p in cohort["perts"] if not _can_resolve(p, pert2id)]
     if missing:
         raise ProtocolError(
-            f"{len(missing)} of {len(cohort['perts'])} cohort perturbations have no "
-            f"pert2id entry, e.g. {missing[:5]}. predict_panel drops them silently, which "
-            f"would shrink the cohort and rescale discrimination_score_l2 and BH-FDR. The "
-            f"cohort is deliberately NOT intersected with pert2id at freeze time -- that "
-            f"would make the benchmark checkpoint-dependent. Fix the graph vocabulary or "
-            f"re-freeze the cohort explicitly.")
+            f"{len(missing)} of {len(cohort['perts'])} cohort perturbations cannot be "
+            f"resolved to pert2id entries, e.g. {missing[:5]}. predict_panel drops them "
+            f"silently, which would shrink the cohort and rescale discrimination_score_l2 "
+            f"and BH-FDR. A multi-gene label is resolved gene by gene; these are unresolvable "
+            f"even so. The cohort is deliberately NOT intersected with pert2id at freeze time "
+            f"-- that would make the benchmark checkpoint-dependent. Fix the graph vocabulary "
+            f"or re-freeze the cohort explicitly.")
 
 
 def run_split(

@@ -577,6 +577,7 @@ class VirtualCellModel(nn.Module):
         control_expression: torch.Tensor,
         pert_indices: List[List[int]],
         average_orders: bool = True,
+        order: Optional[str] = None,
     ) -> Dict[str, torch.Tensor]:
         """Apply a sample's perturbations one at a time, chained in LATENT space.
 
@@ -587,14 +588,27 @@ class VirtualCellModel(nn.Module):
         would decode the intermediate too, which nothing consumes -- the composition
         never needs cell_A in gene space.
 
-        ``average_orders`` averages the A-then-B and B-then-A latent states for
-        samples with two perturbations, so neither order is privileged. Averaging
-        happens on the cell state (z_hat) rather than on decoded expression, which
-        keeps it to a single decoder pass and is the more natural object to average.
+        ``order`` selects which chain to return and SUPERSEDES ``average_orders``:
+
+            "ab"   the order as given in ``pert_indices``
+            "ba"   the reversed order
+            "mean" the average of the two latent states
+
+        ⚠️ THE TWO ORDERS ARE NOT THE SAME PREDICTION, but the biology has no order: a
+        double perturbation is a set. "mean" is therefore the defensible default, and the
+        AB-vs-BA disagreement is worth reporting in its own right -- it measures how much
+        of a sequential composition's answer is an artifact of the order it was given.
+        ``average_orders`` is kept for backward compatibility and maps to "mean"/"ab".
 
         Samples with 0 or 1 perturbations take the single-step path, so a mixed
-        batch of controls / singles / doubles is handled in one call.
+        batch of controls / singles / doubles is handled in one call. **For a single
+        perturbation every order and every composition mode is algebraically identical to
+        `forward()`**, which is what `tests/test_composition_modes.py` pins.
         """
+        if order is None:
+            order = "mean" if average_orders else "ab"
+        if order not in ("ab", "ba", "mean"):
+            raise ValueError(f"order must be ab|ba|mean, got {order!r}")
         device = control_expression.device
         z_ctrl = self._encode_ctrl(control_expression)
         z_graph = self._pert_embeddings()
@@ -617,9 +631,14 @@ class VirtualCellModel(nn.Module):
             z2 = z1 + self._interact(z1, e1, z_graph, m1)
             return torch.where(multi.unsqueeze(-1), z2, z1)
 
-        z_hat = chain(0)
-        if average_orders and bool(multi.any()):
-            z_hat = torch.where(multi.unsqueeze(-1), 0.5 * (z_hat + chain(1)), z_hat)
+        if order == "ba":
+            z_hat = chain(1)
+        else:
+            z_hat = chain(0)
+            if order == "mean" and bool(multi.any()):
+                # only the multi-perturbation rows differ between orders; single-pert rows
+                # are left bit-identical rather than averaged with themselves
+                z_hat = torch.where(multi.unsqueeze(-1), 0.5 * (z_hat + chain(1)), z_hat)
 
         decoder_out = self.decoder(z_hat)          # <-- the only decoder pass
         delta_z = z_hat - z_ctrl                   # cumulative effect vs original control
@@ -631,6 +650,313 @@ class VirtualCellModel(nn.Module):
             return result
         return {"prediction": decoder_out, "delta_z": delta_z, "z_hat": z_hat,
                 "z_ctrl": z_ctrl, "n_steps": n_steps}
+
+    def forward_decode_sequential(
+        self,
+        control_expression: torch.Tensor,
+        pert_indices: List[List[int]],
+        order: str = "mean",
+    ) -> Dict[str, torch.Tensor]:
+        """Chain the perturbations through the FULL pipeline, re-encoding in between.
+
+            control -> [encode, interact A, decode] -> profile_A
+            profile_A -> [encode, interact B, decode] -> profile_AB
+
+        i.e. the first perturbation's PREDICTED EXPRESSION becomes the control input of the
+        second round. Unlike `forward_sequential`, which chains in latent space and decodes
+        once, this passes through gene space at every step, so each intermediate is a real
+        prediction rather than a latent that nothing ever decodes.
+
+        ⚠️ MEASURED HEADWIND, stated before the result: F-recon1 measured the decoder's own
+        control reconstruction error at ~5x the effect size on rhj_fewshot
+        (||D(E(c)) - c|| = 15.34 against a true effect of 2.88). This mode feeds a decoded
+        profile back into the encoder, so step 2's input carries that error -- several times
+        the signal being composed. It is run because it is cheap and the prediction is
+        falsifiable, not because it is expected to win.
+
+        ⚠️ Costs 2 encoder + 2 decoder passes (against 1 + 1 for `forward_sequential`).
+        Rows with fewer than 2 perturbations keep their FIRST-round prediction; the second
+        round is computed for the whole batch and then selected away, which is simpler than
+        a ragged gather and exactly equivalent.
+        """
+        if order not in ("ab", "ba", "mean"):
+            raise ValueError(f"order must be ab|ba|mean, got {order!r}")
+        if order == "mean":
+            a = self.forward_decode_sequential(control_expression, pert_indices, "ab")
+            b = self.forward_decode_sequential(control_expression, pert_indices, "ba")
+            n_steps = a["n_steps"]
+            multi = (n_steps > 1).unsqueeze(-1)
+            out = dict(a)
+            for k in ("prediction", "z_hat", "delta_z"):
+                # average only the rows the order can change; singles stay bit-identical
+                out[k] = torch.where(multi, 0.5 * (a[k] + b[k]), a[k])
+            return out
+
+        device = control_expression.device
+        z_graph = self._pert_embeddings()
+        n_steps = torch.tensor([sum(1 for x in p if x >= 0) for p in pert_indices],
+                               device=device, dtype=torch.long)
+        multi = (n_steps > 1)
+        seq = [(list(reversed(p)) if order == "ba" else list(p)) for p in pert_indices]
+
+        def round_once(x, slot):
+            z = self._encode_ctrl(x)
+            e, m = self._slot_embed(z_graph, slot, device)
+            z_hat = z + self._interact(z, e, z_graph, m)
+            dec = self.decoder(z_hat)
+            pred = dec["prediction"] if isinstance(dec, dict) else dec
+            return pred, z, z_hat
+
+        slot0 = [p[0] if p else -1 for p in seq]
+        pred1, z_ctrl, z_hat1 = round_once(control_expression, slot0)
+        if not bool(multi.any()):
+            return {"prediction": pred1, "delta_z": z_hat1 - z_ctrl, "z_hat": z_hat1,
+                    "z_ctrl": z_ctrl, "n_steps": n_steps}
+
+        slot1 = [p[1] if len(p) > 1 else -1 for p in seq]
+        pred2, z_mid, z_hat2 = round_once(pred1, slot1)
+        pick = multi.unsqueeze(-1)
+        prediction = torch.where(pick, pred2, pred1)
+        z_hat = torch.where(pick, z_hat2, z_hat1)
+        # ⚠️ `delta_z` is measured against the ORIGINAL control's latent, not against the
+        # re-encoded intermediate: the diagnostics that read it (delta_z_ratio,
+        # offmanifold_ratio) are defined relative to the cell the prediction started from.
+        return {"prediction": prediction, "delta_z": z_hat - z_ctrl, "z_hat": z_hat,
+                "z_ctrl": z_ctrl, "n_steps": n_steps}
+
+    def forward_delta_sum(
+        self,
+        control_expression: torch.Tensor,
+        pert_indices: List[List[int]],
+        base: str = "recon",
+    ) -> Dict[str, torch.Tensor]:
+        """Sum the perturbations' DECODED deltas, each taken against the same reconstruction.
+
+            recon   = D(E(c) + f(E(c), 0))               <- the zero-perturbation forward
+            delta_p = D(E(c) + f(E(c), p)) - recon        for each perturbation p
+            prediction = recon + sum_p delta_p
+
+        The gene-space counterpart of the default `forward()`, which sums in the graph
+        embedding instead. Two properties make it the most defensible of the sequential
+        alternatives:
+
+          * **SYMMETRIC BY CONSTRUCTION.** Summation commutes, so there is no AB-vs-BA
+            question at all -- the object it builds has the same symmetry the biology has.
+          * **IT CANCELS THE DECODER'S RECONSTRUCTION BIAS** instead of compounding it.
+            Every delta is a difference of two decoder outputs from the same control, so the
+            shared term D(E(c)) -- which F-recon1 measured at ~5x the effect size -- drops
+            out. `forward_decode_sequential` feeds that term into its own second round; this
+            subtracts it. Same logic as the decoder eval's `injctrl` convention.
+
+        ⚠️ Costs 1 + n_perts decoder passes (3 for a double) and ONE encoder pass, reused.
+        ⚠️ For a single perturbation this reduces EXACTLY to `forward()`:
+           recon + (pred_A - recon) = pred_A. Pinned by the tests.
+        """
+        device = control_expression.device
+        z_graph = self._pert_embeddings()
+        z_ctrl = self._encode_ctrl(control_expression)
+
+        def decode(z):
+            dec = self.decoder(z)
+            return dec["prediction"] if isinstance(dec, dict) else dec
+
+        # ⚠️ THE REFERENCE IS THE ZERO-PERTURBATION FORWARD, not `decode(z_ctrl)`.
+        # `forward()` gives a control row `D(z + f(z, 0))`, and `f(z, 0)` is NOT zero for
+        # every interaction type (it is for `additive`, it is not for `film`). Using
+        # `D(z_ctrl)` here made a control row disagree with `forward()` and would have put a
+        # constant offset into every delta. Caught by
+        # tests/test_composition_modes.py::test_control_rows_are_untouched_by_every_mode.
+        e0, m0 = self._slot_embed(z_graph, [-1] * z_ctrl.shape[0], device)
+        recon = decode(z_ctrl + self._interact(z_ctrl, e0, z_graph, m0))
+        # `base` selects what the summed deltas are added BACK to. "recon" keeps the mode
+        # comparable to `forward()` on a single perturbation; "real" is the `injctrl`
+        # convention and is the symmetric control for `forward_residual_sequential`.
+        if base not in ("real", "recon"):
+            raise ValueError(f"base must be real|recon, got {base!r}")
+        start = control_expression if base == "real" else recon
+        n_steps = torch.tensor([sum(1 for x in p if x >= 0) for p in pert_indices],
+                               device=device, dtype=torch.long)
+        max_p = max((len(p) for p in pert_indices), default=1)
+        total = torch.zeros_like(recon)
+        delta_z_total = torch.zeros_like(z_ctrl)
+        for k in range(max_p):
+            slot = [p[k] if len(p) > k else -1 for p in pert_indices]
+            if all(x < 0 for x in slot):
+                continue
+            e, m = self._slot_embed(z_graph, slot, device)
+            d_z = self._interact(z_ctrl, e, z_graph, m)
+            # a row with no k-th perturbation contributes exactly zero, not decoder noise
+            pred_k = decode(z_ctrl + d_z)
+            total = total + (pred_k - recon) * m
+            delta_z_total = delta_z_total + d_z * m
+        return {"prediction": start + total, "delta_z": delta_z_total,
+                "z_hat": z_ctrl + delta_z_total, "z_ctrl": z_ctrl, "n_steps": n_steps}
+
+    def _zero_pert_recon(self, z, z_graph, device):
+        """``D(z + f(z, 0))`` -- what `forward()` emits for an UNPERTURBED row.
+
+        The reference every decoded delta is taken against. `f(z, 0)` is not zero for every
+        interaction (it is for `additive`, it is not for `film`), so `D(z)` is the wrong
+        reference and using it puts a constant offset into every delta.
+        """
+        e0, m0 = self._slot_embed(z_graph, [-1] * z.shape[0], device)
+        dec = self.decoder(z + self._interact(z, e0, z_graph, m0))
+        return dec["prediction"] if isinstance(dec, dict) else dec
+
+    def forward_residual_sequential(
+        self,
+        control_expression: torch.Tensor,
+        pert_indices: List[List[int]],
+        order: str = "mean",
+        base: str = "real",
+    ) -> Dict[str, torch.Tensor]:
+        """Sequential composition in gene space on DECODED DELTAS added to the real control.
+
+            recon_0 = D(E(c) + f(E(c), 0))
+            delta_A = D(E(c) + f(E(c), e_A)) - recon_0
+            x_1     = c + delta_A                      <- the REAL control plus the delta
+            recon_1 = D(E(x_1) + f(E(x_1), 0))
+            delta_B = D(E(x_1) + f(E(x_1), e_B)) - recon_1
+            prediction = x_1 + delta_B  =  c + delta_A + delta_B
+
+        This is `forward_decode_sequential` with the decoder's reconstruction bias REMOVED at
+        every step: each round subtracts the reconstruction of its own input rather than
+        passing a raw decoded profile forward. F-recon1 measured that bias at ~5x the effect
+        size (||D(E(c)) - c|| = 15.34 vs an effect of 2.88), so this is the better-motivated
+        of the two gene-space chains -- and unlike `forward_delta_sum`, the second delta IS
+        conditioned on the first, because it is computed from E(c + delta_A).
+
+        ⚠️ **THIS MODE CHANGES THE EMISSION CONVENTION, NOT ONLY THE COMPOSITION.** On a
+        SINGLE perturbation it returns `c + delta_A`, not `pred_A`; the two differ by
+        `(c - recon_0)`, i.e. the decoder's reconstruction error, which is LARGER than the
+        effect being predicted. So its score against `sum` mixes two changes, and the
+        comparison needs `delta_sum` with `base="real"` as the matching symmetric control:
+
+            base="recon"  prediction = recon_0 + sum(delta)      comparable to `sum`
+            base="real"   prediction = c       + sum(delta)      this mode's convention
+
+        That 2x2 -- {recon, real} x {summed, sequential} -- separates the emission change
+        from the sequencing change. Reporting only this mode would confound them.
+        (The `base="real"` convention is the decoder eval's `injctrl`: score the perturbation
+        delta against a real control rather than a reconstructed one.)
+
+        ⚠️ Costs 2 encoder + 4 decoder passes per order.
+        """
+        if order not in ("ab", "ba", "mean"):
+            raise ValueError(f"order must be ab|ba|mean, got {order!r}")
+        if base not in ("real", "recon"):
+            raise ValueError(f"base must be real|recon, got {base!r}")
+        if order == "mean":
+            a = self.forward_residual_sequential(control_expression, pert_indices, "ab", base)
+            b = self.forward_residual_sequential(control_expression, pert_indices, "ba", base)
+            multi = (a["n_steps"] > 1).unsqueeze(-1)
+            out = dict(a)
+            for k in ("prediction", "z_hat", "delta_z"):
+                out[k] = torch.where(multi, 0.5 * (a[k] + b[k]), a[k])
+            return out
+
+        device = control_expression.device
+        z_graph = self._pert_embeddings()
+        n_steps = torch.tensor([sum(1 for x in p if x >= 0) for p in pert_indices],
+                               device=device, dtype=torch.long)
+        multi = (n_steps > 1)
+        seq = [(list(reversed(p)) if order == "ba" else list(p)) for p in pert_indices]
+
+        def step(x, slot):
+            """(input + decoded delta, the step's latent, the step's delta_z)."""
+            z = self._encode_ctrl(x)
+            recon = self._zero_pert_recon(z, z_graph, device)
+            e, m = self._slot_embed(z_graph, slot, device)
+            d_z = self._interact(z, e, z_graph, m)
+            dec = self.decoder(z + d_z)
+            pred = dec["prediction"] if isinstance(dec, dict) else dec
+            return x + (pred - recon) * m, z, d_z
+
+        z0 = self._encode_ctrl(control_expression)
+        start = control_expression if base == "real" else self._zero_pert_recon(
+            z0, z_graph, device)
+        x1, _z0, dz0 = step(start, [p[0] if p else -1 for p in seq])
+        if not bool(multi.any()):
+            return {"prediction": x1, "delta_z": dz0, "z_hat": z0 + dz0,
+                    "z_ctrl": z0, "n_steps": n_steps}
+        x2, z1, dz1 = step(x1, [p[1] if len(p) > 1 else -1 for p in seq])
+        pick = multi.unsqueeze(-1)
+        return {"prediction": torch.where(pick, x2, x1),
+                "delta_z": dz0 + torch.where(pick, dz1, torch.zeros_like(dz1)),
+                "z_hat": z0 + dz0 + torch.where(pick, dz1, torch.zeros_like(dz1)),
+                "z_ctrl": z0, "n_steps": n_steps}
+
+    # ⚠️ TWO EMISSION FAMILIES, and a number from one is not directly comparable to a
+    # number from the other. Modes whose name ends in `_realctrl`/`resid_seq_*` add their
+    # deltas to the REAL control cell (the `injctrl` convention); the rest add them to the
+    # model's own reconstruction. On a single perturbation the first family returns
+    # `c + delta` and the second returns `pred`, and they differ by the decoder's
+    # reconstruction error -- which F-recon1 measured as LARGER than the effect itself.
+    COMPOSE_MODES = ("sum", "latent_seq_ab", "latent_seq_ba", "latent_seq_mean",
+                     "decode_seq_ab", "decode_seq_ba", "decode_seq_mean", "delta_sum",
+                     "delta_sum_realctrl",
+                     "resid_seq_ab", "resid_seq_ba", "resid_seq_mean")
+    RECON_BASE_MODES = ("sum", "latent_seq_ab", "latent_seq_ba", "latent_seq_mean",
+                        "decode_seq_ab", "decode_seq_ba", "decode_seq_mean", "delta_sum")
+    REAL_BASE_MODES = ("delta_sum_realctrl", "resid_seq_ab", "resid_seq_ba",
+                       "resid_seq_mean")
+
+    def forward_composed(
+        self,
+        control_expression: torch.Tensor,
+        pert_indices: List[List[int]],
+        mode: str = "decode_seq_mean",
+        **kwargs,
+    ) -> Dict[str, torch.Tensor]:
+        """One entry point for every multi-perturbation composition strategy.
+
+        The modes differ ONLY for samples with 2+ perturbations; on a single perturbation
+        they are algebraically identical, so a model trained on singles can be evaluated
+        under all of them without retraining. That is what makes the comparison controlled:
+        one set of weights, answered several ways.
+
+        | mode              | where it composes            | symmetric in (A,B)? |
+        |-------------------|------------------------------|---------------------|
+        | `sum`             | graph embedding, before f    | yes                 |
+        | `latent_seq_*`    | latent, chained through f     | only `_mean`        |
+        | `decode_seq_*`    | gene space, re-encoded        | only `_mean`        |
+        | `delta_sum`       | gene space, deltas summed     | yes, by construction|
+        | `delta_sum_realctrl` | same, added to the REAL cell | yes, by construction|
+        | `resid_seq_*`     | gene space, deltas CHAINED    | only `_mean`        |
+
+        ⚠️ The last two are the `injctrl` emission family -- see `COMPOSE_MODES`. They do
+        NOT reduce to `forward()` on a single perturbation, so read them against each other
+        and against `delta_sum_realctrl`, never only against `sum`.
+
+        ⛔ DEFAULT `decode_seq_mean`, adopted 2026-09-22 (user decision). Measured over the
+        72-cell norman_combo matrix (6 arms x 12 modes x 2 panels, docs/norman_results.md):
+        best mean rank of the 8 distinct modes (2.08 of 8), top-two on 5 of 6 arms -- no
+        other mode is -- best non-additive `pearson_delta` marginal (0.6518), best `mae`
+        marginal on both panels, and the single best cell overall (`NQ02__decode_seq_mean`,
+        0.8169 additive / 0.7380 non-additive). `sum` is the only close rival (higher
+        additive mean 0.7402 vs 0.7351, but it degrades FASTER into non-additivity than the
+        `sum_of_singles` bar does). The default is a no-op on any single-perturbation
+        corpus: single-perturbation rows keep their first-round prediction bit-identically,
+        which tests/test_composition_modes.py pins.
+        """
+        if mode not in self.COMPOSE_MODES:
+            raise ValueError(f"unknown compose mode {mode!r}; expected "
+                             f"{list(self.COMPOSE_MODES)}")
+        if mode == "sum":
+            return self.forward(control_expression, pert_indices, **kwargs)
+        if mode.startswith("latent_seq_"):
+            return self.forward_sequential(control_expression, pert_indices,
+                                           order=mode.rsplit("_", 1)[1])
+        if mode.startswith("decode_seq_"):
+            return self.forward_decode_sequential(control_expression, pert_indices,
+                                                  order=mode.rsplit("_", 1)[1])
+        if mode.startswith("resid_seq_"):
+            return self.forward_residual_sequential(control_expression, pert_indices,
+                                                    order=mode.rsplit("_", 1)[1],
+                                                    base="real")
+        if mode == "delta_sum_realctrl":
+            return self.forward_delta_sum(control_expression, pert_indices, base="real")
+        return self.forward_delta_sum(control_expression, pert_indices, base="recon")
 
     def train(self, mode: bool = True):
         """Override to keep encoder/decoder in eval mode when frozen."""

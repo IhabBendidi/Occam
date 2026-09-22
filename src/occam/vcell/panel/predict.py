@@ -13,7 +13,7 @@ import json
 import os
 import subprocess
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Dict, List, Mapping, Optional, Sequence, Tuple
 
 import numpy as np
 
@@ -42,6 +42,36 @@ def _avg_ctrl_embeddings(model, panel: Panel, idx: np.ndarray, device,
             full[: e0 - s0, panel.enc_cols] = panel.ctrl_X_model[flat[s0:e0]]
             out[s0:e0] = model.encoder(torch.from_numpy(full[: e0 - s0]).to(device)).float()
     return out.view(n, k, -1).mean(dim=1)
+
+
+def _can_resolve(label: str, pert2id: Mapping[str, int]) -> bool:
+    """Whether `_pert_ids` would succeed -- the single test every call site should use."""
+    try:
+        _pert_ids(label, pert2id)
+        return True
+    except KeyError:
+        return False
+
+
+def _pert_ids(label: str, pert2id: Mapping[str, int]) -> List[int]:
+    """`"A+B"` -> `[id_A, id_B]`; `"A"` -> `[id_A]`.
+
+    Combinatorial benchmarks label a double perturbation as `GENE_A+GENE_B` (norman_combo),
+    and `model.forward` takes a LIST of ids per row precisely so such a label is expressible.
+    This used to be `[pert2id[p]]`, which raised KeyError on the first pair -- the good
+    failure -- but would have been worse if the label had happened to exist as a key: the
+    model would then have conditioned on a single spurious "A+B" perturbation and scored it
+    as a composition.
+    """
+    parts = [g for g in str(label).split("+") if g]
+    missing = [g for g in parts if g not in pert2id]
+    if missing:
+        raise KeyError(
+            f"perturbation label {label!r} names gene(s) {missing} that are not in this "
+            f"checkpoint's pert2id ({len(pert2id)} entries). The panel's cohort and the "
+            f"checkpoint's vocabulary disagree; scoring would silently condition on the "
+            f"remaining gene(s) only.")
+    return [pert2id[g] for g in parts]
 
 
 def predict_panel(model, panel: Panel, pert2id: Dict[str, int], device,
@@ -76,7 +106,12 @@ def predict_panel(model, panel: Panel, pert2id: Dict[str, int], device,
         model.eval()
 
     sel = np.where(panel.real_labels != CONTROL)[0]
-    known = np.array([panel.real_labels[i] in pert2id for i in sel])
+    # ⚠️ RESOLVE, do not test membership. This was `panel.real_labels[i] in pert2id`, and a
+    # combinatorial label is not itself a graph node -- so on norman_combo it dropped all 111
+    # cohort pairs, predicted 0 cells, and the protocol then refused on a row-count mismatch.
+    # Third site with the same bare-lookup bug (after dataset.py and protocol.py); they all
+    # now route through `_pert_ids`, which is what actually builds the model's input.
+    known = np.array([_can_resolve(panel.real_labels[i], pert2id) for i in sel])
     if not known.all():
         missing = sorted({panel.real_labels[i] for i in sel[~known]})
         print(f"[panel] {len(missing)} perturbations absent from pert2id, dropped: "
@@ -130,7 +165,7 @@ def predict_panel(model, panel: Panel, pert2id: Dict[str, int], device,
                 # skips its own encoder, so the averaged embedding is used verbatim
                 idx_k = np.concatenate([cin_idx[s:e, None], cin_extra[s:e]], axis=1)
                 ct = _avg_ctrl_embeddings(model, panel, idx_k, device)
-            pidx = [[pert2id[p]] for p in labels[s:e]]
+            pidx = [_pert_ids(p, pert2id) for p in labels[s:e]]
             pred = predict_fn(ct, pidx).float().cpu().numpy()
             out[s:e] = pred[:, panel.enc_cols]
             if (s // batch_size) % 50 == 0:

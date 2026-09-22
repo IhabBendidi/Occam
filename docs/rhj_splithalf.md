@@ -242,6 +242,63 @@ run against a pseudobulk objective is a direct cost.
 wanted**: −0.029 `pearson_delta` for a dispersion ratio of ~1.0 instead of ~0.1. That is the
 price list, not a recommendation.
 
+## ⛔ F-sched4 — **THE SCHEDULE IS SATURATED. 180 epochs buys nothing and a floor above 3e-4 costs at 150. `Y06` (150 ep, `eta_min` 3e-4) = 0.4043 stands as the campaign best.**
+
+**Objective.** Best model on SEEN perturbations in an UNSEEN context: 611 held-out HepG2
+perturbations from one half-B control cell, split-half paired, cell-eval 0.6.0, uncalibrated.
+
+**Question.** F-sched3's `Y06` sat at the EDGE of both axes with both margins positive, which
+F-loss3 flags as a range problem rather than a finished tuning. So: 180 epochs, and `eta_min`
+5e-4 / 7e-4 (0.5x and 0.7x of lr; 1e-3 would be no decay at all).
+
+**Varied:** epochs (150, 180) × `eta_min` (3e-4, 5e-4, 7e-4), minus (150, 3e-4) = `Y06`.
+**Held fixed:** the Q02 loss composition, seed 42, arm s313. Jobs `18306151` (train, 5/5
+COMPLETED, 2:02–2:24, **zero nan-guard events even at 7e-4**) → `18319056` (eval).
+
+⚠️ 4 of 5 splits on four arms, 2 of 5 on `AA05` — 7 eval tasks lost to the pdex shm race
+(F-infra1). The means may move by ~0.001; the conclusion does not depend on that.
+
+| arm | epochs | `eta_min` | n | `pearson_delta` ↑ | `mae` ↓ | `ovl@N` ↑ | `disc_l1` ↑ |
+|---|---|---|---|---|---|---|---|
+| **`Y06`** (the bar) | 150 | **3e-4** | 5/5 | **0.4043** | 0.0215 | 0.0946 | 0.7288 |
+| `AA03` | **180** | 7e-4 | 4/5 ⚠️ | **0.4045** ± 0.0034 | 0.0217 | 0.0957 | **0.7303** |
+| `AA02` | **180** | 5e-4 | 4/5 ⚠️ | 0.4034 ± 0.0018 | 0.0219 | 0.0959 | 0.7290 |
+| `AA01` | **180** | 3e-4 | 4/5 ⚠️ | 0.4016 ± 0.0032 | **0.0214** | **0.0960** | 0.7241 |
+| `AA05` | 150 | 7e-4 | 2/5 ⚠️ | 0.3930 | 0.0221 | 0.0850 | 0.7162 |
+| `AA04` | 150 | 5e-4 | 4/5 ⚠️ | 0.3923 ± 0.0024 | 0.0218 | 0.0897 | 0.7230 |
+
+### Paired against `Y06`
+
+| contrast | `pearson_delta` | `mae` ↓ | `ovl@N` | `disc_l1` | sign |
+|---|---|---|---|---|---|
+| `AA03` (180, 7e-4) | **+0.0003** | +0.0002 | +0.0011 | +0.0015 | 2/4 |
+| `AA02` (180, 5e-4) | −0.0007 | +0.0003 | +0.0013 | +0.0003 | 1/4 |
+| `AA01` (180, 3e-4) | −0.0026 | −0.0001 | +0.0014 | −0.0047 | 0/4 |
+| `AA04` (150, 5e-4) | **−0.0118** | +0.0002 | −0.0049 | −0.0057 | 0/4 |
+| `AA05` (150, 7e-4) | **−0.0099** | +0.0006 | −0.0080 | −0.0116 | 0/2 |
+
+### Two separate findings, and they resolve the endpoint question
+
+1. **180 epochs is flat.** All three 180-epoch arms land at 0.4016–0.4045 against `Y06`'s
+   0.4043, and the best of them is +0.0003 at 2/4 splits — noise. The epochs axis, which paid
+   +0.0116…+0.0264 (30→60), +0.0025…+0.0083 (60→90) and +0.0003…+0.0028 (90→150), pays
+   **nothing** from 150→180. **That is the plateau, and it is the first time in this campaign
+   that lengthening the schedule has not helped.**
+2. **A floor above 3e-4 COSTS at 150 epochs**: `AA04` −0.0118 and `AA05` −0.0099, 0/4 and 0/2,
+   and they lose on `ovl@N` and `disc_l1` too. At 180 epochs the floor stops mattering
+   (0.4016 vs 0.4045 across three decades). So `eta_min` 3e-4 was not the start of a trend —
+   it was the optimum, and F-sched3's edge was the peak.
+
+✅ **`Y06` stands: Q02, 150 epochs, `eta_min` 3e-4, 0.4043 / mae 0.0215 / ovl@N 0.0946 /
+disc_l1 0.7288.** The schedule axis is closed; `ovl@N` is the only metric still drifting up
+(+0.0011…+0.0014 in every 180-epoch arm), and it is the metric furthest from `experimental`
+(0.1942), so it is the one to chase — but not with more epochs.
+
+⚠️ **Validation was wrong about the ranking, for the fifth grid running.** `AA03` had the
+highest validation score in the campaign (0.4613) and `Y06` had 0.4390 — 0.022 lower — yet they
+are tied on test. `AA01`/`AA02` at 0.4511/0.4504 are BELOW `Y06` on test. F-ckpt4's rule holds:
+validation selects the epoch (Spearman +0.99) and misranks the arm.
+
 ## ⭐⭐⭐ F-disp1 — **our per-cell predictions carry 2.6% of the real within-perturbation dispersion** (568/568 perturbations), which inflates FDR-significant genes **30.8×** — but all four scored metrics are PSEUDOBULK, so a distributional loss has no direct score to win
 
 **Objective.** Predict a perturbation's effect in a cellular context where that perturbation was
@@ -3640,3 +3697,21 @@ match, since a 27-minute OOM costs more than the memory does.
 3. `scripts/paired_report.py --help` — the only valid summary, and the three arithmetic
    traps it closes.
 4. This file — every measured number, with its configuration and its anchor.
+
+---
+
+## DECISION 2026-09-22 — the Q02 / 150 ep / eta_min 3e-4 schedule is now the DEFAULT
+
+Y06's configuration (Q02 loss base, 150 epochs, `eta_min` 3e-4, batch 2048, lr and
+decoder_lr 1e-3) is no longer an arm — it is what `configs/rhj_fewshot.yaml` ships. Adopted
+by user decision after F-sched3 (this benchmark: **0.4043**, campaign best), F-sched4 (180
+epochs flat, +0.0003) and F-nor6 (the same schedule is worth **+0.0840 pΔ** on
+`norman_combo`, positive in 43/48 paired cells).
+
+Full recipe, evidence and the procedure for a new dataset: **`docs/default_recipe.md`**.
+Pinned by `tests/test_default_recipe.py`.
+
+⚠️ Consequence for the grids in `configs/rhj_*.tsv`: rows that relied on the config's old
+defaults (30 epochs, `eta_min` 1e-7, batch 256, decoder_lr 3e-4, all three loss weights 0)
+now resolve differently and will hash to a NEW run directory instead of reusing the old one.
+The completed runs are unaffected — each keeps its own `resolved_config.yaml`.

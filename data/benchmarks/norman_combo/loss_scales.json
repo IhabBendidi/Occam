@@ -1,0 +1,70 @@
+{
+  "bases": {
+    "M03": {
+      "delta_cos_weight": 0.006595403176895402,
+      "delta_mag_weight": 0.0,
+      "latent_loss_type": "none",
+      "latent_loss_weight": 0.0
+    },
+    "M06": {
+      "delta_cos_weight": 0.32977015884477007,
+      "delta_mag_weight": 0.04008664825908048,
+      "latent_loss_type": "none",
+      "latent_loss_weight": 0.0
+    },
+    "Q02": {
+      "delta_cos_weight": 0.32977015884477007,
+      "delta_mag_weight": 0.04008664825908048,
+      "latent_loss_type": "delta_z",
+      "latent_loss_weight": 0.0019882566685718033
+    }
+  },
+  "bases_absolute_variant": {
+    "M03": {
+      "delta_cos_weight": 0.011001657483656078,
+      "delta_mag_weight": 0.0,
+      "latent_loss_type": "none",
+      "latent_loss_weight": 0.0
+    },
+    "M06": {
+      "delta_cos_weight": 0.550082874182804,
+      "delta_mag_weight": 0.0668677201356171,
+      "latent_loss_type": "none",
+      "latent_loss_weight": 0.0
+    },
+    "Q02": {
+      "delta_cos_weight": 0.550082874182804,
+      "delta_mag_weight": 0.0668677201356171,
+      "latent_loss_type": "delta_z",
+      "latent_loss_weight": 0.0033165703855452104
+    }
+  },
+  "measured_at": "init (released encoder+decoder, untrained interaction)",
+  "ratios": {
+    "dcos": 0.9089539476079738,
+    "delta_mag": 0.20383527316852512,
+    "latent_mse": 1.326671678423217,
+    "smooth_l1": 0.5994917753705247
+  },
+  "rescaling": "w_new = w_old * ratio_smooth_l1 / ratio_term (ratio = norman/rhj)",
+  "terms": {
+    "norman_combo": {
+      "dcos": 0.9344086647033691,
+      "delta_mag": 1.7868590354919434,
+      "latent_mse": 0.23635533452033997,
+      "n_axis_genes": 8000,
+      "n_perts": 111,
+      "n_rows": 888,
+      "smooth_l1": 0.00271912501193583
+    },
+    "rhj_fewshot": {
+      "dcos": 1.0280044078826904,
+      "delta_mag": 8.766191482543945,
+      "latent_mse": 0.17815661430358887,
+      "n_axis_genes": 6983,
+      "n_perts": 256,
+      "n_rows": 2048,
+      "smooth_l1": 0.004535716958343983
+    }
+  }
+}

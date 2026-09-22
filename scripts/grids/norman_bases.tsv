@@ -1,0 +1,90 @@
+# NORMAN BASES -- M03 / M06 / Q02 on the double-perturbation composition benchmark
+#
+# WHAT WE ARE TRYING TO ACHIEVE OVERALL
+# -------------------------------------
+# Predict a perturbation's effect in a context where that exact perturbation was never
+# measured. Here the form is COMPOSITION: train on SINGLE-gene perturbations, predict PAIRS,
+# where both genes were seen individually and the pair never was. Headline: split-half paired
+# `pearson_delta` on the `additive` and `nonadditive` panels (36 pairs each), cell-eval 0.6.0,
+# uncalibrated, 8,000-gene axis.
+#
+# WHAT THIS GRID ANSWERS
+# ----------------------
+# Does any of the three designated bases learn something about composition that the additive
+# baseline does not already have? `sum_of_singles` -- ctrl + delta_A + delta_B from the
+# measured single arms -- IS this architecture's own operator in closed form, because
+# `model.forward` sums the perturbations' graph embeddings. So this grid's real question is
+# whether TRAINING adds anything over that closed form.
+#
+# WHAT IS VARIED / HELD FIXED
+# ---------------------------
+# VARIED: the loss composition (M03 balanced · M06 direction-dominated · Q02 = M06 + latent).
+# HELD FIXED: the 150-epoch / eta_min 3e-4 schedule (F-sched3's best on rhj), batch 2048,
+#   lr 1e-3, decoder_lr 1e-3, seed 42, adjacency_map + FiLM multiplicative_only + mean-free
+#   (arm s313), and the singles-only corpus.
+#
+# ⚠️ THE WEIGHTS ARE RESCALED, NOT COPIED. Measured at init on both benchmarks with the same
+# released encoder+decoder (scripts/norman/norman_loss_scale.py): smooth_l1 is 0.600x on
+# norman, dcos 0.909x, delta_mag 0.204x, latent_mse 1.327x. `delta_mag` is 4.9x SMALLER here
+# because the effect is larger relative to a control cell's own deviation, so copying
+# 0.01363 across would have under-weighted it fivefold. The rescaling preserves each term's
+# ratio TO smooth_l1 -- the ratio that defines the bases (M03 = dcos at parity, M06 = ~113x)
+# -- not its absolute size.
+#
+#   rhj      -> norman
+#   dcos 0.01    -> 0.0065954     (M03)
+#   dcos 0.5     -> 0.32977       (M06, Q02)
+#   dmag 0.01363 -> 0.0400866     (M06, Q02)
+#   lmse 0.0044  -> 0.00198826    (Q02)
+#
+# ⚠️ ONE TRAINING PER BASE, NOT ONE PER COMPOSITION MODE. The 12 composition modes are
+# INFERENCE strategies and are algebraically identical on a single perturbation, which is all
+# training ever sees. So the same weights answer all 12 ways and the comparison is perfectly
+# controlled (tests/test_composition_modes.py pins the identity).
+#
+# HOW TO READ THE RESULT -- PRE-REGISTERED
+# ---------------------------------------
+# any base > sum_of_singles on `additive` (0.8824) -> training adds something the closed form
+#     lacks, on the pairs additivity already explains. The strongest possible claim.
+# any base > sum_of_singles on `nonadditive` (0.7757) ONLY -> read with care: that panel is
+#     drawn from sum_of_singles' own residual, so a margin there is partly selection.
+# all three below the additive baseline -> Occam's summed-embedding composition is worse than
+#     summing the measured deltas, i.e. the graph-embedding sum is the weak link, not the
+#     data.
+# M06/Q02 > M03 -> the direction-dominated regime transfers to composition too, as it does on
+#     rhj. M03 > M06 -> it does not, and the base ranking is dataset-specific (F-latent4's
+#     setup-dependence rule, one dataset further out).
+#
+# ANCHORS -- 5 splits, uncalibrated, additive / nonadditive
+# --------------------------------------------------------
+# sum_of_singles 0.8824 / 0.7757 · experimental 0.9165 / 0.8377 · meanpert 0.4634 / 0.4016
+# ctrlmean 0.0033 / 0.0055 · ctrlcell 0.0004 / -0.0045
+# mae (ERROR, lower better): sos 0.0126 / 0.0168 · experimental 0.0110 / 0.0129
+# ovl@N: sos 0.2865 / 0.2750 · experimental 0.5247 / 0.4718
+#
+# COST: the corpus is 47,269 single cells + 9,702 controls, ~12x smaller than rhj's 580k
+# cells/epoch, so 150 epochs is minutes rather than hours. 3 arms.
+#
+# ⚠️ PREREQUISITE, and the run REFUSES without it: cache/pert_means/norman_2019_k562.npz
+#     python scripts/pert_group_means.py --config configs/norman_combo.yaml
+# `dcos` and `delta_mag` read that table; the gate stops the run rather than letting the
+# terms evaluate to a silent zero (F-loss1). The first launch died on exactly this.
+#
+#   GRID=scripts/grids/norman_bases.tsv CONFIG=configs/norman_combo.yaml \
+#   sbatch --qos=vco --wckey=vco --time=04:00:00 --array=0-2 scripts/slurm/rhj_loss_sweep.sbatch
+# ⚠️ SIX ARMS, TWO SCHEDULES. `N*` run the schedule F-sched3 found best on rhj (150 epochs,
+# eta_min 3e-4); `N*s` run the ORIGINAL 30-epoch / eta_min 1e-7 setup the three bases were
+# defined at. On rhj the schedule was worth +0.0260 -- more than any loss term measured -- so
+# whether that transfers to a different dataset AND a different task (composition) is its own
+# question, and the 30-epoch arms are the only way to ask it here. They also make the Norman
+# numbers directly comparable to the bases' published rhj numbers, which are 30-epoch.
+#
+# RHJ reference for the same contrast: Q02 30ep 0.3783 -> Y06 150ep/3e-4 0.4043 (+0.0260).
+#
+arm	loss_type	nb_weight	nb_scale	delta_cos_weight	delta_mag_weight	latent_loss_type	latent_loss_weight	latent_cos_weight	latent_cos_target	recon_split	recon_ctrl_weight	recon_delta_weight	recon_split_mode	recon_delta_target	vicreg_var_weight	vicreg_cov_weight	vicreg_gamma	vicreg_target	epochs	eta_min	base	dcos_conc_weight	radial_spread_weight	gene_var_weight
+NM03	smooth_l1	0	1.0	0.0065954	0.0	none	0.0	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	150	3e-4	M03_norman	0.0	0.0	0.0
+NM06	smooth_l1	0	1.0	0.32977	0.0400866	none	0.0	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	150	3e-4	M06_norman	0.0	0.0	0.0
+NQ02	smooth_l1	0	1.0	0.32977	0.0400866	delta_z	0.00198826	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	150	3e-4	Q02_norman	0.0	0.0	0.0
+NM03s	smooth_l1	0	1.0	0.0065954	0.0	none	0.0	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	30	1e-7	M03_norman_30ep	0.0	0.0	0.0
+NM06s	smooth_l1	0	1.0	0.32977	0.0400866	none	0.0	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	30	1e-7	M06_norman_30ep	0.0	0.0	0.0
+NQ02s	smooth_l1	0	1.0	0.32977	0.0400866	delta_z	0.00198826	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	30	1e-7	Q02_norman_30ep	0.0	0.0	0.0

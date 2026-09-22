@@ -71,8 +71,8 @@
     "experimental"
   ],
   "benchmark_id": "norman_combo",
-  "benchmark_sha256": "330caefe9606eb9d103e1bae79d753afd84b6435e0b0764e9399f9a610742329",
-  "benchmark_sha256_recipe": "sha256(gene_axis_sha256|cohort_sha256|n_splits|base_seed)",
+  "benchmark_sha256": "8ac7da0d5adb3ae49e3a3dfe084494f4dce051286d219e346b4ea11c467cb3cf",
+  "benchmark_sha256_recipe": "sha256(benchmark.json) -- the DEFINITION hash the training stage stamps into every checkpoint",
   "builder_version": "norman_combo/v1.0.0",
   "built": "2026-09-21",
   "cell_line": "K562 (upstream file mislabels it A549; see docs/norman_benchmark.md)",
@@ -211,6 +211,8 @@
   "min_cells": 40,
   "n_axis_genes": 8000,
   "n_splits": 5,
+  "panel_identity_recipe": "sha256(gene_axis_sha256|cohort_sha256|n_splits|base_seed)",
+  "panel_identity_sha256": "330caefe9606eb9d103e1bae79d753afd84b6435e0b0764e9399f9a610742329",
   "panels": {
     "additive": {
       "n_pairs": 36,

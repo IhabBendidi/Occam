@@ -291,6 +291,15 @@ VCELL_SCHEMA: Dict[str, Dict[str, Optional[str]]] = {
         "n_controls_per_sample": "n_controls_per_sample",
         "include_controls_as_training": "include_controls_as_training",
         "min_controls_per_cell_line": "min_controls_per_cell_line",
+        # Combinatorial labels. 'GENE_A+GENE_B' is not a graph node, so without this a
+        # double resolves to nothing and every combinatorial row is dropped -- on
+        # norman_combo that empties the val split entirely. ⚠️ It ALSO switches the training
+        # forward to `forward_sequential` (pipeline.py), which is a no-op on a singles-only
+        # corpus but is not a no-op in general.
+        # Declared here because the dataclass and the YAML are NOT enough: a key absent from
+        # this table is silently ignored and the run proceeds at the default (the F-loss1
+        # shape -- three DCOS arms produced bit-identical curves that way).
+        "combo_decomposition": "combo_decomposition",
     },
     "stream": {
         "stream_v2": "stream_v2", "interleave": "stream_interleave",
