@@ -128,6 +128,16 @@ if (( EPOCHS % CHECK_VAL != 0 )); then
 fi
 
 PY="$(competitor_venv_python "$ARM" "$HERE")" || exit 1
+# ⚠️ `test_cell_type` is the line whose perturbations are held out, and the config pins it
+# to `hepg2`. On norman_combo the evaluated line is K562, and with `hepg2` the validation
+# mask is all-False -- "Validation split is empty." Derived from the benchmark, with
+# TxPert's own OCCAM_CELL_LINE_RENAME applied (it lowercases HEPG2 only; every other line
+# passes through unchanged).
+case "$EVALUATED_LINE" in
+    HEPG2) TX_TEST_CELL_TYPE="hepg2" ;;
+    *)     TX_TEST_CELL_TYPE="$EVALUATED_LINE" ;;
+esac
+
 competitor_banner "$ARM" train "$SEED" "$HERE"
 echo "  epochs $EPOCHS, validate every $CHECK_VAL · ckpt $CKPT_DIR"
 
@@ -152,6 +162,7 @@ cd "$HERE/competitors/TxPert"
     training.check_val_every_n_epoch="$CHECK_VAL" \
     datamodule.occam_bench_dir="$BENCH_DIR" \
     datamodule.hvg_number="$N_AXIS_GENES" \
+    datamodule.test_cell_type="$TX_TEST_CELL_TYPE" \
     datamodule.cache_dir="$TXPERT_CACHE" \
     datamodule.match_cntr="$MATCH_CNTR" \
     datamodule.avg_cntr="$AVG_CNTR" \

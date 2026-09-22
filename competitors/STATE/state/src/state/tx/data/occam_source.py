@@ -39,7 +39,7 @@ from __future__ import annotations
 
 import os
 import sys
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 
@@ -79,15 +79,28 @@ class OccamSourceData:
         return int(self.X.shape[0])
 
 
-def occam_line_from_path(path: str) -> str:
+def occam_line_from_path(path: str, known: Optional[Sequence[str]] = None) -> str:
     """The cell line a `[datasets]` entry refers to.
 
     Accepts the line name itself (`hepg2`, `RPE1`, ...) or our h5ad path, from which the line
     is taken by substring. Refuses anything ambiguous rather than guessing: a source silently
     bound to the wrong cell line trains on the held-out context and the run looks fine.
+
+    ⚠️ `known` is the set of lines THE BENCHMARK actually has, and it is checked BEFORE the
+    alias table. The aliases only cover rhj_fewshot's three lines, so without this a
+    perfectly valid line from another benchmark is rejected -- norman_combo's `K562` died
+    here on the first launch with "cannot tell which Occam cell line 'K562' is". A line
+    the benchmark itself lists is by definition a line we support.
     """
     key = str(path)
     base = os.path.basename(key)
+    if known:
+        for ln in known:
+            if key == str(ln):
+                return str(ln)
+        hits = {str(ln) for ln in known if str(ln).lower() in base.lower()}
+        if len(hits) == 1:
+            return hits.pop()
     if key in _ALIASES:
         return _ALIASES[key]
     hits = {v for k, v in _ALIASES.items() if k.lower() in base.lower()}
@@ -95,8 +108,8 @@ def occam_line_from_path(path: str) -> str:
         return hits.pop()
     raise ValueError(
         f"cannot tell which Occam cell line {path!r} is. Name the [datasets] entry's value "
-        f"one of {sorted(set(_ALIASES.values()))}, or point it at our h5ad whose filename "
-        f"contains the line.")
+        f"one of {sorted(set(known or _ALIASES.values()))}, or point it at our h5ad whose "
+        f"filename contains the line.")
 
 
 def occam_datasets(bench_dir: str, *, verify_sources: bool = False) -> List[str]:
@@ -121,7 +134,9 @@ def occam_datasets(bench_dir: str, *, verify_sources: bool = False) -> List[str]
             f"there is nothing to train on and setup() would report 0 / 0 / 0 rather than "
             f"fail.")
     for ln in lines:
-        occam_line_from_path(ln)   # refuse an unrecognised line now, not 20 minutes in
+        # `known=lines` so a line the benchmark itself lists is accepted; the alias table
+        # only knows rhj_fewshot's three.
+        occam_line_from_path(ln, known=lines)   # refuse now, not 20 minutes in
     return lines
 
 
@@ -139,11 +154,14 @@ def read_occam_source(path: str, *, bench_dir: str, target_sum: float = 10_000.0
     if selected_genes:
         raise ValueError(
             "selected_ensembl_gene_ids_path is not used with source_format='occam': the "
-            "matrix already carries exactly the frozen 6,983 genes in axis order, so a "
+            "matrix already carries exactly the benchmark's frozen genes in axis order, "
+            "so a "
             "second subset could only reorder or shrink it. Remove the option.")
 
-    line = occam_line_from_path(path)
+    # The benchmark is loaded FIRST so its own line list can resolve `path`; the alias
+    # table alone only knows rhj_fewshot's three lines.
     bench = od.load_occam_benchmark(bench_dir, verify_sources=verify_sources)
+    line = occam_line_from_path(path, known=[str(f) for f in bench.files])
     adata = od.load_occam_adata(bench, cell_lines=[line], target_sum=target_sum,
                                 log1p=log1p, control_label=control_pert,
                                 pert_col_out=pert_col, max_cells_per_line=max_cells)
@@ -195,7 +213,12 @@ def occam_fold_for_line(src: OccamSourceData, *, bench_dir: str,
     is_ctrl = np.asarray(src.is_control, dtype=bool)
     n = src.n_rows
 
-    if src.line == "HEPG2":
+    # ⚠️ The EVALUATED line comes from the benchmark. `== "HEPG2"` is rhj_fewshot's
+    # held-out line, and on norman_combo (K562 only) every source took the `else` branch
+    # -- wholly training data, empty val and test -- and `val_dataloader` then refused
+    # with "validation split is empty". Correctly: it will not fall back to the test
+    # loader, which would select checkpoints on test.
+    if src.line == bench.evaluated_line:
         v = np.flatnonzero(~is_ctrl & np.isin(perts, list(val)))
         t = np.flatnonzero(~is_ctrl & np.isin(perts, list(test)))
         held = np.zeros(n, dtype=bool)
@@ -223,12 +246,12 @@ def occam_fold_for_line(src: OccamSourceData, *, bench_dir: str,
             f"paired basal pool and must all stay in finetune.")
     if int(is_ctrl[f].sum()) != int(is_ctrl.sum()):
         raise ValueError(f"{src.line}: not every control is in finetune")
-    if src.line == "HEPG2":
+    if src.line == bench.evaluated_line:
         for name, want, rows in (("validation", val, v), ("test", test, t)):
             got = set(perts[rows].tolist())
             if got - want:
                 raise ValueError(
-                    f"HEPG2 {name} carries {len(got - want)} perturbation(s) that are not in "
+                    f"{src.line} {name} carries {len(got - want)} perturbation(s) not in "
                     f"splits.json, e.g. {sorted(got - want)[:5]}")
     else:
         if v.size or t.size:

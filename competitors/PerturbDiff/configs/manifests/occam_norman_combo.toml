@@ -1,0 +1,31 @@
+# PerturbDiff on Occam's `norman_combo`. OUR rebuilt Norman-2019 h5ad, read in place.
+#
+# The sibling of `occam_rhj_fewshot.toml`. Nothing is converted or duplicated: `[datasets]`
+# names our own source file, exactly as `data/benchmarks/norman_combo/files/*.json` records
+# it.
+#
+# ⚠️ ONE DATASET, AND NO `[training]` TABLE, and neither is an omission.
+#
+# rhj_fewshot has three cell lines: HepG2 splits three ways and jurkat + RPE1 are WHOLLY
+# training data, which is what makes that task few-shot-in-a-new-context. norman_combo has
+# exactly ONE cell line (K562), and it splits three ways on the PERTURBATION axis instead:
+#   105 single-gene conditions -> train
+#    20 double pairs           -> validation
+#   111 double pairs           -> test
+# So there is no line to mark `"train"`, and listing K562 there would make the whole
+# corpus training data with an empty validation split -- which is precisely the failure
+# this benchmark produced on 2026-09-22 before `evaluated_line` was derived from the
+# artifact rather than read off a hardcoded `EVALUATED_LINE = "HEPG2"`.
+#
+# ⚠️ THERE IS NO `[splits]` TABLE, DELIBERATELY, for the same reason as the rhj manifest:
+# with `source_format = "occam"`, `split_index_occam` computes the fold LIVE from the
+# frozen benchmark, so the split cannot drift from `splits.json` and there is no index file
+# to regenerate. `occam_setup` REFUSES a `[splits]` table rather than ignoring one.
+#
+# ⚠️ The line is resolved from the filename by `occam_line_from_path`, which now checks the
+# benchmark's OWN line list before its rhj-only alias table -- `k562` matches `K562` by
+# substring. It still refuses anything ambiguous: a source silently bound to the wrong line
+# trains on the held-out context and the run looks fine.
+
+[datasets]
+k562 = "/rxrx/scratch/sandbox/ihab.bendidi/tx_pretrained_models/Occam/data/eval/pert/norman_2019_k562.h5ad"

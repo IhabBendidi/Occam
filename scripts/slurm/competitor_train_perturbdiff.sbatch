@@ -101,6 +101,33 @@ PD_OUT="$HERE/runs/competitors/perturbdiff"
 CKPT_DIR="$PD_OUT/ckpt/$PD_RUN_NAME"
 
 PY="$(competitor_venv_python "$ARM" "$HERE")" || exit 1
+# ⚠️ The dataset list is a TOML manifest naming the source h5ads BY CELL LINE, so it is
+# per-benchmark: the rhj one names three files and marks jurkat/RPE1 as wholly training,
+# the norman one names one file and marks nothing. Pointing the norman run at the rhj
+# manifest is what asked for HepG2 from a K562-only artifact.
+# ⚠️ The GenePT table is PER BENCHMARK, because it is keyed by the benchmark's own
+# perturbation symbols. `genept_occam_rhj_fewshot.pkl` covers 8 of norman_combo's 105
+# single targets (2.5% of its 236 conditions), and PerturbDiff refuses above 50%
+# zero-filled -- correctly, since a mostly-zero table trains without complaint and
+# destroys the conditioning. Build one with
+#   python scripts/build_genept_for_occam.py --bench-dir data/benchmarks/<bench> \
+#       --out data/assets/genept_occam_<bench>.pkl
+PD_GENEPT="$HERE/data/assets/genept_occam_${BENCH}.pkl"
+if [ "${PD_PENC:-genept}" = "genept" ] && [ ! -f "$PD_GENEPT" ]; then
+    echo "no GenePT table for BENCH=$BENCH at $PD_GENEPT" >&2
+    echo "build it:  python scripts/build_genept_for_occam.py \\" >&2
+    echo "    --bench-dir data/benchmarks/$BENCH --out $PD_GENEPT" >&2
+    exit 1
+fi
+
+PD_MANIFEST="$HERE/competitors/PerturbDiff/configs/manifests/occam_${BENCH}.toml"
+if [ ! -f "$PD_MANIFEST" ]; then
+    echo "no PerturbDiff manifest for BENCH=$BENCH at $PD_MANIFEST" >&2
+    echo "copy configs/manifests/occam_rhj_fewshot.toml and name the new benchmark's" >&2
+    echo "source files under [datasets]." >&2
+    exit 1
+fi
+
 competitor_banner "$ARM" train "$PD_SEED" "$HERE"
 echo "  steps $PD_MAX_STEPS · $PD_N_VALIDATIONS validations · every $PD_VAL_EVERY steps"
 echo "  run $PD_RUN_NAME"
@@ -117,8 +144,11 @@ cd "$HERE/competitors/PerturbDiff"
 "$PY" ./src/apps/run/rawdata_diffusion_training.py \
     data=occam_h5ad path=occam_path cov_encoding=occam_h5ad \
     path.occam_bench_dir="$BENCH_DIR" \
+    path.manifest_file="$PD_MANIFEST" \
     model.input_dim="$N_AXIS_GENES" \
     "model.hidden_num=[$N_AXIS_GENES,512]" \
+    data.pad_length="$N_AXIS_GENES" \
+    cov_encoding.replogle_gene_embedding_path="$PD_GENEPT" \
     cov_encoding.replogle_gene_encoding="$PD_PENC" \
     run_name="$PD_RUN_NAME" \
     trainer.devices=[0] trainer.max_steps="$PD_MAX_STEPS" \

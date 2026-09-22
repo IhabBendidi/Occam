@@ -76,11 +76,24 @@ if n is None:
         n = sum(1 for _ in csv.reader(fh)) - 1
 sha = axis.get("sha256") or b.get("gene_axis_sha256") or ""
 m = json.load(open(os.path.join(d, "splithalf", "splits_manifest.json")))
+# The EVALUATED line -- the one whose perturbations are held out and scored. Arms
+# branch on it (PerturbDiff's split, TxPert's test_cell_type), and every one of them
+# had it hardcoded to HepG2.
+line = b.get("cell_line") or ""
+if not line:
+    for rec in (b.get("sources") or {}).values():
+        if rec.get("cell_line"):
+            line = rec["cell_line"]
+            break
+if not line:
+    ecl = b.get("eval_cell_lines") or []
+    line = ecl[0] if ecl else ""
 print(int(n))
 print(sha)
 print(m.get("benchmark_sha256", ""))
 print(m.get("cohort_sha256", ""))
 print(int(m.get("n_splits", 5)))
+print(line)
 PYEOF
 )" || { echo "could not read $BENCH_DIR" >&2; exit 1; }
     N_AXIS_GENES="$(echo "$py_out" | sed -n 1p)"
@@ -88,6 +101,7 @@ PYEOF
     BENCH_SHA256="$(echo "$py_out" | sed -n 3p)"
     COHORT_SHA256="$(echo "$py_out" | sed -n 4p)"
     BENCH_N_SPLITS="$(echo "$py_out" | sed -n 5p)"
+    EVALUATED_LINE="$(echo "$py_out" | sed -n 6p)"
     if [ -z "${N_AXIS_GENES:-}" ] || [ "$N_AXIS_GENES" -lt 1 ] 2>/dev/null; then
         echo "could not determine the axis width for BENCH=$BENCH" >&2
         exit 1
@@ -98,7 +112,7 @@ PYEOF
     # rhj_fewshot, so every existing checkpoint directory keeps its name.
     TAG_SUFFIX="${TAG_SUFFIX:-$(competitor_bench_tag)}"
     export BENCH BENCH_DIR PANEL_DIR N_AXIS_GENES AXIS_SHA256 BENCH_SHA256 \
-           COHORT_SHA256 BENCH_N_SPLITS TAG_SUFFIX
+           COHORT_SHA256 BENCH_N_SPLITS TAG_SUFFIX EVALUATED_LINE
 }
 
 # Slurm COPIES the batch script into a node spool dir, so ${BASH_SOURCE[0]} does not point into

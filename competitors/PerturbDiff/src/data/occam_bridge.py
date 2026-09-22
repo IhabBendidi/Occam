@@ -84,14 +84,27 @@ __all__ = [
 ]
 
 
-def occam_line_from_path(path: str) -> str:
+def occam_line_from_path(path: str, known=None) -> str:
     """The cell line a `[datasets]` entry refers to, refusing anything ambiguous.
 
     A source silently bound to the wrong cell line trains on the held-out context and the run
     looks fine, so this raises rather than guesses.
+
+    ⚠️ `known` is the set of lines THE BENCHMARK has, checked BEFORE the alias table. That
+    table only covers rhj_fewshot's three lines, so a valid line from another benchmark was
+    rejected outright -- norman_combo's K562 failed here even though the benchmark lists
+    it. A line the benchmark itself records is by definition supported. STATE's copy of
+    this function needed the same fix; this is the second of two.
     """
     key = str(path)
     base = os.path.basename(key)
+    if known:
+        for ln in known:
+            if key == str(ln):
+                return str(ln)
+        hits = {str(ln) for ln in known if str(ln).lower() in base.lower()}
+        if len(hits) == 1:
+            return hits.pop()
     if key in _ALIASES:
         return _ALIASES[key]
     hits = {v for k, v in _ALIASES.items() if k.lower() in base.lower()}
@@ -99,8 +112,30 @@ def occam_line_from_path(path: str) -> str:
         return hits.pop()
     raise ValueError(
         f"cannot tell which Occam cell line {path!r} is. Name the [datasets] entry's value "
-        f"one of {sorted(set(_ALIASES.values()))}, or point it at our h5ad whose filename "
-        f"contains the line.")
+        f"one of {sorted(set(known or _ALIASES.values()))}, or point it at our h5ad whose "
+        f"filename contains the line.")
+
+
+_KNOWN_LINES_CACHE = {}
+
+
+def _occam_known_lines(bench_dir: str, verify_sources: bool = False):
+    """The cell lines THIS benchmark has, for `occam_line_from_path(..., known=...)`.
+
+    Cached per bench_dir: the resolver is called once per source per process and loading
+    the benchmark is cheap, but this is on the dataset-construction path and there is no
+    reason to re-read the JSON for every call.
+    """
+    import occam_data as od
+
+    key = str(bench_dir)
+    with _CACHE_LOCK:
+        cached = _KNOWN_LINES_CACHE.get(key)
+        if cached is None:
+            bench = od.load_occam_benchmark(key, verify_sources=verify_sources)
+            cached = [str(f) for f in bench.files]
+            _KNOWN_LINES_CACHE[key] = cached
+    return cached
 
 
 def read_occam_line(path: str, *, bench_dir: str, target_sum: float = 10_000.0,
@@ -109,7 +144,8 @@ def read_occam_line(path: str, *, bench_dir: str, target_sum: float = 10_000.0,
     """`(X, obs_frame, axis_ensembl, axis_symbols)` for one cell line, loaded at most once."""
     import occam_data as od
 
-    line = occam_line_from_path(path)
+    line = occam_line_from_path(
+        path, known=_occam_known_lines(bench_dir, verify_sources=False))
     key = f"{line}|{target_sum}|{log1p}|{max_cells}"
     with _CACHE_LOCK:
         cached = _MATRIX_CACHE.get(key)
@@ -152,7 +188,8 @@ class OccamMetadataCache:
         del pert_col  # accepted for signature parity with the h5ad cache; unused
         self.data_dir = str(path)
         self.h5_path = str(path)          # parity with H5MetadataCache.h5_path
-        self.line = occam_line_from_path(path)
+        self.line = occam_line_from_path(
+            path, known=_occam_known_lines(bench_dir, verify_sources=False))
         self.bench_dir = str(bench_dir)
         self.cell_type_key = cell_type_key
         self.batch_col = batch_col
@@ -362,7 +399,13 @@ def split_index_occam(dm, cache, target_type, key_info, holdout_setname=None,
     perts = np.asarray([str(p) for p in perts], dtype=str)
 
     line = cache.line
-    if line != EVALUATED_LINE:
+    # ⚠️ NOT the module constant. `EVALUATED_LINE = "HEPG2"` is rhj_fewshot's held-out
+    # line; on a benchmark whose only line is something else (norman_combo: K562) this
+    # branch swallowed the ENTIRE corpus into `train` and returned empty val/test, and
+    # the arm then refused with an empty validation split. The benchmark knows which
+    # line it scores; ask it.
+    evaluated = bench.evaluated_line
+    if line != evaluated:
         all_rows = np.arange(cache.n_cells, dtype=np.int64)
         logger.info("[%s] wholly training data: %d rows", line, len(all_rows))
         return {"train": all_rows, "validation": _empty(), "test": _empty()}

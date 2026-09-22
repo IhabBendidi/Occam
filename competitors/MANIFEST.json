@@ -1,7 +1,7 @@
 {
   "arms": {
     "CellFlow": {
-      "bytes": 1436686,
+      "bytes": 1437866,
       "files": {
         ".python-version": {
           "bytes": 5,
@@ -220,8 +220,8 @@
           "sha256": "60cd15b6838ab2cde6d55c1654503170a9cf1ed93f98653be18b2c48f321910b"
         },
         "occam_bridge/occam.py": {
-          "bytes": 11637,
-          "sha256": "2d38058e64bd6861145bc3e1aa2830b0d823751f9b70e2eb0d7ec2ef59a7ddfd"
+          "bytes": 12817,
+          "sha256": "fc81ad0151d3c0ded74720e2a6c37b1c3f4d3bb2caceefbea47e431902dbb033"
         },
         "occam_bridge/pca.py": {
           "bytes": 4410,
@@ -251,7 +251,7 @@
       "n_files": 61
     },
     "PerturbDiff": {
-      "bytes": 2796716,
+      "bytes": 2801012,
       "files": {
         ".python-version": {
           "bytes": 5,
@@ -312,6 +312,10 @@
         "configs/manifests/ihabxcell_hepg2_zarr.toml": {
           "bytes": 1313,
           "sha256": "93245a818869875db4418fc0590cb5e0f403ed4c7e02f56e24ea91a9559390ee"
+        },
+        "configs/manifests/occam_norman_combo.toml": {
+          "bytes": 1897,
+          "sha256": "5a7c38a342b2dd9b7e3e489aaeeb89e37620d8f53888dd972dd5f9f90751614e"
         },
         "configs/manifests/occam_rhj_fewshot.toml": {
           "bytes": 1771,
@@ -514,8 +518,8 @@
           "sha256": "ebdbc0a822cdfbc4342b8bfbccba4aee2a83d946ce39f91c966c4aa8b8189d1e"
         },
         "src/data/data_module/data_module_setup.py": {
-          "bytes": 43037,
-          "sha256": "2996754d6d6015483c5697a446371db7dcfb3c309c90e8007b820381b70e652d"
+          "bytes": 43438,
+          "sha256": "48851a150c4e0559309ea9c5b341c2f16af43923e93a5c572f29211803db140d"
         },
         "src/data/dataset/ZARR_BENCHMARK.md": {
           "bytes": 9619,
@@ -550,8 +554,8 @@
           "sha256": "47879ebc9627ddf630378184bcb1fed47cdb09b3ff8bd0445d589b2e00678650"
         },
         "src/data/occam_bridge.py": {
-          "bytes": 18763,
-          "sha256": "037ef5466e167c5416a5129f39ebc396d12c62c29f218731ce77ed989eb70afb"
+          "bytes": 20761,
+          "sha256": "37b89c12e7dfadc345881a9152216bd356a295981b95a7bc2f047512303ae522"
         },
         "src/data/sampler.py": {
           "bytes": 10458,
@@ -666,10 +670,10 @@
           "sha256": "a877068edee160ab66b0c0a306fd39d4c3426de8f315124d7a57a7ca769ce3f5"
         }
       },
-      "n_files": 103
+      "n_files": 104
     },
     "STATE": {
-      "bytes": 1168557,
+      "bytes": 1170026,
       "files": {
         "export_occam.py": {
           "bytes": 21726,
@@ -988,8 +992,8 @@
           "sha256": "64dbffa3220d60c12becc58e8769e685a68820d11138180a74733b3f40fe3f6d"
         },
         "state/src/state/tx/data/occam_source.py": {
-          "bytes": 11565,
-          "sha256": "57eb11de4c3f3f36944f080c24ed228616ffcc657ed011d84244b67b193226a8"
+          "bytes": 13034,
+          "sha256": "2dc7ec8a27aa38216ab05c2ff2fa87d56e6be188d3b02a551c8cf4d0e3b7ef62"
         },
         "state/src/state/tx/data/zarr_perturbation.py": {
           "bytes": 52660,
@@ -1155,7 +1159,7 @@
       "n_files": 120
     },
     "TxPert": {
-      "bytes": 902430,
+      "bytes": 903659,
       "files": {
         ".python-version": {
           "bytes": 5,
@@ -1202,8 +1206,8 @@
           "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
         },
         "gspp/data/data_utils.py": {
-          "bytes": 10745,
-          "sha256": "7922d0c46f0b6529d1ff70c08f613ff261e6d177764afa45777041826c2609bd"
+          "bytes": 11732,
+          "sha256": "73bc7bbd92610f8bea0b3ea474db1e6d6a13bb689ccb0352c49e941e5a5b807d"
         },
         "gspp/data/datamodule.py": {
           "bytes": 69250,
@@ -1218,8 +1222,8 @@
           "sha256": "11d36b59f5e25186919ccdb40f87fca1a5ec8080f38655c7381d83f18d87a73f"
         },
         "gspp/data/occam_loader.py": {
-          "bytes": 6562,
-          "sha256": "5700e89b2b92291a0cf8b8de6b0506286d666c62617a7516177ededfdf461558"
+          "bytes": 6804,
+          "sha256": "e624cc77fc85183c8c5ac7a484fc7b2dbc2e55c6e3d1c0db0244a236ccefe11c"
         },
         "gspp/data/zarr_loader.py": {
           "bytes": 11490,

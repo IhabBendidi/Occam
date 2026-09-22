@@ -125,6 +125,34 @@ class OccamBenchmark:
         return set(self.split["val"])
 
     @property
+    def evaluated_line(self) -> str:
+        """The cell line the held-out perturbations live in -- the one that is SCORED.
+
+        ⚠️ Every arm had its own `EVALUATED_LINE = "HEPG2"` constant, and PerturbDiff's
+        split logic branches on it: a line that is not the evaluated one becomes wholly
+        training data. On norman_combo (K562 only) that made the ENTIRE corpus training
+        with an empty val and test, and the arm refused. Derived here so there is one
+        answer per benchmark instead of five copies of rhj_fewshot's.
+        """
+        line = (self.raw or {}).get("cell_line")
+        if line:
+            return str(line)
+        for rec in ((self.raw or {}).get("sources") or {}).values():
+            if rec.get("cell_line"):
+                return str(rec["cell_line"])
+        # rhj_fewshot: the held-out perturbations are HepG2's, which its own
+        # `eval_cell_lines` records.
+        ecl = (self.raw or {}).get("eval_cell_lines") or []
+        if ecl:
+            return str(ecl[0])
+        if len(self.files) == 1:
+            return str(next(iter(self.files)))
+        raise OccamDataError(
+            f"cannot tell which cell line is evaluated on this benchmark; it has "
+            f"{sorted(self.files)} and benchmark.json records no `cell_line` or "
+            f"`eval_cell_lines`.")
+
+    @property
     def test_perts(self) -> Set[str]:
         return set(self.split["test_unseen_pert"])
 
@@ -314,7 +342,7 @@ def _read_one(path: str, axis_ensembl: Sequence[str], target_sum: float, log1p: 
 
 
 def load_occam_adata(bench: OccamBenchmark,
-                     cell_lines: Sequence[str] = OCCAM_CELL_LINES, *,
+                     cell_lines: Optional[Sequence[str]] = None, *,
                      target_sum: float = DEFAULT_TARGET_SUM,
                      log1p: bool = True,
                      control_label: str = "empty",
@@ -337,9 +365,19 @@ def load_occam_adata(bench: OccamBenchmark,
     import anndata as ad
     import pandas as pd
 
+    # ⚠️ `cell_lines=None` means EVERY line the benchmark has, which is the only sane
+    # default: the previous default was the module constant OCCAM_CELL_LINES, i.e.
+    # rhj_fewshot's trio, so every caller that did not pass the argument asked for HepG2
+    # on a K562 benchmark. All four competitor arms failed that way within 52 seconds of
+    # the first norman_combo launch -- correctly, but for a reason none of them owned.
+    if cell_lines is None:
+        cell_lines = sorted(bench.files)
     unknown = [c for c in cell_lines if c not in bench.files]
     if unknown:
-        raise OccamDataError(f"unknown cell line(s) {unknown}; have {sorted(bench.files)}")
+        raise OccamDataError(
+            f"unknown cell line(s) {unknown}; this benchmark has "
+            f"{sorted(bench.files)}. Pass cell_lines= explicitly, or leave it None to "
+            f"use every line the benchmark has.")
     if target_sum <= 0:
         raise OccamDataError(f"target_sum must be positive, got {target_sum}")
 
@@ -406,7 +444,12 @@ def occam_split_indices(bench: OccamBenchmark, adata) -> Dict[str, np.ndarray]:
     is_ctrl = np.asarray(adata.obs["is_control"], dtype=bool)
 
     val, test = bench.val_perts, bench.test_perts
-    hep = line == "HEPG2"
+    # ⚠️ The EVALUATED line, derived from the benchmark -- not the literal "HEPG2". That
+    # literal is rhj_fewshot's held-out line; on a benchmark whose evaluated line is
+    # anything else (norman_combo: K562) the mask is all-False, so `validation` and `test`
+    # come out EMPTY and every row falls into `finetune`. Nothing crashes: the arm simply
+    # has nothing to validate on, which is what four arms reported on 2026-09-22.
+    hep = line == bench.evaluated_line
 
     idx = {
         "validation": np.flatnonzero(hep & ~is_ctrl & np.isin(perts, list(val))),

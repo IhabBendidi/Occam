@@ -96,6 +96,13 @@ def main(argv=None) -> int:
     ap.add_argument("--all-keys", action="store_true",
                     help="keep every key in the union (133k, ~3 GB) instead of restricting to "
                          "our symbols. Not needed: the model only looks up its pert_dict.")
+    ap.add_argument("--compose-pairs", default="mean", choices=["none", "mean", "sum"],
+                    help="how a multi-gene condition `A+B` gets an embedding. A GenePT "
+                         "table is per GENE, so without this every pair is a zero vector "
+                         "(131 of 236 conditions on norman_combo, which PerturbDiff "
+                         "refuses). `mean` keeps the norm in the range the conditioning "
+                         "MLP saw on singles and is symmetric, as a pair must be. OUR "
+                         "choice, recorded in the manifest.")
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args(argv)
 
@@ -156,6 +163,42 @@ def main(argv=None) -> int:
         if still:
             print(f"  ⚠️ still zero: {len(still)} -> {still[:8]}")
 
+    # ─── composed embeddings for MULTI-GENE conditions ───────────────────────────────
+    # A GenePT table is per GENE, so a combinatorial cohort leaves every `A+B` condition
+    # with a zero vector: on norman_combo that is 131 of 236 conditions, and PerturbDiff
+    # refuses above 50% zero-filled -- correctly, since a mostly-zero table trains
+    # without complaint and destroys the conditioning.
+    #
+    # ⚠️ THIS IS OUR CHOICE, not GenePT's and not PerturbDiff's. The pair's embedding is
+    # the MEAN of its components':
+    #   * MEAN rather than SUM so the vector's norm stays in the range the conditioning
+    #     MLP saw during training, which only ever sees singles (norman_combo trains on
+    #     105 single conditions);
+    #   * it is the same assumption PerturbDiff's composition rule already makes at
+    #     inference -- `decode_seq_mean` averages the two orders -- so the conditioning
+    #     and the emission agree rather than pulling in different directions;
+    #   * and it is symmetric, which a pair must be: `A+B` and `B+A` are one condition.
+    # Recorded in the manifest as `composed_pairs` so a reader can see which keys are
+    # measured and which are derived.
+    composed = []
+    if args.compose_pairs != "none":
+        import numpy as _np
+        for cond in sorted(set(wanted)):
+            if "+" not in str(cond) or str(cond) in merged:
+                continue
+            parts = [p for p in str(cond).split("+") if p]
+            vecs = [merged[p] for p in parts if p in merged]
+            if len(vecs) != len(parts):
+                continue          # a component we do not have; leave it zero, honestly
+            stack = _np.stack(vecs, axis=0)
+            merged[str(cond)] = (stack.mean(axis=0) if args.compose_pairs == "mean"
+                                 else stack.sum(axis=0)).astype(stack.dtype)
+            composed.append(str(cond))
+        if composed:
+            print(f"[genept] composed {len(composed):,} multi-gene key(s) as the "
+                  f"{args.compose_pairs.upper()} of their components "
+                  f"(e.g. {composed[:3]})")
+
     print(f"\n[genept] merged: {len(merged):,} keys x {DIM} dims")
     if args.dry_run:
         print("[genept] --dry-run: nothing written")
@@ -167,6 +210,8 @@ def main(argv=None) -> int:
     man = {
         "built": "scripts/build_genept_for_occam.py",
         "n_keys": len(merged), "dim": DIM,
+        "compose_pairs": args.compose_pairs,
+        "composed_pairs": composed,
         "restricted_to_benchmark_symbols": not args.all_keys,
         "sources": {
             "full_release": {"path": args.full, "n_keys": len(full),

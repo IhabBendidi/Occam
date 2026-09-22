@@ -121,7 +121,7 @@ def _to_cellflow_obs(adata, *, control_label: str) -> pd.DataFrame:
 
 
 def load_occam_anndata(data_cfg: Dict[str, Any], *,
-                       cell_lines: Sequence[str] = OCCAM_CELL_LINES,
+                       cell_lines: Optional[Sequence[str]] = None,
                        row_filter: Optional[str] = None,
                        max_cells_per_line: Optional[int] = None,
                        verify_sources: bool = True):
@@ -149,7 +149,10 @@ def load_occam_anndata(data_cfg: Dict[str, Any], *,
             f"6,983-gene sum instead and break both `mae` and the bridge's emission map.")
 
     adata = od.load_occam_adata(
-        bench, cell_lines=list(cell_lines), target_sum=float(target_sum), log1p=log1p,
+        # `None` must stay None so the reader uses every line the benchmark has;
+        # `list(None)` raises, which is how the first fix half-landed.
+        bench, cell_lines=(list(cell_lines) if cell_lines is not None else None),
+        target_sum=float(target_sum), log1p=log1p,
         control_label="empty", pert_col_out="pert",
         max_cells_per_line=max_cells_per_line)
 
@@ -200,7 +203,14 @@ def load_occam_sources(data_cfg: Dict[str, Any], *, seed: int = 0,
                                max_cells_per_line=max_cells_per_line,
                                verify_sources=verify_sources)
     lines = np.asarray(adata.obs["cell_type"], dtype=str)
-    order = list(OCCAM_CELL_LINES)
+    # ⚠️ The ORDER of the lines, for a stable row order. It must come from the benchmark:
+    # rhj_fewshot's trio is not a universal list, and using it on norman_combo asked for
+    # HepG2 from a K562-only artifact.
+    # `lines` is a PER-ROW array, not a list of line names -- `lines or []` on an ndarray
+    # raises "truth value of an array is ambiguous", so the membership set is built from
+    # its values.
+    present = set(lines.tolist())
+    order = [c for c in OCCAM_CELL_LINES if c in present] or sorted(present)
     adata.uns["occam_bridge"] = dict(adata.uns.get("occam_bridge", {}))
     adata.uns["occam_bridge"]["sources"] = order
     adata.uns["occam_bridge"]["n_obs_per_source"] = [
@@ -217,7 +227,13 @@ def load_occam_validation(data_cfg: Dict[str, Any], *,
     the paired basal pool. CellFlow's `_ensure_validation_controls` injects the real controls
     it needs, which is the same `injctrl` convention our own arms are scored under.
     """
-    return load_occam_anndata(data_cfg, cell_lines=[EVALUATED_LINE],
+    # ⚠️ `cell_lines=None`, not `[EVALUATED_LINE]`. EVALUATED_LINE is HEPG2, which is
+    # rhj_fewshot's held-out line and does not exist on every benchmark -- on
+    # norman_combo (K562 only) pinning it asks for a line the artifact does not have.
+    # The row filter already restricts to the validation perturbations, and the
+    # benchmark's own `eval_cell_lines` is what decides which line those live in, so
+    # taking every line the benchmark has is both correct and benchmark-agnostic.
+    return load_occam_anndata(data_cfg, cell_lines=None,
                               row_filter="validation",
                               max_cells_per_line=max_cells_per_line,
                               verify_sources=verify_sources)

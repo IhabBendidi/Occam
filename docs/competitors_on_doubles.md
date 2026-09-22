@@ -207,3 +207,141 @@ which is what keeps the arm faithful to the method rather than to our port of it
 ⚠️ Order matters for that family: on our own matrix `decode_seq_ba` beats `decode_seq_ab`
 on all 6 arms and both panels (max |ab − ba| = 8.96e-02), which is why the mean of the two
 orders is the default rather than either one.
+---
+
+## 2026-09-22 launch attempt — what I got wrong, and the real remaining work
+
+**Three launches, twelve jobs each, all four arms failed every time. No competitor is
+training on `norman_combo`.** Written up in full because the failures were informative and
+because the estimate that preceded them was wrong.
+
+### The assumption that was wrong
+
+I estimated "~1 h of plumbing: thread a `BENCH` variable". The threading was necessary and
+is done — but it was **not** the binding constraint. Each of the four arms **vendored its
+own copy** of two things:
+
+1. **the cell-line list.** `("HEPG2", "jurkat", "RPE1")` appears in
+   `competitors/shared/occam_data.py`, `CellFlow/occam_bridge/occam.py`,
+   `PerturbDiff/src/data/occam_bridge.py`, `STATE/.../occam_source.py` (as an alias
+   table) and `TxPert/gspp/data/occam_loader.py`. **Five copies.** I fixed four and the
+   fifth failed the next launch.
+2. **a perturbation filter that drops `"A+B"`.** This is the real work, and it is the
+   *same class of bug* that hit our own code earlier in this campaign — the bare
+   `label in pert2id` lookup that emptied our validation split and that
+   `resolve_pert_indices` / `_can_resolve` fixed. Every port has its own copy, in a
+   different place, and a combinatorial label survives none of them.
+
+### The three launches, and what each taught
+
+| attempt | how long the arms survived | what it revealed |
+|---|---|---|
+| 18325396–407 | 12–52 s | the cell-line list was still the RHJ constant at the *adapter* call sites, not just in the manifest check |
+| 18326450–461 | 31–101 s | past the cell-line gate; now each arm's **perturbation/split filter** drops all 131 pairs |
+| 18326465 (cellflow only) | 31 s | `list(None)` — my own half-landed fix |
+
+The arms refuse **early and loudly** rather than training on a silently shrunken set,
+which is the port working as designed. Each message names the exact quantity lost:
+
+```
+TxPert       131 held-out perturbation(s) from the split file are absent from the data
+             after vocabulary filtering (e.g. ['AHR+FEV', ...]). The scored set would
+             not match the other competitor arms.
+CellFlow     validation covers 0 perturbations, expected exactly the 20 in splits.json
+STATE        validation split is empty ... Refusing to fall back to the test loader,
+             which would select checkpoints on test. Current [splits]: {}
+PerturbDiff  unknown cell line(s) ['HEPG2']; this benchmark has ['K562']
+```
+
+### What is actually left, per arm
+
+| arm | where the pair is lost | what it needs |
+|---|---|---|
+| **TxPert** | `datamodule.py:_load_zarr_splits` — its `pert2id` extension ALREADY splits `"A+B"` into singles (`:585`), so the vocabulary is fine; the `obs[CONDITION]` column does not carry the pair through `_process_treatment_data` | make the condition column keep `"A+B"`; its model already sums the two ids |
+| **CellFlow** | the validation frame has 0 of the 20 val pairs — the `gene_1`/`gene_2` slots are built by `occam_bridge/schema.py`, which is written for this, but the *row filter* that selects validation rows drops them first | thread the pair through the row filter, then `max_combination_length: 2` does the rest |
+| **STATE** | `[splits]` resolves to `{}` on this benchmark — its split plumbing reads a TOML-shaped fold that the Norman `splits.json` does not present | map `splits.json`'s `val`/`test` pair lists into its fold structure |
+| **PerturbDiff** | a **fifth** copy of the cell-line constants in `src/data/occam_bridge.py:66-77`, plus the same pair-filter problem behind it | fix the constants, then the filter |
+
+### Honest estimate now
+
+**Half a day to a day of per-arm surgery in four vendored codebases**, not one hour. Each
+fix is small but each is in unfamiliar code with its own conventions, and the two arms with
+NATIVE combinatorial mechanisms (TxPert, CellFlow) are exactly the two where the fix must
+not disturb that mechanism — which is the entire reason for running them.
+
+⚠️ **Do not "fix" this by filtering the pairs out of the split.** That would make each arm
+score a different set from Occam and from each other, which is the one thing the frozen
+cohort exists to prevent. The arms are right to refuse.
+
+⚠️ The BENCH threading itself is done, tested and worth keeping regardless: the axis width
+and all three digests are now read from the artifact by every leg, which is what makes
+"same genes, same splits" checkable — and it caught three model dimensions hardcoded to
+6983 that would have trained a 6,983-wide model against 8,000-wide targets without
+crashing.
+
+---
+
+## ALL FOUR ARMS NOW RUN ON `norman_combo` (2026-09-22)
+
+| arm | training | composition |
+|---|---|---|
+| **txpert** | **COMPLETED**, 15m37s | native additive sum |
+| **cellflow** | running | native set aggregation, `max_combination_length: 2` |
+| **state** | running | `decode_seq_mean` at the export boundary |
+| **perturbdiff** | running | `decode_seq_mean`, + composed GenePT pair embeddings |
+
+It took **six launches**. Every failure was a hardcoded `rhj_fewshot` assumption in a
+different place, and every one of them refused loudly rather than training on wrong data —
+which is the only reason this converged at all.
+
+### The eight fixes, in the order they were found
+
+| # | what was hardcoded | where | what it did on Norman |
+|---|---|---|---|
+| 1 | the required cell lines | `occam_data.load_occam_benchmark` | refused the benchmark outright |
+| 2 | `cell_lines=OCCAM_CELL_LINES` as a DEFAULT ARG | `occam_data.load_occam_adata` | every caller asked for HepG2 on a K562 benchmark |
+| 3 | the Ensembl column name | `occam_data._read_one` | "var has no ensembl_gene_id column" |
+| 4 | `line == "HEPG2"` | `occam_data.occam_split_indices`, STATE ×2 | val + test came out EMPTY, everything became train |
+| 5 | `EVALUATED_LINE = "HEPG2"` | PerturbDiff's split branch | same, plus "validation split is empty" |
+| 6 | `occam_line_from_path`'s alias table | STATE ×1, PerturbDiff ×2 **(three copies)** | "cannot tell which Occam cell line 'K562' is" |
+| 7 | the dataset list | PerturbDiff's TOML manifest | named the three RHJ h5ads |
+| 8 | the gene count `6983` | PerturbDiff `input_dim`, `hidden_num`, **`pad_length`**; TxPert `hvg_number`; TxPert `test_cell_type: hepg2` | a 6,983-wide model against 8,000-wide targets — **does not crash** |
+
+Plus two that are not hardcodes but genuine per-benchmark work:
+
+**TxPert's `+ctrl` suffix was applied GLOBALLY.** `data_utils.py:267` read
+`if not all("+ctrl" in c for c in <all perturbed conditions>)` and then rewrote **every**
+perturbed row. That is correct only when every perturbation is single-gene: on a
+combinatorial corpus the singles fail the test, so the whole column is rewritten and a pair
+`"AHR+FEV"` becomes `"AHR+FEV+ctrl"` — **three slots in a two-slot format**. All 131
+held-out pairs then matched nothing. Now applied **per row**, only to rows with no `+`,
+which is also the original intent: the suffix exists to fill the *unused* combinatorial slot
+of a single-gene perturbation.
+
+**PerturbDiff's GenePT table covered 8 of 236 conditions.**
+`genept_occam_rhj_fewshot.pkl` is keyed by *that* benchmark's symbols. Rebuilt with
+`scripts/build_genept_for_occam.py --bench-dir data/benchmarks/norman_combo`: all **105
+single genes** resolve from the full GenePT source.
+
+⚠️ The remaining 131 keys were the PAIRS, and a GenePT table is per GENE. `--compose-pairs
+mean` (new, default) gives `A+B` the **mean** of its components' embeddings. **This is our
+choice, not GenePT's and not PerturbDiff's**, recorded in the table's `.json` manifest as
+`composed_pairs`:
+
+* **MEAN not SUM** so the norm stays in the range the conditioning MLP saw in training,
+  which only ever sees singles (Norman trains on 105 single conditions);
+* it is the same assumption the arm's emission already makes — `decode_seq_mean` averages
+  the two orders — so conditioning and emission agree rather than pulling apart;
+* and it is **symmetric**, which a pair must be: `A+B` and `B+A` are one condition.
+
+### What this cost, and what it bought
+
+The "~1 h of plumbing" estimate was wrong by roughly a factor of six. What made it
+converge was that **every one of these failures was loud**: a refusal naming the exact
+quantity lost, at 12–101 seconds, instead of a run that trains for 8 hours on a silently
+shrunken cohort and reports a plausible number. Four of the eight would have been
+invisible without a guard.
+
+⚠️ `rhj_fewshot` is unregressed throughout: `tests/test_occam_data_reader.py` still
+reproduces its splits exactly (finetune 612,122 / val 6,731 / test 37,490), and the
+bench tag is EMPTY on it so all 296 existing run directories keep their names.

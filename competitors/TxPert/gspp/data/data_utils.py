@@ -262,14 +262,31 @@ def _standardize_obs_format(adata: sc.AnnData, pert_name: str) -> sc.AnnData:
 
     adata.obs[CONDITION] = adata.obs[pert_name].astype(str)
 
-    # This if clause ensures that the molecular perturbation datasets get the same format as the genetic ones
+    # This ensures that the molecular perturbation datasets get the same format as the genetic ones
     # Can and should be removed once input data format is curated to be consistent
-    if not all(["+ctrl" in c for c in set(adata.obs.loc[~adata.obs[IS_CONTROL], CONDITION])]):
-        adata.obs.loc[~adata.obs[IS_CONTROL], CONDITION] = (
-            adata.obs.loc[~adata.obs[IS_CONTROL], pert_name].astype(str)
-            + f"+{CONTROL_LABEL}"
+    #
+    # ⚠️ PER ROW, not globally. The original was
+    #     if not all("+ctrl" in c for c in <all perturbed conditions>):
+    #         <append "+ctrl" to EVERY perturbed row>
+    # which is correct only when every perturbation is single-gene. On a COMBINATORIAL
+    # corpus the singles ("AHR") fail the test, so the whole column is rewritten and a
+    # pair "AHR+FEV" becomes "AHR+FEV+ctrl" -- THREE slots in a two-slot format. The
+    # held-out pairs then match nothing and `_load_zarr_splits` refuses with "131
+    # held-out perturbation(s) ... absent from the data after vocabulary filtering".
+    # Measured on norman_combo 2026-09-22.
+    #
+    # The suffix exists to fill the UNUSED combinatorial slot of a single-gene
+    # perturbation -- GEARS format is "A+B", and a single gene is "A+ctrl". A row that
+    # already carries a "+" has both slots used and must be left alone. Applying it row
+    # by row is therefore both the fix and the original intent.
+    perturbed = ~adata.obs[IS_CONTROL]
+    cond = adata.obs.loc[perturbed, CONDITION].astype(str)
+    needs_slot = ~cond.str.contains(r"\+", regex=True)
+    if needs_slot.any():
+        adata.obs.loc[cond.index[needs_slot], CONDITION] = (
+            cond[needs_slot] + f"+{CONTROL_LABEL}"
         )
-        
+
     adata.obs.loc[adata.obs[IS_CONTROL], CONDITION] = CONTROL_LABEL
     adata.obs[CONDITION] = adata.obs[CONDITION].astype("category")
     adata.obs[CONTROL] = adata.obs[IS_CONTROL].astype(int).astype("category")

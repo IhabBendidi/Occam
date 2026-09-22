@@ -196,7 +196,8 @@ def occam_setup(dm, stage=None):
     never-seen-at-all.
     """
     from src.common.utils import get_short_dsname
-    from src.data.occam_bridge import occam_line_from_path, read_occam_line
+    from src.data.occam_bridge import (_occam_known_lines, occam_line_from_path,
+                                       read_occam_line)
 
     cfg = dm.data_args
     bench_dir = str(cfg.occam_bench_dir)
@@ -209,8 +210,12 @@ def occam_setup(dm, stage=None):
 
     dm.dataset_name_list, dm.file_list, dm.key_info_list = [], [], []
     seen = {}
+    # ⚠️ `known=` is the benchmark's OWN line list, checked before the rhj-only alias
+    # table. This is the THIRD call site of this resolver (the other two are in
+    # occam_bridge.py) and the last one to be fixed -- each failed a separate launch.
+    _known = _occam_known_lines(str(bench_dir), verify_sources=False)
     for label, path in datasets.items():
-        line = occam_line_from_path(path)
+        line = occam_line_from_path(path, known=_known)
         if line in seen:
             raise ValueError(
                 f"two manifest entries resolve to the same cell line {line!r}: "

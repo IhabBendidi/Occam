@@ -80,7 +80,10 @@ def load_occam_datasets(bench_dir: str, *,
     bench = od.load_occam_benchmark(bench_dir, verify_sources=verify_sources)
     logger.info(f"occam: {bench.summary()}")
 
-    lines = tuple(cell_lines) if cell_lines else od.OCCAM_CELL_LINES
+    # ⚠️ None, NOT od.OCCAM_CELL_LINES. That constant is rhj_fewshot's trio, so falling
+    # back to it asked for HepG2 on a K562 benchmark and this arm died in 41 s on the
+    # first norman_combo launch. `None` means "every line this benchmark has".
+    lines = tuple(cell_lines) if cell_lines else None
     adata = od.load_occam_adata(
         bench, cell_lines=lines, target_sum=target_sum, log1p=True,
         # gspp's own control sentinel happens to equal ours, so no translation is needed.
