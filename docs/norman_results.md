@@ -341,3 +341,120 @@ User decision, taken on the analysis above. Recorded in `docs/default_recipe.md`
 
 Both top-cell margins are **n=1, no seed replicates**: Q02-over-M03 is 0.0178 and
 `decode_seq_mean`-over-`sum` is 0.0141 (mean of panels).
+
+---
+
+## COMPETITOR RESULTS on `norman_combo` (2026-09-22, seed 42, 5 splits, `nocal`)
+
+**The question.** Train on single-gene perturbations; predict a PAIR where both genes were
+seen individually and the pair never was. Does any published method beat `sum_of_singles`
+(`Δ_A + Δ_B` in closed form), which IS this whole architecture family's hypothesis?
+
+**Each arm ran its own composition mechanism** (`docs/competitors_on_doubles.md`): TxPert's
+native additive sum, CellFlow's native set aggregation at `max_combination_length: 2`,
+State's `decode_seq_mean` (our extension of its own consecutive forward passes). All on the
+SAME frozen artifact Occam is scored on — axis `6efa91af1af5c8b8`, cohort
+`dc1dd7806ba60d34`, 8,000 genes, the same 5 seeded split-halves.
+
+### `additive` panel (36 pairs)
+
+| arm | pearson_delta ↑ | mae ↓ | overlap_at_N ↑ | disc_l1 ↑ |
+|---|---|---|---|---|
+| `meanpert` | 0.4634 | — | — | — |
+| **State** (decode_seq_mean) | 0.6947 ± 0.0034 | 0.0169 | 0.2673 | 0.8831 |
+| **CellFlow** (set aggregation) | 0.7603 ± 0.0003 | 0.0140 | 0.2633 | 0.9288 |
+| **Occam** NQ02 × decode_seq_mean | 0.8169 ± 0.0009 | **0.0123** | 0.3059 | 0.9091 |
+| **TxPert** (additive sum) | **0.8580** ± 0.0012 | 0.0135 | **0.3247** | **0.9776** |
+| **`sum_of_singles`** ⭐ the bar | **0.8824** | 0.0126 | 0.2865 | 0.9891 |
+| `experimental` | 0.9165 | — | — | — |
+
+### `nonadditive` panel (36 pairs)
+
+| arm | pearson_delta ↑ | mae ↓ | overlap_at_N ↑ | disc_l1 ↑ |
+|---|---|---|---|---|
+| `meanpert` | 0.4016 | — | — | — |
+| **State** | 0.5905 ± 0.0023 | 0.0198 | 0.2367 | 0.7321 |
+| **CellFlow** | 0.6921 ± 0.0027 | 0.0170 | 0.2668 | **0.7760** |
+| **TxPert** | 0.7139 ± 0.0027 | 0.0191 | **0.3041** | 0.7245 |
+| **Occam** NQ02 × decode_seq_mean | **0.7380** ± 0.0018 | **0.0146** | 0.2843 | 0.7708 |
+| **`sum_of_singles`** ⭐ the bar | **0.7757** | 0.0168 | 0.2750 | 0.8578 |
+| `experimental` | 0.8377 | — | — | — |
+
+## F-comp2. The two panels RANK THE METHODS DIFFERENTLY, and that is the finding
+
+| | additive | nonadditive |
+|---|---|---|
+| 1st | **TxPert 0.8580** | **Occam 0.7380** |
+| 2nd | Occam 0.8169 | TxPert 0.7139 |
+| 3rd | CellFlow 0.7603 | CellFlow 0.6921 |
+| 4th | State 0.6947 | State 0.5905 |
+
+**TxPert is the best method where additivity already works; Occam is the best method where
+it does not.** TxPert leads by +0.0411 on `additive` and trails by −0.0241 on
+`nonadditive` — a swing of 0.065 between the two panels, against split SEMs of 0.001–0.003.
+
+That is exactly the axis the effect-size-controlled strata were built to separate, and it
+is consistent with each method's own mechanism: **TxPert composes a pair by SUMMING the two
+perturbation embeddings**, which is the additive hypothesis expressed in latent space, so
+it should — and does — excel precisely where the additive baseline excels. Occam's
+`decode_seq_mean` chains the two perturbations through the full pipeline, re-encoding in
+between, which is the only mechanism in this panel that is not additive by construction.
+
+⚠️ Do not over-read it. Both margins are **n=1 seed**, and `decode_seq_mean` was selected
+as Occam's default ON this benchmark (`docs/default_recipe.md`) while TxPert's additive sum
+is its published mechanism — so Occam has had a mode-selection pass here that TxPert has
+not. A fair reading is "these two are close and trade places by stratum", not "Occam wins
+non-additivity".
+
+## F-comp3. NOTHING beats `sum_of_singles` on `pearson_delta`. Four methods, two panels, no exceptions.
+
+| arm | gap on additive | gap on nonadditive |
+|---|---|---|
+| TxPert | **−0.0244** | −0.0618 |
+| Occam | −0.0655 | **−0.0377** |
+| CellFlow | −0.1221 | −0.0836 |
+| State | −0.1877 | −0.1852 |
+
+The closest any method gets is TxPert, 0.0244 short on the panel where additivity is
+easiest. **On the non-additive panel — the one that exists to reward interaction — the best
+method is still 0.0377 short of simply adding the two single effects.**
+
+⚠️ `sum_of_singles` is measured from the SINGLES on the same cells, so it is not a model
+and cannot be deployed on an unseen pair without those singles. That is what makes it a
+bar rather than a competitor. But every method here is given exactly the same singles in
+training, so "worse than adding them" is a real indictment, not an artifact.
+
+⚠️ The stratification caveat cuts the other way on `nonadditive`: the strata are defined by
+`sum_of_singles`'s OWN residual, so the bar is low there BY CONSTRUCTION
+(`splithalf/CARD.md`). Beating it on `nonadditive` is therefore *easier* than the number
+suggests — and nothing does.
+
+## Where the methods DO beat the bar
+
+| metric | panel | best | value | bar | gap |
+|---|---|---|---|---|---|
+| `overlap_at_N` | additive | **TxPert** | **0.3247** | 0.2865 | **+0.0382** |
+| `overlap_at_N` | nonadditive | **TxPert** | **0.3041** | 0.2750 | **+0.0291** |
+| `mae` ↓ | additive | **Occam** | **0.0123** | 0.0126 | +0.0003 |
+| `mae` ↓ | nonadditive | **Occam** | **0.0146** | 0.0168 | **+0.0022** |
+| `disc_l1` | either | TxPert 0.9776 / CellFlow 0.7760 | | 0.9891 / 0.8578 | below on both |
+
+**TxPert ranks DE genes better than additivity does on both panels** (+0.038 / +0.029),
+and by a clear margin over Occam (+0.019 / +0.020). Occam is the only arm that beats the
+bar on `mae`, on both panels. So the honest summary is that the methods add real value on
+ranking and on absolute error while losing on the pseudobulk delta profile.
+
+## Caveats that belong next to these numbers
+
+- **n=1 seed (42), 5 split-halves.** SEMs on `pearson_delta` are 0.0003–0.0034, so the
+  split-to-split noise is small, but the seed-to-seed noise is unmeasured.
+- **Every competitor carries deliberate deviations**, recorded per arm in
+  `docs/competitors_on_doubles.md` and `docs/rhj_competitors_results.md`. None of these
+  numbers is a reproduction of a published figure, and none should be quoted as one.
+- **State's composition rule is ours**, not its published protocol — it has no genetic
+  combinatorial experiment. Read its number as "State's architecture under our sequential
+  composition".
+- **PerturbDiff is missing** from this table: its training was still running. It has no
+  published combinatorial protocol at all, so when it lands its rule will be ours too.
+- `pearson_delta` is a rank WITHIN its panel. These numbers are not comparable to
+  `rhj_fewshot`'s.
