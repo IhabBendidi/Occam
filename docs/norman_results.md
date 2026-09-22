@@ -458,3 +458,60 @@ ranking and on absolute error while losing on the pseudobulk delta profile.
   published combinatorial protocol at all, so when it lands its rule will be ours too.
 - `pearson_delta` is a rank WITHIN its panel. These numbers are not comparable to
   `rhj_fewshot`'s.
+
+---
+
+## FULL per-panel tables — every arm, all four metrics, ± SEM over 5 splits
+
+Sorted by `pearson_delta`. `nocal`, seed 42. **`mae` is an ERROR: lower is better.**
+`disc_l1` chance is 0.5. The zero-signal floors (`ctrlcell`, `ctrlmean`) are included so
+every column has a floor as well as a ceiling — `overlap_at_N` in particular has a
+*non-zero* floor (`ctrlmean` 0.1171 / 0.1065), which is why an arm near 0.13 is at chance
+on it rather than doing well.
+
+### `additive` panel (36 pairs)
+
+| arm | pearson_delta ↑ | mae ↓ | overlap_at_N ↑ | disc_l1 ↑ |
+|---|---|---|---|---|
+| `experimental` (replicate ceiling) | 0.9165 ± 0.0006 | 0.0110 ± 0.0000 | 0.5247 ± 0.0019 | 0.9978 ± 0.0002 |
+| **`sum_of_singles`** ⭐ the bar | **0.8824** ± 0.0006 | 0.0126 ± 0.0000 | 0.2865 ± 0.0017 | **0.9891** ± 0.0013 |
+| **TxPert** (native additive sum) | **0.8580** ± 0.0012 | 0.0135 ± 0.0000 | **0.3247** ± 0.0009 | 0.9776 ± 0.0014 |
+| **Occam** NQ02 × decode_seq_mean | 0.8169 ± 0.0009 | **0.0123** ± 0.0000 | 0.3059 ± 0.0006 | 0.9091 ± 0.0009 |
+| **CellFlow** (native set aggregation) | 0.7603 ± 0.0003 | 0.0140 ± 0.0000 | 0.2633 ± 0.0008 | 0.9288 ± 0.0024 |
+| **State** (decode_seq_mean, ours) | 0.6947 ± 0.0034 | 0.0169 ± 0.0001 | 0.2673 ± 0.0018 | 0.8831 ± 0.0023 |
+| `meanpert` (one constant delta) | 0.4634 ± 0.0021 | 0.0171 ± 0.0000 | 0.1349 ± 0.0005 | 0.5436 ± 0.0026 |
+| `ctrlmean` (zero-signal floor) | 0.0033 ± 0.0086 | 0.0179 ± 0.0000 | 0.1171 ± 0.0007 | 0.5432 ± 0.0012 |
+| `ctrlcell` (zero-signal floor) | 0.0004 ± 0.0057 | 0.0195 ± 0.0000 | 0.0000 ± 0.0000 | 0.5426 ± 0.0016 |
+
+### `nonadditive` panel (36 pairs)
+
+| arm | pearson_delta ↑ | mae ↓ | overlap_at_N ↑ | disc_l1 ↑ |
+|---|---|---|---|---|
+| `experimental` (replicate ceiling) | 0.8377 ± 0.0006 | 0.0129 ± 0.0000 | 0.4718 ± 0.0031 | 0.9644 ± 0.0018 |
+| **`sum_of_singles`** ⭐ the bar | **0.7757** ± 0.0021 | 0.0168 ± 0.0001 | 0.2750 ± 0.0011 | **0.8578** ± 0.0033 |
+| **Occam** NQ02 × decode_seq_mean | **0.7380** ± 0.0018 | **0.0146** ± 0.0000 | 0.2843 ± 0.0008 | 0.7708 ± 0.0011 |
+| **TxPert** | 0.7139 ± 0.0027 | 0.0191 ± 0.0001 | **0.3041** ± 0.0010 | 0.7245 ± 0.0022 |
+| **CellFlow** | 0.6921 ± 0.0027 | 0.0170 ± 0.0001 | 0.2668 ± 0.0012 | **0.7760** ± 0.0044 |
+| **State** | 0.5905 ± 0.0023 | 0.0198 ± 0.0001 | 0.2367 ± 0.0006 | 0.7321 ± 0.0025 |
+| `meanpert` | 0.4016 ± 0.0020 | 0.0188 ± 0.0000 | 0.1225 ± 0.0006 | 0.4988 ± 0.0034 |
+| `ctrlmean` | 0.0055 ± 0.0035 | 0.0189 ± 0.0000 | 0.1065 ± 0.0006 | 0.5135 ± 0.0017 |
+| `ctrlcell` | −0.0045 ± 0.0056 | 0.0209 ± 0.0001 | 0.0000 ± 0.0000 | 0.5173 ± 0.0026 |
+
+### Two things these full tables show that the summary did not
+
+**F-comp4. `mae` splits the field differently from every other metric.** On `additive`,
+Occam's 0.0123 is the ONLY value below the bar's 0.0126 — and TxPert, which wins
+`pearson_delta` by +0.0411, is WORSE on `mae` (0.0135). On `nonadditive` the same reversal
+is larger: Occam 0.0146 against TxPert 0.0191, a 31% higher error for the arm that is only
+0.024 behind on `pearson_delta`. `pearson_delta` is scale-free and `mae` is not, so an arm
+can get the SHAPE of the delta right while mis-scaling it. TxPert does exactly that.
+
+**F-comp5. `disc_l1` is the one metric where no method is close to the bar**, on either
+panel: best additive 0.9776 vs 0.9891, best non-additive 0.7760 vs 0.8578 (a 0.082 gap).
+And `experimental` sits at 0.9978 / 0.9644, so the headroom is real rather than a ceiling
+effect. Discriminating WHICH pair produced a profile is the hardest of the four tasks here,
+and adding the two single deltas still does it better than any trained model.
+
+⚠️ `overlap_at_N` has a **non-zero floor** — `ctrlmean` scores 0.1171 / 0.1065 by
+predicting nothing at all. Read 0.30 against that floor and the 0.52 / 0.47 ceiling, not
+against 0.
