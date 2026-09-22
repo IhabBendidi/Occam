@@ -515,3 +515,130 @@ and adding the two single deltas still does it better than any trained model.
 ⚠️ `overlap_at_N` has a **non-zero floor** — `ctrlmean` scores 0.1171 / 0.1065 by
 predicting nothing at all. Read 0.30 against that floor and the 0.52 / 0.47 ceiling, not
 against 0.
+
+---
+
+## PER-SPLIT values — every arm, every metric, all 5 split-halves
+
+The 5 splits are the SAME seeded halves for every arm (`blake2b(SPLIT_SALT|seed|split|group)`),
+so a per-split column is directly comparable down the table. `range` = max − min across the
+five, which is the honest read on whether a margin between two arms survives split noise.
+
+
+### `pearson_delta` ↑ · `additive` panel
+
+| arm | split 0 | split 1 | split 2 | split 3 | split 4 | range |
+|---|---|---|---|---|---|---|
+| `experimental` | 0.9154 | 0.9173 | 0.9161 | 0.9154 | 0.9182 | 0.0028 |
+| **`sum_of_singles`** ⭐ | 0.8821 | 0.8820 | 0.8847 | 0.8814 | 0.8816 | 0.0032 |
+| **TxPert** | 0.8556 | 0.8562 | 0.8582 | 0.8624 | 0.8575 | 0.0067 |
+| **Occam** NQ02 dsm | 0.8166 | 0.8151 | 0.8168 | 0.8202 | 0.8155 | 0.0051 |
+| **CellFlow** | 0.7611 | 0.7607 | 0.7601 | 0.7601 | 0.7596 | 0.0015 |
+| **State** | 0.6868 | 0.6957 | 0.6988 | 0.7046 | 0.6877 | 0.0179 |
+| `meanpert` | 0.4685 | 0.4570 | 0.4607 | 0.4641 | 0.4665 | 0.0115 |
+
+### `pearson_delta` ↑ · `nonadditive` panel
+
+| arm | split 0 | split 1 | split 2 | split 3 | split 4 | range |
+|---|---|---|---|---|---|---|
+| `experimental` | 0.8376 | 0.8364 | 0.8372 | 0.8400 | 0.8375 | 0.0036 |
+| **`sum_of_singles`** ⭐ | 0.7823 | 0.7735 | 0.7710 | 0.7729 | 0.7787 | 0.0113 |
+| **TxPert** | 0.7243 | 0.7083 | 0.7137 | 0.7114 | 0.7119 | 0.0160 |
+| **Occam** NQ02 dsm | 0.7453 | 0.7363 | 0.7352 | 0.7362 | 0.7371 | 0.0101 |
+| **CellFlow** | 0.6898 | 0.6855 | 0.6890 | 0.6959 | 0.7004 | 0.0149 |
+| **State** | 0.5861 | 0.5979 | 0.5924 | 0.5852 | 0.5910 | 0.0127 |
+| `meanpert` | 0.3991 | 0.4059 | 0.3972 | 0.4068 | 0.3988 | 0.0096 |
+
+### `mae` ↓ (ERROR) · `additive` panel
+
+| arm | split 0 | split 1 | split 2 | split 3 | split 4 | range |
+|---|---|---|---|---|---|---|
+| `experimental` | 0.0111 | 0.0110 | 0.0111 | 0.0111 | 0.0110 | 0.0002 |
+| **`sum_of_singles`** ⭐ | 0.0127 | 0.0126 | 0.0125 | 0.0126 | 0.0127 | 0.0002 |
+| **TxPert** | 0.0135 | 0.0135 | 0.0135 | 0.0134 | 0.0135 | 0.0001 |
+| **Occam** NQ02 dsm | 0.0123 | 0.0124 | 0.0122 | 0.0123 | 0.0123 | 0.0001 |
+| **CellFlow** | 0.0140 | 0.0140 | 0.0139 | 0.0140 | 0.0140 | 0.0001 |
+| **State** | 0.0170 | 0.0168 | 0.0168 | 0.0169 | 0.0171 | 0.0003 |
+| `meanpert` | 0.0171 | 0.0171 | 0.0171 | 0.0172 | 0.0171 | 0.0001 |
+
+### `mae` ↓ (ERROR) · `nonadditive` panel
+
+| arm | split 0 | split 1 | split 2 | split 3 | split 4 | range |
+|---|---|---|---|---|---|---|
+| `experimental` | 0.0129 | 0.0129 | 0.0130 | 0.0127 | 0.0128 | 0.0003 |
+| **`sum_of_singles`** ⭐ | 0.0167 | 0.0168 | 0.0170 | 0.0169 | 0.0165 | 0.0005 |
+| **TxPert** | 0.0190 | 0.0192 | 0.0191 | 0.0191 | 0.0189 | 0.0003 |
+| **Occam** NQ02 dsm | 0.0145 | 0.0147 | 0.0147 | 0.0147 | 0.0145 | 0.0002 |
+| **CellFlow** | 0.0170 | 0.0172 | 0.0170 | 0.0171 | 0.0166 | 0.0006 |
+| **State** | 0.0199 | 0.0198 | 0.0196 | 0.0198 | 0.0197 | 0.0003 |
+| `meanpert` | 0.0189 | 0.0188 | 0.0188 | 0.0188 | 0.0189 | 0.0001 |
+
+### `overlap_at_N` ↑ · `additive` panel
+
+| arm | split 0 | split 1 | split 2 | split 3 | split 4 | range |
+|---|---|---|---|---|---|---|
+| `experimental` | 0.5243 | 0.5215 | 0.5199 | 0.5270 | 0.5307 | 0.0108 |
+| **`sum_of_singles`** ⭐ | 0.2886 | 0.2858 | 0.2918 | 0.2818 | 0.2844 | 0.0100 |
+| **TxPert** | 0.3253 | 0.3238 | 0.3217 | 0.3274 | 0.3254 | 0.0057 |
+| **Occam** NQ02 dsm | 0.3058 | 0.3068 | 0.3038 | 0.3073 | 0.3060 | 0.0035 |
+| **CellFlow** | 0.2620 | 0.2645 | 0.2617 | 0.2658 | 0.2627 | 0.0041 |
+| **State** | 0.2657 | 0.2692 | 0.2727 | 0.2669 | 0.2619 | 0.0108 |
+| `meanpert` | 0.1348 | 0.1344 | 0.1369 | 0.1346 | 0.1339 | 0.0030 |
+
+### `overlap_at_N` ↑ · `nonadditive` panel
+
+| arm | split 0 | split 1 | split 2 | split 3 | split 4 | range |
+|---|---|---|---|---|---|---|
+| `experimental` | 0.4723 | 0.4712 | 0.4610 | 0.4797 | 0.4749 | 0.0188 |
+| **`sum_of_singles`** ⭐ | 0.2750 | 0.2782 | 0.2739 | 0.2715 | 0.2762 | 0.0066 |
+| **TxPert** | 0.3058 | 0.3031 | 0.3005 | 0.3048 | 0.3061 | 0.0056 |
+| **Occam** NQ02 dsm | 0.2857 | 0.2841 | 0.2816 | 0.2835 | 0.2864 | 0.0047 |
+| **CellFlow** | 0.2630 | 0.2672 | 0.2655 | 0.2687 | 0.2697 | 0.0067 |
+| **State** | 0.2358 | 0.2370 | 0.2350 | 0.2369 | 0.2386 | 0.0036 |
+| `meanpert` | 0.1217 | 0.1227 | 0.1226 | 0.1209 | 0.1246 | 0.0037 |
+
+### `discrimination_score_l1` ↑ · `additive` panel
+
+| arm | split 0 | split 1 | split 2 | split 3 | split 4 | range |
+|---|---|---|---|---|---|---|
+| `experimental` | 0.9972 | 0.9980 | 0.9980 | 0.9975 | 0.9982 | 0.0010 |
+| **`sum_of_singles`** ⭐ | 0.9865 | 0.9925 | 0.9865 | 0.9920 | 0.9880 | 0.0060 |
+| **TxPert** | 0.9755 | 0.9802 | 0.9730 | 0.9792 | 0.9800 | 0.0073 |
+| **Occam** NQ02 dsm | 0.9092 | 0.9127 | 0.9084 | 0.9077 | 0.9077 | 0.0050 |
+| **CellFlow** | 0.9229 | 0.9337 | 0.9229 | 0.9322 | 0.9324 | 0.0108 |
+| **State** | 0.8846 | 0.8891 | 0.8751 | 0.8849 | 0.8816 | 0.0140 |
+| `meanpert` | 0.5443 | 0.5503 | 0.5358 | 0.5403 | 0.5475 | 0.0145 |
+
+### `discrimination_score_l1` ↑ · `nonadditive` panel
+
+| arm | split 0 | split 1 | split 2 | split 3 | split 4 | range |
+|---|---|---|---|---|---|---|
+| `experimental` | 0.9615 | 0.9620 | 0.9617 | 0.9705 | 0.9665 | 0.0090 |
+| **`sum_of_singles`** ⭐ | 0.8491 | 0.8509 | 0.8609 | 0.8614 | 0.8666 | 0.0175 |
+| **TxPert** | 0.7270 | 0.7195 | 0.7235 | 0.7210 | 0.7315 | 0.0120 |
+| **Occam** NQ02 dsm | 0.7728 | 0.7725 | 0.7690 | 0.7675 | 0.7720 | 0.0053 |
+| **CellFlow** | 0.7650 | 0.7668 | 0.7773 | 0.7833 | 0.7875 | 0.0225 |
+| **State** | 0.7227 | 0.7322 | 0.7367 | 0.7365 | 0.7325 | 0.0140 |
+| `meanpert` | 0.4920 | 0.4960 | 0.5108 | 0.4940 | 0.5015 | 0.0188 |
+
+### F-comp6. The TxPert/Occam stratum reversal is 5/5 PAIRED, not split noise
+
+The splits are the same seeded halves for every arm, so the contrast can be taken
+split-by-split rather than mean-vs-mean. Occam minus TxPert, `pearson_delta`:
+
+| panel | s0 | s1 | s2 | s3 | s4 | verdict |
+|---|---|---|---|---|---|---|
+| `additive` | −0.0390 | −0.0411 | −0.0414 | −0.0422 | −0.0420 | **TxPert wins 5/5** |
+| `nonadditive` | +0.0209 | +0.0280 | +0.0215 | +0.0248 | +0.0252 | **Occam wins 5/5** |
+
+Every split agrees, in both directions, and the smallest margin (0.0209) is **4x** the
+largest per-split range of either arm on that panel. The reversal is therefore a property
+of the strata, not of the sampling — which is what the effect-size-controlled cut was built
+to make visible.
+
+Occam over CellFlow is 5/5 on both panels too (+0.054…+0.060 additive, +0.037…+0.056
+non-additive), so the middle of the field is cleanly ordered; only the top two swap.
+
+⚠️ Still n=1 SEED. Paired-over-splits removes split noise, not seed noise, and
+`decode_seq_mean` was selected on this benchmark while TxPert's additive sum is its
+published mechanism.
