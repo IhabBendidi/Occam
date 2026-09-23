@@ -4737,8 +4737,36 @@ class VirtualCellTrainer:
                                         f"ctrl_avg_k={getattr(config, 'ctrl_avg_k', 1)}. "
                                         f"Eval-side control averaging must match training "
                                         f"or the read-out is not comparable.")
+                                # ⛔ COMPOSE THE VALIDATION PREDICTION THE SAME WAY THE
+                                # REPORT DOES. predict_panel's default predict_fn is
+                                # `model(ctrl, pert_idx)` -- the `sum` mode -- so on a
+                                # combinatorial benchmark checkpoint selection optimised
+                                # `sum` while every reported number used
+                                # `decode_seq_mean`. The two differ by 0.04-0.08
+                                # pearson_delta on the 72-cell matrix, i.e. more than most
+                                # effects being selected between. Empty keeps the old
+                                # behaviour so every pre-existing run reproduces.
+                                _pc = str(getattr(config, "panel_compose", "") or "")
+                                _pfn = None
+                                if _pc:
+                                    from occam.vcell.model import VirtualCellModel as _VCM
+                                    if _pc not in _VCM.COMPOSE_MODES:
+                                        raise ValueError(
+                                            f"panel_compose={_pc!r} is not a composition "
+                                            f"mode; expected one of "
+                                            f"{list(_VCM.COMPOSE_MODES)}")
+                                    _cbase = (fwd_model.module
+                                              if hasattr(fwd_model, "module")
+                                              else fwd_model)
+
+                                    def _pfn(ct, pidx, _m=_cbase, _mode=_pc):
+                                        return _m.forward_composed(ct, pidx,
+                                                                   _mode)["prediction"]
+                                    print(f"  [panel] validation composition: {_pc}",
+                                          flush=True)
                                 pred, labels, ctrl_used, cin_idx = predict_panel(
                                     fwd_model, panel, self.pert2id, self.device,
+                                    predict_fn=_pfn,
                                     eval_control=str(getattr(
                                         config, "panel_eval_control", "single")),
                                     batch_size=int(getattr(

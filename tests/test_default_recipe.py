@@ -82,3 +82,34 @@ def test_forward_composed_defaults_to_decode_seq_mean():
 def test_eval_splithalf_defaults_to_decode_seq_mean():
     src = open(os.path.join(REPO, "scripts/eval_splithalf.py")).read()
     assert 'ap.add_argument("--compose", default="decode_seq_mean"' in src
+
+
+def test_the_validation_metric_composes_pairs_the_way_the_report_does():
+    """Selecting on `sum` while reporting `decode_seq_mean` is a silent mismatch.
+
+    `predict_panel`'s default predict_fn is `model(ctrl, pert_idx)` -- the `sum` mode --
+    so before `panel_compose` existed, checkpoint selection on norman_combo optimised a
+    different composition than every reported number used. The two differ by 0.04-0.08
+    `pearson_delta` on the 72-cell matrix, i.e. more than most effects being selected
+    between.
+    """
+    from occam.vcell.model import VirtualCellModel
+
+    cfg = _vcell("configs/norman_combo.yaml")["data"]
+    mode = cfg.get("panel_compose")
+    assert mode == "decode_seq_mean", \
+        f"norman_combo selects on {mode!r} but reports decode_seq_mean"
+    assert mode in VirtualCellModel.COMPOSE_MODES
+
+    # rhj_fewshot is single-gene: every recon mode is identical there, so the key is
+    # deliberately absent rather than set to a value that would imply it matters.
+    rhj = _vcell("configs/rhj_fewshot.yaml")["data"]
+    assert not rhj.get("panel_compose"), \
+        "rhj_fewshot is single-gene; panel_compose would be a no-op that implies otherwise"
+
+    # All three config layers, or the key is silently ignored (the F-loss1 failure).
+    import occam.config.schema as schema
+    src = open(schema.__file__).read()
+    assert '"panel_compose": "panel_compose"' in src, "not reachable via --set"
+    from occam.vcell.config import VirtualCellConfig
+    assert hasattr(VirtualCellConfig(), "panel_compose"), "not on the dataclass"

@@ -87,6 +87,13 @@ stages:
       # rather than `sum`. That is the right default for a composition benchmark; the
       # 12-mode comparison at eval time is where the modes are actually contested.
       combo_decomposition: true
+      # ⛔ The VALIDATION metric composes pairs the same way the REPORT does. Without
+      # this, predict_panel defaults to `model(ctrl, pert_idx)` -- the `sum` mode -- so
+      # checkpoint selection optimised `sum` while every reported number used
+      # `decode_seq_mean`. The two differ by 0.04-0.08 pearson_delta on the 72-cell
+      # matrix (docs/norman_results.md), which is larger than most effects being selected
+      # between. Empty string = the old `sum` behaviour, kept so earlier runs reproduce.
+      panel_compose: decode_seq_mean
       batch_col: batch              # the 8 GEO gemgroups
       target_sum: 2000.0            # from the checkpoint; must match
       # SINGLE CELL IN. n_controls_per_sample defaults to 5 and AVERAGES, which would make

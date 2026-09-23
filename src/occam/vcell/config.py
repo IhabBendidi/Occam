@@ -305,6 +305,15 @@ class VirtualCellConfig:
     # cell_AB. Off by default; only meaningful on a corpus that actually
     # contains doubles whose singles are also present.
     combo_decomposition: bool = False
+    # ⛔ HOW THE VALIDATION METRIC COMPOSES A PAIR. `predict_panel`'s default predict_fn is
+    # `model(ctrl, pert_idx)`, i.e. the `sum` mode -- so on a combinatorial benchmark
+    # CHECKPOINT SELECTION optimised `sum` while every reported number used
+    # `decode_seq_mean` (the adopted default, docs/default_recipe.md). Selecting on a
+    # different composition than the one reported is not wrong by a little: the two modes
+    # differ by 0.04-0.08 pearson_delta on the 72-cell matrix, which is larger than most
+    # effects being selected between. "" keeps the historical `sum` behaviour so every
+    # pre-existing run reproduces; set it to align selection with the report.
+    panel_compose: str = ""
     # Enforce order-invariance: run A-then-B and B-then-A and penalise
     # disagreement, so the composition converges to the same cell_AB either way.
     combo_symmetric: bool = True

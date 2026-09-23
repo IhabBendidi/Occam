@@ -1,0 +1,76 @@
+# NORMAN SCHEDULE / BATCH / LOSS-SCALE SWEEP -- 20 arms
+#
+# WHAT WE ARE TRYING TO ACHIEVE OVERALL
+# -------------------------------------
+# Predict a perturbation's effect where that perturbation was never measured. Here the form
+# is COMPOSITION: train on SINGLE-gene perturbations, predict PAIRS where both genes were
+# seen individually and the pair never was.
+#
+# WHAT THIS SWEEP ANSWERS
+# -----------------------
+# The shipped default (NQ02: Q02 base, 150 ep, eta_min 3e-4, batch 2048, lr 1e-3) was tuned
+# on rhj_fewshot and moved to norman_combo wholesale. Four questions, each phrased so both
+# outcomes mean something:
+#
+#   A  SCHEDULE   epochs {120,150,180} x eta_min {1e-4,3e-4,1e-3} at batch 2048.
+#      On rhj 180 epochs was FLAT (+0.0003) and floors above 3e-4 COST. Only 30-vs-150 has
+#      ever been compared on norman, so the interior is unknown here.
+#      Outcome: a win inside the grid means the rhj schedule does not transfer; a flat grid
+#      means the axis is closed on norman too and the default stands.
+#
+#   B  SMALLER BATCH -> MORE STEPS. batch {256,512} x eta_min {3e-4,1e-3} at 150 ep.
+#      ⚠️ THE MEASUREMENT THAT MOTIVATES THIS GRID: rhj_fewshot has 612,122 training cells
+#      = 298 optimiser steps/epoch; norman_combo has 56,971 = 27. The SAME recipe therefore
+#      traverses its cosine schedule in 4,050 updates on norman against 44,700 on rhj -- an
+#      11x difference in the amount of optimisation, invisible in the config. batch 512
+#      gives 16,650 steps, batch 256 gives 33,300.
+#      Outcome: if B beats the best of A, the schedule axis was never the binding constraint
+#      on norman and the default was under-optimising by STEP COUNT -- which would also mean
+#      re-checking batch size on any future small corpus.
+#
+#   C  LARGER BATCH at LONGER TRAINING, step-matched. The other side of the same axis: does
+#      the step count matter, or the batch size itself? batch 4096 at 1200 ep gives 15,600
+#      steps, i.e. B's step budget reached with 16x the batch. batch 8192 is 6 steps/epoch --
+#      nearly full-batch on this corpus -- and is included as the ENDPOINT, not a candidate.
+#
+#   D  LOSS-WEIGHT SCALE. The three Q02 weights (dcos 0.32977, delta_mag 0.0400866, latent
+#      MSE 0.00198826) are SCALE-MATCHED to this corpus by scripts/norman/norman_loss_scale.py,
+#      which gives ONE point, not an optimum. A global 0.5x / 2.0x multiplier tests whether
+#      the match is at the right level.
+#
+# ⛔ NA04 IS THE CONTROL, and it is not a duplicate. It is byte-identical in configuration
+#    to the published NQ02 -- same base, 150 ep, eta_min 3e-4, batch 2048, seed 42 -- and
+#    differs ONLY in that validation now composes pairs with `decode_seq_mean`
+#    (panel_compose, new) instead of `sum`. So NA04-vs-NQ02 isolates the SELECTION METRIC:
+#    same trajectory, same seed, different epoch kept. If NA04 beats NQ02, the published
+#    checkpoint was chosen by a metric that disagreed with the reported one.
+#
+# HOW TO READ THE RESULT -- anchors, additive / nonadditive pearson_delta
+#   meanpert 0.4634 / 0.4016 . OCCAM NQ02 (published) 0.8169 / 0.7380
+#   sum_of_singles 0.8824 / 0.7757  <- THE BAR . experimental 0.9165 / 0.8377
+#   Competitors: TxPert 0.8580 / 0.7139 . CellFlow 0.7603 / 0.6921 . State 0.6947 / 0.5905
+#   ⚠️ Read all four metrics. `mae` is an ERROR, and it already splits this field
+#      differently from pearson_delta (F-comp4).
+#
+# COST  20 arms, ~113 GPU-h. Column 26 is batch_size (optional, default 2048).
+arm	loss_type	nb_weight	nb_scale	delta_cos_weight	delta_mag_weight	latent_loss_type	latent_loss_weight	latent_cos_weight	latent_cos_target	recon_split	recon_ctrl_weight	recon_delta_weight	recon_split_mode	recon_delta_target	vicreg_var_weight	vicreg_cov_weight	vicreg_gamma	vicreg_target	epochs	eta_min	base	dcos_conc_weight	radial_spread_weight	gene_var_weight	batch_size
+NA00	smooth_l1	0	1.0	0.32977	0.0400866	delta_z	0.00198826	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	120	1e-4	A_ep120_1e-4	0.0	0.0	0.0	2048
+NA01	smooth_l1	0	1.0	0.32977	0.0400866	delta_z	0.00198826	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	120	3e-4	A_ep120_3e-4	0.0	0.0	0.0	2048
+NA02	smooth_l1	0	1.0	0.32977	0.0400866	delta_z	0.00198826	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	120	1e-3	A_ep120_1e-3	0.0	0.0	0.0	2048
+NA03	smooth_l1	0	1.0	0.32977	0.0400866	delta_z	0.00198826	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	150	1e-4	A_ep150_1e-4	0.0	0.0	0.0	2048
+NA04	smooth_l1	0	1.0	0.32977	0.0400866	delta_z	0.00198826	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	150	3e-4	CONTROL_selection_metric	0.0	0.0	0.0	2048
+NA05	smooth_l1	0	1.0	0.32977	0.0400866	delta_z	0.00198826	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	150	1e-3	A_ep150_1e-3	0.0	0.0	0.0	2048
+NA06	smooth_l1	0	1.0	0.32977	0.0400866	delta_z	0.00198826	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	180	1e-4	A_ep180_1e-4	0.0	0.0	0.0	2048
+NA07	smooth_l1	0	1.0	0.32977	0.0400866	delta_z	0.00198826	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	180	3e-4	A_ep180_3e-4	0.0	0.0	0.0	2048
+NA08	smooth_l1	0	1.0	0.32977	0.0400866	delta_z	0.00198826	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	180	1e-3	A_ep180_1e-3	0.0	0.0	0.0	2048
+NB09	smooth_l1	0	1.0	0.32977	0.0400866	delta_z	0.00198826	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	150	3e-4	B_bs256_3e-4	0.0	0.0	0.0	256
+NB10	smooth_l1	0	1.0	0.32977	0.0400866	delta_z	0.00198826	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	150	1e-3	B_bs256_1e-3	0.0	0.0	0.0	256
+NB11	smooth_l1	0	1.0	0.32977	0.0400866	delta_z	0.00198826	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	150	3e-4	B_bs512_3e-4	0.0	0.0	0.0	512
+NB12	smooth_l1	0	1.0	0.32977	0.0400866	delta_z	0.00198826	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	150	1e-3	B_bs512_1e-3	0.0	0.0	0.0	512
+NC13	smooth_l1	0	1.0	0.32977	0.0400866	delta_z	0.00198826	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	300	3e-4	C_bs1024_ep300	0.0	0.0	0.0	1024
+NC14	smooth_l1	0	1.0	0.32977	0.0400866	delta_z	0.00198826	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	300	3e-4	C_bs4096_ep300	0.0	0.0	0.0	4096
+NC15	smooth_l1	0	1.0	0.32977	0.0400866	delta_z	0.00198826	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	600	3e-4	C_bs4096_ep600	0.0	0.0	0.0	4096
+NC16	smooth_l1	0	1.0	0.32977	0.0400866	delta_z	0.00198826	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	1200	3e-4	C_bs4096_ep1200	0.0	0.0	0.0	4096
+NC17	smooth_l1	0	1.0	0.32977	0.0400866	delta_z	0.00198826	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	1200	3e-4	C_bs8192_ep1200	0.0	0.0	0.0	8192
+ND18	smooth_l1	0	1.0	0.164885	0.0200433	delta_z	0.00099413	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	150	3e-4	D_lossscale0.5	0.0	0.0	0.0	2048
+ND19	smooth_l1	0	1.0	0.65954	0.0801732	delta_z	0.00397652	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	150	3e-4	D_lossscale2.0	0.0	0.0	0.0	2048

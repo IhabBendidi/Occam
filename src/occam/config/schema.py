@@ -300,6 +300,7 @@ VCELL_SCHEMA: Dict[str, Dict[str, Optional[str]]] = {
         # this table is silently ignored and the run proceeds at the default (the F-loss1
         # shape -- three DCOS arms produced bit-identical curves that way).
         "combo_decomposition": "combo_decomposition",
+        "panel_compose": "panel_compose",
     },
     "stream": {
         "stream_v2": "stream_v2", "interleave": "stream_interleave",
