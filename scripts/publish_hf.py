@@ -81,6 +81,13 @@ ARTIFACTS = [
     ("data/benchmarks/rhj_fewshot", "benchmarks/rhj_fewshot",
      "the RPE1/HepG2/Jurkat few-shot benchmark: axis, cohort, the requested val/test "
      "split, 5 split-halves, baselines"),
+    # h1_seen (2026-09-23): rhj_fewshot checkpoints on H1 hESC (VCC 2025), seen perturbations,
+    # unseen cell line. Ships the LOCAL COPY h1_seen_raw.h5ad (8.8 GB, the 99 perts + 38,176
+    # controls already selected) so a reader rebuilds it with
+    # repro/build_benchmark_h1.sh without the 35 GB of VCC 2025 files.
+    ("data/benchmarks/h1_seen", "benchmarks/h1_seen",
+     "H1 hESC (VCC 2025) seen-perturbation / unseen-cell-line benchmark: raw local copy, "
+     "axis, cohort, 5 split-halves, baselines"),
     # The perturbation graph. Required to TRAIN (the adjacency-map perturbation model is
     # an MLP over each gene's adjacency row) and to BUILD either benchmark (the cohort is
     # intersected with `master_gene_set_sorted.csv`). Without it neither is reproducible.
@@ -116,6 +123,9 @@ ARTIFACTS = [
     # Lives outside scripts/repro because it is a benchmark builder, not a driver, but it
     # is REQUIRED to rebuild norman_combo: without it the manifest has `panels: []` and
     # the two scored strata do not exist.
+    # REQUIRED by repro/build_benchmark_h1.sh, which calls it with --from-raw.
+    ("scripts/build_h1_seen_panel.py", "repro/build_h1_seen_panel.py",
+     "the h1_seen builder -- run by repro/build_benchmark_h1.sh"),
     ("scripts/norman/norman_stratify_panels.py",
      "repro/norman_stratify_panels.py",
      "the additivity strata (the additive / nonadditive panels) -- run by "

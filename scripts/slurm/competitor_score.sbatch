@@ -63,6 +63,13 @@ cd "$HERE"
 # Resolves BENCH / BENCH_DIR / PANEL_DIR / N_AXIS_GENES and the three digests.
 # BENCH defaults to rhj_fewshot, so every pre-existing invocation is unchanged.
 competitor_resolve_bench "$HERE"
+# PANEL_OVERRIDE: score the model trained on BENCH on ANOTHER panel (an OOD context such as
+# data/benchmarks/h1_seen/splithalf). BENCH still names the model's training vocabulary.
+# PANEL_TAG keeps its outputs apart (e.g. __h1_seen). Unset = unchanged.
+if [ -n "${PANEL_OVERRIDE:-}" ]; then
+    PANEL_DIR="$PANEL_OVERRIDE"
+    : "${PANEL_TAG:?PANEL_OVERRIDE needs PANEL_TAG, or its outputs overwrite the BENCH ones}"
+fi
 mkdir -p runs/slurm
 
 ARM="${ARM:?set ARM=txpert|state|cellflow|perturbdiff and pass --export=ALL,ARM,SEED}"
@@ -73,9 +80,9 @@ SPLIT="${SLURM_ARRAY_TASK_ID:-0}"
 # Two configurations of the same arm and seed would otherwise share one output directory and
 # the second would silently overwrite the first.
 ARM_SUFFIX="${ARM_SUFFIX:-}"
-ARM_OUT="${ARM}${ARM_SUFFIX}$(competitor_bench_tag)"
+ARM_OUT="${ARM}${ARM_SUFFIX}$(competitor_bench_tag)${PANEL_TAG:-}"
 PRED_DIR="$HERE/runs/competitors/$ARM_OUT/s${SEED}/split_${SPLIT}"
-OUT_ROOT="$HERE/$(competitor_score_root)/compet_${ARM_OUT}_s${SEED}"
+OUT_ROOT="$HERE/${SCORE_ROOT:-$(competitor_score_root)}/compet_${ARM_OUT}_s${SEED}"
 
 competitor_banner "$ARM" score "$SEED" "$HERE"
 echo "  split   $SPLIT"

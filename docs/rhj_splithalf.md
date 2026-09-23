@@ -3745,3 +3745,11 @@ Y06 took 2h06m at bs 2048. Run dirs `runs/rhj_fewshot_RB<bs>__..._bs<bs>_e150_em
 **Scoring is automatic:** `scripts/slurm/rhj_autoeval_daemon.sh` (job 18365082, cpu, 4 days)
 submits `rhj_splithalf_models.sbatch --array=0-4%6 CALIBRATE=none` per arm when
 `final_model.pth` appears. Results → `runs/rhj_splithalf/RB<bs>__<tag>/`.
+
+## QOS routing (2026-09-23, user rule)
+
+`hooke-predict` first → `vco` when hooke is full (cap 32 H100) → `normal` only for jobs with a
+time limit ≤ 4 h, because `normal` is preempted (REQUEUE) by hooke-predict/vco.
+Applied by hand to all pending jobs on 2026-09-23 (19 to vco, 3 Norman eval arrays to normal),
+then enforced by `scripts/slurm/qos_rebalancer.sh` (job 18365346, cpu, 4 days, polls 5 min,
+logs every move to runs/slurm/qos_rebalance_*.out).

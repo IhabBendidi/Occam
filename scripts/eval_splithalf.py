@@ -307,6 +307,61 @@ def assert_checkpoint_matches(ckpt_path: str, manifest, ckpt=None, panel_dir=Non
           f"val cell lines {ckpt.get('val_cell_lines')}")
 
 
+def assert_ood_context(ckpt_path: str, manifest, ckpt=None, panel_dir=None,
+                       out_dir=None) -> dict:
+    """`--ood-context`: accept a checkpoint on a panel from a DIFFERENT cell line/benchmark.
+
+    Used for `h1_seen`: rhj_fewshot checkpoints scored on H1, a cell line none of them saw.
+    The two refusals of `assert_checkpoint_matches` are correct for a rebuild of the same
+    benchmark and wrong here, by design: the axis is a SUBSET of the training axis, and the
+    cohort perturbations ARE in training (that is the point: seen pert, unseen line).
+
+    What is still enforced:
+      * the panel must declare itself `ood_context` in its manifest, so the flag cannot be
+        used to push a checkpoint through a same-context panel it does not match;
+      * the panel's `seen_from.gene_axis_sha256` must be the axis this checkpoint trained on;
+      * every panel axis gene must be in the checkpoint's gene vocabulary (load_frozen).
+    It writes `context_shift.json` recording the seen / not-seen overlap per cohort pert.
+    """
+    if ckpt is None:
+        import torch
+        ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
+    if not manifest.get("ood_context"):
+        raise SystemExit("--ood-context given, but this panel's splits_manifest.json does not "
+                         "declare `ood_context: true`. It is a same-context panel; drop the "
+                         "flag and let the benchmark check run.")
+    b = ckpt.get("benchmark") or {}
+    src = manifest.get("seen_from") or {}
+    if b.get("gene_axis_sha256") != src.get("gene_axis_sha256"):
+        raise SystemExit(
+            f"--ood-context: checkpoint axis {str(b.get('gene_axis_sha256'))[:16]} is not the "
+            f"axis this panel was derived from ({str(src.get('gene_axis_sha256'))[:16]}, "
+            f"{src.get('benchmark_id')})")
+    cohort = _cohort_labels(panel_dir) or []
+    trained = {str(x) for x in (ckpt.get("split_info", {}).get("train") or [])}
+    excluded = set()
+    for v in (b.get("excluded_perts") or {}).values():
+        excluded |= {str(x) for x in v}
+    rec = {
+        "checkpoint": ckpt_path, "checkpoint_benchmark": b.get("id"),
+        "panel_benchmark": manifest.get("benchmark_id"),
+        "panel_cell_line": manifest.get("cell_line"),
+        "panel_n_axis_genes": manifest.get("n_axis_genes"),
+        "checkpoint_n_axis_genes": b.get("n_axis_genes"),
+        "n_cohort": len(cohort),
+        "n_in_split_info_train": sum(q in trained for q in cohort),
+        "n_in_excluded_perts": sum(q in excluded for q in cohort),
+    }
+    print(f"[splithalf] OOD CONTEXT: {b.get('id')} checkpoint on {rec['panel_benchmark']} "
+          f"({rec['panel_cell_line']}), axis {rec['panel_n_axis_genes']} of "
+          f"{rec['checkpoint_n_axis_genes']} genes; {rec['n_in_split_info_train']}/"
+          f"{len(cohort)} cohort perts in the checkpoint's training list")
+    if out_dir:
+        with open(os.path.join(out_dir, "context_shift.json"), "w") as fh:
+            json.dump(rec, fh, indent=2, sort_keys=True)
+    return rec
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -352,6 +407,10 @@ def main() -> int:
                          "when identical in content. Without this flag a rebuild is "
                          "accepted after verifying the same scoring axis AND that every "
                          "scored perturbation is held out of the checkpoint's training.")
+    ap.add_argument("--ood-context", action="store_true",
+                    help="score a checkpoint on a panel from a cell line it never saw "
+                         "(e.g. h1_seen). Replaces the same-benchmark check with "
+                         "assert_ood_context; the panel must declare `ood_context`.")
     ap.add_argument("--calibrate", default="none",
                     choices=["none", "quantile", "both"],
                     help="control-fit quantile calibration is worth ~0.37 pearson_delta "
@@ -478,9 +537,13 @@ def main() -> int:
         what = "PROBE" if args.probe else "REFERENCE"
         print(f"[splithalf] {what}: identity prediction, scoring {arms}")
     else:
-        assert_checkpoint_matches(args.checkpoint, man, ckpt=loaded_ckpt,
-                                  panel_dir=args.panel_dir,
-                                  require_exact=args.require_exact_benchmark)
+        if args.ood_context:
+            assert_ood_context(args.checkpoint, man, ckpt=loaded_ckpt,
+                               panel_dir=args.panel_dir, out_dir=out_dir)
+        else:
+            assert_checkpoint_matches(args.checkpoint, man, ckpt=loaded_ckpt,
+                                      panel_dir=args.panel_dir,
+                                      require_exact=args.require_exact_benchmark)
         if args.mode == "model":
             arms = None      # build_arms emits them; score_only filters below
 

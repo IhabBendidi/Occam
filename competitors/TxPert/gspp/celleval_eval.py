@@ -46,6 +46,33 @@ PDEX_KWARGS = dict(exp_post_agg=True, is_log1p=True)
 CONTROL_OUT = "empty"
 
 
+
+def _pdex_in_process_pool():
+    """Make pdex's `mp.Pool(1)` an IN-PROCESS pool. Idempotent.
+
+    ⚠️ "serial" was not serial: pdex's `parallel_differential_expression` always does
+    `with mp.Pool(num_workers)`, so num_workers=1 still FORKS a worker out of a training
+    process that holds CUDA and dataloader threads. Measured 2026-09-23: 4 TxPert runs
+    (norman s46, rhj s43/s45/s46) froze at "Processing batches" with CELLEVAL_NUM_THREADS=1
+    and were killed by the watchdog after 45 min of silence. `multiprocessing.dummy.Pool`
+    runs the same `imap` over the same shared-memory batches in a thread of THIS process:
+    identical results, nothing forked, nothing to deadlock.
+    """
+    import multiprocessing as _mp
+    import multiprocessing.dummy as _mpd
+    import types as _types
+    try:
+        import pdex._single_cell as _sc
+    except Exception:  # noqa: BLE001 -- pdex absent: nothing to patch
+        return
+    if getattr(_sc.mp, "_occam_in_process", False):
+        return
+    shim = _types.SimpleNamespace(**{k: getattr(_mp, k) for k in dir(_mp)
+                                     if not k.startswith("__")})
+    shim.Pool = _mpd.Pool
+    shim._occam_in_process = True
+    _sc.mp = shim
+
 def effective_cpu_count() -> int:
     """cgroup-aware CPU count (port of ``_predict.py:5-16``).
 
@@ -139,6 +166,8 @@ def run_cell_eval(
     _override = os.environ.get("CELLEVAL_NUM_THREADS", "").strip()
     if _override:
         n_threads = max(1, int(_override))
+    if n_threads == 1:
+        _pdex_in_process_pool()
     for cell_type in ct_real:
         logger.info("cell-eval: scoring %s (%d threads) ...", cell_type, n_threads)
         evaluator = MetricsEvaluator(

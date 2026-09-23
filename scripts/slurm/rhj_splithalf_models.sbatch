@@ -96,7 +96,10 @@ fi
 
 CACHE="${DE_CACHE:-runs/rhj_splithalf/_de_real_shared}"
 mkdir -p "$CACHE"
-OUT="runs/rhj_splithalf/${OUT_PREFIX:-}${ARM}__${TAG}"
+# OUT_BASE / PANEL_DIR / EXTRA_ARGS: optional, for scoring these checkpoints on ANOTHER
+# panel (e.g. h1_seen: OUT_BASE=runs/h1_seen PANEL_DIR=data/benchmarks/h1_seen/splithalf
+# EXTRA_ARGS=--ood-context DE_CACHE=runs/h1_seen/_de_real_shared). Unset = unchanged.
+OUT="${OUT_BASE:-runs/rhj_splithalf}/${OUT_PREFIX:-}${ARM}__${TAG}"
 mkdir -p "$OUT"
 
 echo "=== rhj split-half MODEL arm · ${ARM} (${KIND}) · split ${SPLIT} ==="
@@ -107,6 +110,7 @@ echo "slurm   : job ${SLURM_ARRAY_JOB_ID:-?} task ${IDX} -> arm ${ARM_I}, split 
 echo "ckpt    : $CKPT"
 echo "calib   : ${CALIBRATE:-none}   center_delta=${CENTER_DELTA:-0}"
 echo "de cache: $CACHE"
+echo "panel   : ${PANEL_DIR:-<rhj_fewshot default>}   extra: ${EXTRA_ARGS:-none}"
 echo "out     : $OUT/split_$(printf %02d "$SPLIT")"
 echo
 
@@ -125,6 +129,8 @@ python scripts/eval_splithalf.py \
     --de-real-cache-dir "$CACHE" \
     --calibrate "${CALIBRATE:-none}" \
     ${CENTER_DELTA:+--center-delta} \
+    ${PANEL_DIR:+--panel-dir "$PANEL_DIR"} \
+    ${EXTRA_ARGS:-} \
     --num-threads 16
 
 echo

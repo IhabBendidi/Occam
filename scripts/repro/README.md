@@ -13,7 +13,7 @@ because `configs/rhj_fewshot.yaml` and `configs/norman_combo.yaml` now ship the 
 | data | HepG2 + Jurkat + RPE1 | K562 (Norman 2019, GEO rebuild) |
 | published arm | `Y06` | `NQ02` |
 | headline | `pearson_delta` **0.4043** (bar: `transfer` 0.2323) | **0.8169** / **0.7380** (bar: `sum_of_singles` 0.8824 / 0.7757) |
-| 0. build the data | `build_benchmark_rhj.sh` | `build_benchmark_norman.sh` |
+| 0. build the data | `build_benchmark_rhj.sh` (+ `build_benchmark_h1.sh`, unseen-line panel) | `build_benchmark_norman.sh` |
 | 1. train | `rhj_train.sh` | `norman_train.sh` |
 | 2. evaluate | `rhj_eval.sh` | `norman_eval.sh` |
 | 2b. baselines | `baselines.sh` | `BENCHMARK=norman_combo baselines.sh` |
@@ -94,6 +94,29 @@ Identical on all three.
 
 ⚠️ Skip this entirely if you downloaded `benchmarks/rhj_fewshot/` and
 `benchmarks/norman_combo/` from the Hub — those ARE the frozen artifacts.
+
+## 0b. `h1_seen` — the RHJ checkpoints on an UNSEEN cell line (H1 hESC, VCC 2025)
+
+The 99 H1 perturbations that ARE in `rhj_fewshot` training, on a cell line no RHJ model
+saw (not even its controls). Same split-half protocol; no training. Details and results:
+`docs/h1_seen.md`.
+
+```bash
+# inputs from the Hub: benchmarks/h1_seen/h1_seen_raw.h5ad (the local copy, 8.8 GB),
+# benchmarks/rhj_fewshot/, eval/pert/{nadig_2024_hepg2,nadig_2024_jurkat,replogle_2022_rpe1_e}.h5ad
+OUT=/tmp/h1_check bash scripts/repro/build_benchmark_h1.sh   # ~10 min, ~120 GB RAM, no GPU
+BUILD_JOB= bash scripts/repro/h1_seen.sh                       # score Occam + baselines + competitors
+```
+
+The build starts from the published local copy (sha256 `3cf2642f…`, checked first), which
+already holds the selected cells in build order; it then normalises, freezes the cohort,
+draws the 5 splits and builds the `meanpert` / `transfer` baselines, and compares every
+quantity (axis, cohort, every cell of `X`, labels, batches, all 5 A/B splits, both
+baselines) against the published panel. Exit 3 names each difference.
+
+Scoring an RHJ checkpoint here needs `--ood-context` on `scripts/eval_splithalf.py`
+(`h1_seen.sh` passes it): the panel's axis is a subset of the training axis and its
+perturbations are seen by design, which the same-benchmark guard correctly refuses.
 
 ## 1. Train
 

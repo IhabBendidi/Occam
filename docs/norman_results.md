@@ -659,7 +659,7 @@ wholesale. Does a different schedule, batch size, loss scale or lr do better on 
 | **NB12** | **bs 512**, eta 1e-3 | **0.8877** | 0.7700 | 0.0116 | 0.0139 | 0.3043 | 0.2953 | 0.8579 | 0.7548 |
 | NE22 | bs 2048, eta **3e-3** (> lr!) | 0.8595 | 0.7686 | 0.0124 | 0.0141 | 0.2654 | 0.2630 | 0.8013 | 0.7365 |
 | NB09 | bs 256, eta 3e-4 | 0.8785 | 0.7660 | 0.0114 | 0.0140 | 0.3092 | 0.2881 | 0.8928 | 0.7425 |
-| NE29 | lr **3e-3** (n=3/5 splits) | 0.8335 | 0.7384 | 0.0130 | 0.0146 | 0.2397 | 0.2280 | 0.7782 | 0.7316 |
+| NE29 | lr **3e-3** (5/5 splits; was 0.8335/0.7384 on 3/5) | 0.8326 | 0.7401 | 0.0129 | 0.0146 | 0.2392 | 0.2274 | 0.7775 | 0.7325 |
 | *NQ02* | *PUBLISHED* bs 2048, 150 ep | *0.8169* | *0.7380* | *0.0123* | *0.0146* | *0.3059* | *0.2843* | *0.9091* | *0.7708* |
 | NB11 | bs 512, eta 3e-4 | 0.8336 | 0.7304 | 0.0120 | 0.0145 | 0.2877 | 0.2804 | 0.8890 | 0.7441 |
 | NC15 | bs 4096, 600 ep | 0.7841 | 0.7289 | 0.0135 | 0.0149 | 0.2411 | 0.2322 | 0.7992 | 0.7055 |
@@ -901,3 +901,9 @@ nonadditive pd, except NE22 (eta 3e-3 > lr, pd 0.8595 / 0.7686, but dl1 0.8013 /
 eta 1e-6 / 1e-5 / 1e-4 / 1e-3 → 0.6829 / 0.6838 / 0.6601 / 0.6611. Batch size is the only
 lever that won. ⚠️ 150→180 ep at the same floor moved non pd by −0.076 (NQ02 vs NA07), n=1:
 that is larger than most between-arm gaps, so the NA04 retrain control is what sizes this noise.
+
+
+### Update 2026-09-23 — NE29 complete (5/5 splits)
+NE29 (lr 3e-3, bs 2048, 150 ep, eta 3e-4) after the split 0/2 re-eval (job 18364991):
+pΔ 0.8326 / 0.7401, mae 0.0129 / 0.0146 ↓, ovl 0.2392 / 0.2274, dl1 0.7775 / 0.7325 (add / non).
+The 3/5 reading (0.8335 / 0.7384) moved by < 0.002; its place in the sweep table is unchanged.

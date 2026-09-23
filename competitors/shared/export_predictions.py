@@ -57,7 +57,7 @@ from emission_space import (  # noqa: E402
     assert_representable, describe_space, space_diagnostics, to_eval_space,
 )
 
-__all__ = ["PanelSplit", "load_panel_split", "export_split", "CONTROL"]
+__all__ = ["PanelSplit", "load_panel_split", "export_split", "draw_proxy_batches", "CONTROL"]
 
 CONTROL = "non-targeting"
 
@@ -99,7 +99,7 @@ class PanelSplit:
     """
 
     def __init__(self, index, ctrl, labels, target, ctrl_b_rows, cohort, manifest,
-                 batches=None):
+                 batches=None, model_cols=None):
         self.index = index
         self.ctrl = ctrl
         self.labels = labels
@@ -108,6 +108,13 @@ class PanelSplit:
         self.cohort = cohort
         self.manifest = manifest
         self.batches = batches
+        # OOD-context panels only (e.g. h1_seen): the panel axis is a SUBSET of the axis the
+        # model was trained on. `ctrl` is then on the MODEL axis (zeros at the genes the
+        # panel lacks) and `model_cols[j]` is the model-axis column of panel gene j, which
+        # `export_split` gathers from the emission. None = the two axes are the same.
+        self.model_cols = model_cols
+        # set by `draw_proxy_batches` when the batch covariate is a proxy, recorded
+        self.context_proxy = None
 
     def __len__(self) -> int:
         return len(self.labels)
@@ -164,6 +171,33 @@ def load_panel_split(panel_dir: str, split_index: int, *,
     if "batches" in z.files:
         batches = np.asarray(z["batches"], dtype=str)[a_rows]
 
+    # ---- OOD-context panel: scatter the panel axis onto the model's training axis ------
+    model_cols = None
+    if man.get("ood_context"):
+        src = man.get("seen_from") or {}
+        repo = os.path.dirname(os.path.dirname(_HERE))
+        axis_csv = os.path.join(repo, "data", "benchmarks", str(src.get("benchmark_id")),
+                                "gene_axis.csv")
+        with open(axis_csv) as fh:
+            model_axis = [ln.split(",")[0] for ln in fh.read().splitlines()[1:] if ln]
+        import hashlib as _hl
+        if _hl.sha256("\n".join(model_axis).encode()).hexdigest() != src.get(
+                "gene_axis_sha256"):
+            raise RuntimeError(f"{axis_csv} does not hash to the panel's seen_from axis")
+        pos = {g: i for i, g in enumerate(model_axis)}
+        panel_axis = [str(g) for g in z["axis_ensembl"]]
+        outside = [g for g in panel_axis if g not in pos]
+        if outside:
+            raise RuntimeError(f"{len(outside)} panel genes are not on the model axis, "
+                               f"e.g. {outside[:3]}")
+        model_cols = np.array([pos[g] for g in panel_axis], dtype=np.int64)
+        full = np.zeros((ctrl_train.shape[0], len(model_axis)), dtype=np.float32)
+        full[:, model_cols] = ctrl_train
+        ctrl_train = full
+        print(f"[export]   OOD context {man.get('cell_line')!r}: panel axis "
+              f"{len(panel_axis):,} scattered onto the {len(model_axis):,}-gene model axis "
+              f"({len(model_axis) - len(panel_axis):,} input genes are zero)")
+
     print(f"[export] split {k}: {len(labels):,} rows · {len(ctrl_b):,} half-B controls · "
           f"control input at target_sum {target_sum:g}")
     if batches is None:
@@ -173,7 +207,30 @@ def load_panel_split(panel_dir: str, split_index: int, *,
         print(f"[export]   batches     : {len(set(batches.tolist()))} distinct, "
               f"from the perturbed cells")
     print(f"[export]   input space : {describe_space(ctrl_train, target_sum=target_sum).summary()}")
-    return PanelSplit(k, ctrl_train, labels, X[a_rows], ctrl_b, cohort, man, batches=batches)
+    return PanelSplit(k, ctrl_train, labels, X[a_rows], ctrl_b, cohort, man, batches=batches,
+                      model_cols=model_cols)
+
+
+def draw_proxy_batches(split: PanelSplit, candidates: Sequence[str], *,
+                       seed: int = 42, why: str = "") -> np.ndarray:
+    """Replace `split.batches` by a seeded, uniform per-cell draw from `candidates`.
+
+    For an OOD-context panel whose batches the model has never seen (h1_seen: `Flex_*`),
+    an arm with a trained batch embedding still needs SOME batch per cell. One constant is
+    off-distribution (measured 0.37 relative change on STATE), so each cell gets an
+    independent draw from the model's own batches of the proxy cell line. Deterministic
+    per split. Recorded in the manifest by `export_split` as `context_proxy`.
+    """
+    cands = sorted(str(c) for c in candidates)
+    if not cands:
+        raise RuntimeError("no candidate batches to draw a proxy from")
+    rng = np.random.default_rng(int(seed) + 1000 * int(split.index) + 7)
+    split.batches = np.asarray(cands, dtype=object)[rng.integers(0, len(cands), len(split))]
+    split.context_proxy = {"batch": "uniform per-cell draw", "n_candidates": len(cands),
+                           "candidates_example": cands[:3], "seed": int(seed), "why": why}
+    print(f"[export]   PROXY batch covariate: uniform per-cell draw from {len(cands)} "
+          f"model batches (e.g. {cands[0]!r})")
+    return split.batches
 
 
 def compose_sequential(predict: Callable[[np.ndarray, Sequence[str]], np.ndarray],
@@ -282,6 +339,10 @@ def export_split(predict: Callable[[np.ndarray, Sequence[str]], np.ndarray],
         if (s // batch_size) % 4 == 0:
             print(f"[export]   {e:,}/{n:,} rows", flush=True)
     raw = np.concatenate(chunks, axis=0)
+    if split.model_cols is not None:
+        # OOD-context panel: emitted on the model axis, scored on the panel's subset of it
+        raw = raw[:, split.model_cols]
+        print(f"[export]   gathered {raw.shape[1]:,} panel genes from the model-axis emission")
 
     print(f"[export]   raw emission : "
           f"{describe_space(raw, target_sum=from_target_sum).summary()}")
@@ -324,6 +385,8 @@ def export_split(predict: Callable[[np.ndarray, Sequence[str]], np.ndarray],
                     else "log1p(x * to/from)"),
         },
         "representable": True,
+        "ood_context": bool(split.manifest.get("ood_context")),
+        "context_proxy": split.context_proxy,
         "space_diagnostics": diag,
     }
     if extra_manifest:

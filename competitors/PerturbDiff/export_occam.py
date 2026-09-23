@@ -201,6 +201,11 @@ def main(argv=None) -> int:
                     help="sequential composition for `A+B` labels. Required on "
                          "norman_combo; a no-op on a single-perturbation panel, where "
                          "every label passes straight through.")
+    ap.add_argument("--proxy-batch-draw", action="store_true",
+                    help="OOD-context panels only (h1_seen): the panel's batches are not "
+                         "in this checkpoint's vocabulary, so each cell's batch covariate "
+                         "is a seeded uniform draw from the proxy cell line's batches. "
+                         "Recorded in the manifest as `context_proxy`.")
     args = ap.parse_args(argv)
     if not args.cell_type:
         args.cell_type = _evaluated_line(args.bench_dir)
@@ -297,6 +302,14 @@ def main(argv=None) -> int:
         raise SystemExit(
             "the panel carries no per-cell `batches`, so this arm would condition every row "
             "on one constant batch against a trained batch embedding. Rebuild the panel.")
+    if split.manifest.get("ood_context"):
+        if not args.proxy_batch_draw:
+            raise SystemExit(
+                f"panel is an OOD context ({split.manifest.get('cell_line')!r}); its batches "
+                f"are not in this checkpoint's batch_dict. Pass --proxy-batch-draw.")
+        from export_predictions import draw_proxy_batches
+        draw_proxy_batches(split, [b for b in dm.batch_dict if str(b).startswith(f"{ds_name}_")],
+                           seed=args.seed, why=f"OOD panel; proxy dataset {ds_name}")
     _uniq_b = sorted(set(str(b) for b in split.batches))
     _bmap = {b: _batch_code(b) for b in _uniq_b}
     batch_codes_all = torch.tensor([_bmap[str(b)] for b in split.batches], dtype=torch.long)

@@ -158,6 +158,11 @@ def main(argv=None) -> int:
                     help="sequential composition for `A+B` labels. Required on "
                          "norman_combo; a no-op on a single-perturbation panel, where "
                          "every label passes straight through.")
+    ap.add_argument("--proxy-batch-draw", action="store_true",
+                    help="OOD-context panels only (h1_seen): the panel's batches are not "
+                         "in this checkpoint's vocabulary, so each cell's batch covariate "
+                         "is a seeded uniform draw from the proxy cell line's batches. "
+                         "Recorded in the manifest as `context_proxy`.")
     args = ap.parse_args(argv)
     if not args.cell_type:
         args.cell_type = _evaluated_line(args.bench_dir)
@@ -166,8 +171,8 @@ def main(argv=None) -> int:
 
     import torch
 
-    from export_predictions import (TRAIN_TARGET_SUM, compose_sequential, export_split,
-                                 load_panel_split)
+    from export_predictions import (TRAIN_TARGET_SUM, compose_sequential,
+                                    draw_proxy_batches, export_split, load_panel_split)
     from state.tx.data import get_datamodule
 
     ckpt = _resolve_checkpoint(args.seed, args.checkpoint, args.bench_dir)
@@ -237,6 +242,15 @@ def main(argv=None) -> int:
             "the panel carries no per-cell `batches`, so this arm would have to condition on "
             "a single constant batch. Rebuild the panel, or pass --allow-constant-batch to "
             "accept the measured 0.37 relative distortion.")
+
+    if split.manifest.get("ood_context"):
+        if not args.proxy_batch_draw:
+            raise SystemExit(
+                f"panel is an OOD context ({split.manifest.get('cell_line')!r}); its batches "
+                f"are not in this checkpoint's vocabulary. Pass --proxy-batch-draw.")
+        draw_proxy_batches(
+            split, [k for k in dm.batch_onehot_map if str(k).startswith(f"{args.cell_type}__")],
+            seed=args.seed, why=f"OOD panel; proxy cell type {args.cell_type}")
 
     def _batch_key(raw: str) -> str:
         for cand in (f"{args.cell_type}__{raw}", raw, f"{args.cell_type}_{raw}"):

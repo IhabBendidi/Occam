@@ -26,6 +26,7 @@ checkpoints/MODEL_CARD.md
 checkpoints/vcell/rhj_fewshot_Y06/            the rhj_fewshot main checkpoint + CARD.md
 checkpoints/vcell/norman_combo_NQ02/          the norman_combo main checkpoint + CARD.md
 benchmarks/norman_combo/                       axis, cohort, 5 splits, baselines
+benchmarks/h1_seen/                            H1 (VCC 2025) local copy h1_seen_raw.h5ad + panel
 metrics/metrics_long.csv  metrics/*.csv        EVERY cell-eval metric, per arm, per split
 metrics/per_perturbation/                      cell-eval's per-perturbation rows
 repro/{rhj,norman}_{train,eval}.sh             the reproduction path
@@ -47,6 +48,7 @@ points at:
 | `checkpoints/*.pth`, `checkpoints/*.json`, `checkpoints/*.md` | `checkpoints/release/` |
 | `checkpoints/vcell/` | anywhere — pass the path to `--checkpoint` |
 | `benchmarks/norman_combo/` | `data/benchmarks/norman_combo/` |
+| `benchmarks/h1_seen/` | `data/benchmarks/h1_seen/` — rebuild with `scripts/repro/build_benchmark_h1.sh` |
 | `metrics/` | `data/release/metrics/` (regenerable) |
 | `repro/` | `scripts/repro/` (also in git) |
 
@@ -144,6 +146,7 @@ seconds.
 
 | 2026-09-22 | pass 3: both vcell checkpoints + cards + `metrics/` | sha256 of BOTH checkpoints verified before upload; re-read from the Hub |
 | 2026-09-22 | pass 4: `graphs/`, `benchmarks/rhj_fewshot/`, `metrics_all/`, `repro/` | **332 files, 21.235 GB, `private: True`** |
+| 2026-09-23 | pass 5: `benchmarks/h1_seen/` (incl. `h1_seen_raw.h5ad` 8.85 GB), `repro/` | re-read from the Hub: raw copy LFS sha256 `3cf2642f…` = local; `private: True` |
 
 Re-read from the Hub after pass 4, with `files_metadata=True`:
 

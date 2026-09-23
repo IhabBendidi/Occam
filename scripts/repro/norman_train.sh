@@ -39,7 +39,8 @@
 # =====================================================================
 set -euo pipefail
 
-HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# SLURM_SUBMIT_DIR first: under sbatch BASH_SOURCE is the spool copy, outside the repo.
+HERE="$(cd "${SLURM_SUBMIT_DIR:-$(dirname "${BASH_SOURCE[0]}")/../..}" && pwd)"
 cd "$HERE"
 mkdir -p runs/slurm
 export PYTHONPATH="$HERE/src${PYTHONPATH:+:$PYTHONPATH}"
