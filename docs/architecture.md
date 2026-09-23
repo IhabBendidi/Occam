@@ -83,8 +83,10 @@ latent (512) → Linear (hidden_dim)
 | large | 3072 | 6 | 259.5 M |
 | xlarge | 4096 | 8 | 470.8 M |
 
-The **released** decoder is 2048 × **5** (137.4 M), which is not a preset.
-Resolution order is explicit flag > preset > legacy default (2048 × 4).
+The **released** decoder is 2048 × 4 (128.5 M), the `base` preset and the code
+default. The superseded decoder in `checkpoints/legacy/` is 2048 × **5**
+(137.4 M), which is not a preset. Resolution order is explicit flag > preset >
+legacy default (2048 × 4).
 
 ### Output activation
 
@@ -93,16 +95,17 @@ Two options, and the choice matters more than it looks.
 `rectified_sigmoid` — `upper_bound · relu(2·sigmoid(x/2e) − 1)`. Bounded above
 by `log1p(2000) ≈ 7.6`, and **exactly zero for every non-positive
 pre-activation, with exactly zero gradient there.** Genes that are rarely
-detected get pinned and never recover: on the released checkpoint, 83.6% of the
-44,728 genes come out constant across cells.
+detected get pinned and never recover: on the superseded legacy checkpoint,
+83.6% of the 44,728 genes come out constant across cells.
 
 `softplus` — strictly positive, nowhere-zero gradient, unbounded above.
 
-The released model uses `rectified_sigmoid`.
-`configs/decoder_softplus_nb.yaml` prepares the replacement, paired with a
-negative-binomial loss: softplus with smooth-L1 showed ~38% validation-loss
-spikes, while softplus with NB trained smoothly to epoch 200, so the likelihood
-appears to tame the unbounded output.
+The released model uses `softplus`, paired with a negative-binomial loss
+(`configs/decoder_softplus_nb.yaml`, since 2026-09-16). Softplus with smooth-L1
+showed ~38% validation-loss spikes, while softplus with NB trained smoothly, so
+the likelihood appears to tame the unbounded output. It scores 0.5732
+calibrated `pearson_delta` on `nadig_2024_jurkat` against the superseded
+`rectified_sigmoid` decoder's 0.1985.
 
 ⚠️ The activation holds no parameters, so **a decoder trained with one loads
 `strict=True` under the other** and silently runs the wrong nonlinearity.

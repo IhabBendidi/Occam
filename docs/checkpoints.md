@@ -20,7 +20,8 @@ the chain of custody, inside the artifact.
 ```
 encoder_state_dict  the encoder half only (13 tensors)
 encoder_config      {model_size, hidden_size, num_genes}
-decoder_state_dict  the external decoder (99 tensors for 2048x5)
+decoder_state_dict  the external decoder (81 tensors for the released 2048x4;
+                    99 for the legacy 2048x5)
 decoder_config      {input_dim, output_dim, hidden_dim, num_blocks, dropout_rate,
                      se_reduction, output_activation, ...}
 model_state_dict    ⚠️ byte-identical to decoder_state_dict, NOT the model
@@ -58,17 +59,16 @@ distinguish "legitimately absent" from "wrong architecture".
 
 | field | value in the release | why it matters |
 |---|---|---|
-| `decoder_config.num_blocks` | **5** | the code default is 4; the state dict will not load |
+| `decoder_config.num_blocks` | **4** | the code default; the legacy decoder is 5 and will not load at 4 |
 | `target_sum` | **2000.0** | read from `dataset_info` before `config` |
-| `skip_normalize` / `skip_log1p` | absent → both False | inherit-then-OR: a CLI flag can only force a transform *off* |
-| `output_activation` | **absent** | the default is `rectified_sigmoid`; a softplus decoder loads cleanly under it and emits ~99% exact zeros |
+| `skip_normalize` / `skip_log1p` | both False | inherit-then-OR: a CLI flag can only force a transform *off* |
+| `decoder_config.output_activation` | **`softplus`** | recorded in the release; **absent** in the legacy file and older research checkpoints, where the default `rectified_sigmoid` makes a softplus decoder load cleanly and emit ~99% exact zeros |
 | `mae_decoder_hidden` | absent → 1024 | resolved from the config key, then the state dict, then a legacy default — never from the size preset |
 
-`scripts/verify_checkpoint.py --profile legacy` checks all of these, and
-**determines the output
-activation empirically** rather than trusting the default: under
-`rectified_sigmoid` 83.6% of genes come out constant across cells, under softplus
-0.0%.
+`scripts/verify_checkpoint.py` checks all of these. For the legacy file,
+`--profile legacy` **determines the output activation empirically** rather than
+trusting the default: under `rectified_sigmoid` 83.6% of genes come out constant
+across cells, under softplus 0.0%.
 
 ## Provenance
 

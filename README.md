@@ -280,19 +280,29 @@ the three stages were misdocumented in the tree this repo replaces.
 |---|---|---|---|---|
 | 1 pretrain | `nb_softplus`, MLW ramp 0.7 → 0.9 | 4e-4 | 100 | val 0.8786 |
 | 2 finetune | `poisson`, MLW ramp 0.7 → 0.0, gradual unmasking | 6e-4 | 100 | val 0.05102 |
-| 3 decoder | `smooth_l1` β 2.0, frozen encoder, 2048×5 | **3e-6** | 200 | val 0.0011786 @ ep 185 |
+| 3 decoder | `nb` (learned per-gene dispersion), `softplus` head, frozen encoder, 2048×4 | **5e-5** | 200 | val 0.05306 (NB) @ ep 124 |
 
 `small` = latent 512, encoder `44728 → 2048 → 1024 → 512`, 209,355,632 params in
-the full MAE. The released unified encoder+decoder is 231,673,723.
+the full MAE. The released unified encoder+decoder is 222,736,249 (encoder
+94,279,864 + decoder 128,456,385).
 
-⚠️ Two of these numbers differ from what was previously published. Two run
-directories were written by colliding SLURM array tasks, so the documented
-recipe does not produce the released weights.
+The superseded stage 3 (`smooth_l1` β 2.0, `rectified_sigmoid`, 2048×**5**, lr
+3e-6, val 0.0011786 @ ep 185, 231,673,723 params unified) is the stage-3 block of
+`configs/occam_small.yaml` and the file in `checkpoints/legacy/`.
+
+⚠️ Stage 1 and the superseded stage 3 differ from what was previously published.
+Two run directories were written by colliding SLURM array tasks, so the
+documented recipe did not produce those weights.
 **[docs/reproducing_chain_a.md](docs/reproducing_chain_a.md) has the evidence.**
 It is worth reading before you trust any number about this model.
 
 
 #### Training the MAE, stage by stage
+
+⚠️ `configs/occam_small.yaml` stage 3 trains the **superseded** decoder. To
+reproduce the released one, run stages 1–2 from it and stage 3 from
+`configs/decoder_softplus_nb.yaml`
+(`sbatch scripts/slurm/retrain_decoder.sbatch`).
 
 ```bash
 python -m occam.train --config configs/occam_small.yaml              # all three stages
@@ -321,17 +331,17 @@ python -m occam.train --config configs/occam_small_smoke.yaml \
     --set data.train=/tmp/occam_smoke.h5ad          # ~1 min, CPU
 ```
 
-### A better decoder, prepared but not run
+### The released decoder: softplus + NB
 
 `configs/decoder_softplus_nb.yaml` retrains stage 3 with a softplus head and a
-negative-binomial loss. On the decoder-only panels that moves nadig
-`pearson_delta` from 0.2285 to 0.6009 and cuts predicted significant genes from
-3,361 to 1,572 against a ground truth of 262.
+negative-binomial loss on the frozen stage-2 encoder. It was run (job
+`18006463`), its epoch-124 checkpoint is the released decoder, and on
+`nadig_2024_jurkat` it scores **0.5732** calibrated `pearson_delta` against the
+superseded decoder's 0.1985 ([docs/decoder_retrain_jurkat.md](docs/decoder_retrain_jurkat.md)).
 
-Nothing in this repo submits it. `sbatch scripts/slurm/retrain_decoder.sbatch`
-when you want it. Read the config header first — **calibration, not the loss, is
-the dominant term** (~0.37 pearson_delta against ~0.02), so an uncalibrated run
-of this arm is no better than the released decoder.
+`sbatch scripts/slurm/retrain_decoder.sbatch` reproduces it. Read the config
+header first — **calibration, not the loss, is the dominant term** (~0.37
+pearson_delta against ~0.02), so read decoder-only scores calibrated.
 
 
 ### Building a panel from your own corpus
@@ -461,8 +471,9 @@ of what was believed when is itself evidence, and three findings have been withd
 
 ## Gotchas that will bite you
 
-1. **`decoder_num_blocks` must be 5** for the released decoder. The code default
-   is 4 and the state dict will not load.
+1. **`decoder_num_blocks` is 4** for the released decoder (the code default).
+   Only the superseded `checkpoints/legacy/` decoder is 5 blocks; it will not
+   load at 4.
 2. **Stage 2's `mask_probability: 0.0` is inert.** Under `gradual` unmasking the
    ramp starts from the *parent checkpoint's* value (0.1), so masking is live
    for most of the finetune.
@@ -473,9 +484,11 @@ of what was believed when is itself evidence, and three findings have been withd
    `dataset_info` in preference to its config, which is why.
 5. **A unified checkpoint's `model_state_dict` is the decoder**, not the model.
    Use `occam.inference.loader.load_encoder_wrapper`.
-6. **Output activation is not recorded in the released file.** A softplus
-   decoder loaded under the `rectified_sigmoid` default loads cleanly and emits
-   ~99% exact zeros. Checkpoints written today record it.
+6. **Output activation is only recorded in newer files.** The released file
+   records `softplus` in `decoder_config`; the legacy file and older research
+   checkpoints record nothing. A softplus decoder loaded under the
+   `rectified_sigmoid` default loads cleanly and emits ~99% exact zeros, so pass
+   it explicitly for those.
 7. **Trust checkpoints, not sidecar JSON.** See
    [docs/reproducing_chain_a.md](docs/reproducing_chain_a.md).
 
