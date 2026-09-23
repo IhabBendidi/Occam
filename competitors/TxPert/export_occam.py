@@ -88,9 +88,17 @@ def _resolve_checkpoint(seed: int, explicit: str, bench_dir: str = "") -> str:
         if not os.path.isfile(explicit):
             raise SystemExit(f"no checkpoint at {explicit}")
         return explicit
+    # ⚠️ The run-name suffix must match the TRAIN leg's, which is
+    # `occam_s{SEED}{TAG_SUFFIX}`. TAG_SUFFIX carries BOTH the benchmark tag and the arm
+    # VARIANT: rhj's headline TxPert is `occam_s42_single` (single-cell controls), while
+    # the unsuffixed `occam_s42` is the WITHDRAWN mean-control run. Resolving without the
+    # env suffix would pick the withdrawn checkpoint for seed 42 and find nothing for any
+    # other seed. Env first (what the train leg used), bench tag as the fallback.
+    suffix = os.environ.get("TAG_SUFFIX")
+    if suffix is None:
+        suffix = _bench_tag(bench_dir)
     marker = os.path.join(_REPO, "runs", "competitors", "txpert", "ckpt",
-                          f"occam_s{seed}{_bench_tag(bench_dir)}",
-                          "best_ckpt_path.txt")
+                          f"occam_s{seed}{suffix}", "best_ckpt_path.txt")
     if not os.path.isfile(marker):
         raise SystemExit(
             f"no selection marker at {marker}. Either training has not finished for seed "

@@ -4,7 +4,7 @@
 #SBATCH --wckey=hooke-predict
 #SBATCH --cpus-per-task=2
 #SBATCH --mem=8G
-#SBATCH --time=14:00:00
+#SBATCH --time=48:00:00
 #SBATCH --output=runs/slurm/norman_autoeval_%j.out
 #SBATCH --error=runs/slurm/norman_autoeval_%j.err
 # =====================================================================
@@ -59,9 +59,11 @@ POLL_SECS="${POLL_SECS:-600}"
 MODES="${MODES:-decode_seq_mean}"
 # Which arms this daemon owns. The sweep arms are NA../NB../NC../ND../NE..; the published
 # bases (NM03/NM06/NQ02*) are already scored and must not be resubmitted.
-ARMS_RE="${ARMS_RE:-^N[ABCDE][0-9]+$}"
+# NA..NF are the sweep arms; S<seed>_<arm> are seed replicates. The published bases
+# (NM03, NM06, NQ02 and their 30-epoch `s` variants) are already scored and excluded.
+ARMS_RE="${ARMS_RE:-^(N[A-F][0-9]+|S[0-9]+_[A-Za-z0-9]+)$}"
 LEDGER="${LEDGER:-runs/norman_combo/autoeval_submitted.txt}"
-DEADLINE=$(( $(date +%s) + ${MAX_SECS:-46800} ))   # 13 h, inside the 14 h walltime
+DEADLINE=$(( $(date +%s) + ${MAX_SECS:-169200} ))  # 47 h, inside the 48 h walltime
 touch "$LEDGER"
 
 echo "=== norman auto-eval daemon ==="

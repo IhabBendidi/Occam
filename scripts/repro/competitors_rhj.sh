@@ -71,6 +71,32 @@ case "$ARM" in
        exit 2 ;;
 esac
 SEED="${SEED:-42}"
+# ⚠️ THE HEADLINE VARIANT OF EACH ARM, as named on disk. Without these the seed replicates
+# land beside the WRONG seed-42 run:
+#   txpert       -> txpert_single       (single-cell controls on both sides; 0.3463).
+#                                        Plain `txpert` (0.3077) is WITHDRAWN -- trained on
+#                                        mean controls, inferenced on single cells.
+#   perturbdiff  -> perturbdiff_genept  (GenePT perturbation encoding; 0.2449)
+#   cellflow, state -> no suffix
+# The TRAIN leg writes its checkpoint under the bare arm name either way; ARM_SUFFIX only
+# decides where the EXPORT and SCORE legs put their output, which is what the seed-42 run
+# and scripts/export_split_metrics.py read.
+if [ -z "${ARM_SUFFIX+x}" ]; then
+    case "$ARM" in
+        txpert)      ARM_SUFFIX="_single" ;;
+        perturbdiff) ARM_SUFFIX="_genept" ;;
+        *)           ARM_SUFFIX="" ;;
+    esac
+fi
+# TxPert's VARIANT is also in its CHECKPOINT name (`occam_s42_single`), set by TAG_SUFFIX
+# on the train leg and read back by the export resolver. PerturbDiff's variant is in
+# PD_PENC instead (its run name embeds `_genept_`), so it needs no TAG_SUFFIX.
+if [ -z "${TAG_SUFFIX+x}" ]; then
+    case "$ARM" in
+        txpert) TAG_SUFFIX="_single" ;;
+        *)      TAG_SUFFIX="" ;;
+    esac
+fi
 TASK=$(( SEED - 42 ))
 if [ "$TASK" -lt 0 ] || [ "$TASK" -gt 4 ]; then
     echo "SEED must be 42..46 (the array index is SEED-42), got $SEED" >&2
@@ -88,16 +114,23 @@ if [ ! -d data/benchmarks/rhj_fewshot/splithalf ]; then
     exit 1
 fi
 
-echo "=== competitor repro: $ARM, seed $SEED (array task $TASK) ==="
+echo "=== competitor repro: $ARM${ARM_SUFFIX}, seed $SEED (array task $TASK) ==="
 echo "git sha: $(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
 echo
+
+# ⚠️ DRY_RUN is honoured by wrapping sbatch, not by skipping the block: an earlier
+# "dry run" of this script SUBMITTED a real 3-job chain because the variable was read
+# by the Norman driver and not by this one.
+if [ -n "${DRY_RUN:-}" ]; then
+    sbatch() { echo "DRY_RUN would submit: sbatch $*" >&2; echo 0; }
+fi
 
 DEP=""
 if [ -z "${SKIP_TRAIN:-}" ]; then
     TRAIN_SCRIPT="scripts/slurm/competitor_train_${ARM}.sbatch"
     [ -f "$TRAIN_SCRIPT" ] || { echo "missing $TRAIN_SCRIPT" >&2; exit 1; }
     J1=$(sbatch --parsable "${QOS_ARGS[@]}" --array="$TASK" \
-         --export=ALL,SEED_BASE=42 "$TRAIN_SCRIPT")
+         --export=ALL,SEED_BASE=42,TAG_SUFFIX="$TAG_SUFFIX" "$TRAIN_SCRIPT")
     echo "1/3 train  : job $J1  ($TRAIN_SCRIPT)"
     DEP="--dependency=afterok:$J1"
 else
@@ -105,11 +138,13 @@ else
 fi
 
 J2=$(sbatch --parsable "${QOS_ARGS[@]}" $DEP --array="$TASK" \
-     --export=ALL,ARM="$ARM",SEED_BASE=42 scripts/slurm/competitor_export.sbatch)
+     --export=ALL,ARM="$ARM",ARM_SUFFIX="$ARM_SUFFIX",TAG_SUFFIX="$TAG_SUFFIX",SEED_BASE=42 \
+     scripts/slurm/competitor_export.sbatch)
 echo "2/3 export : job $J2  (predictions for all 5 splits, in OUR evaluation space)"
 
 J3=$(sbatch --parsable "${QOS_ARGS[@]}" --dependency=afterok:"$J2" --array=0-4%6 \
-     --export=ALL,ARM="$ARM",SEED="$SEED" scripts/slurm/competitor_score.sbatch)
+     --export=ALL,ARM="$ARM",ARM_SUFFIX="$ARM_SUFFIX",SEED="$SEED" \
+     scripts/slurm/competitor_score.sbatch)
 echo "3/3 score  : job $J3  (one task per split, %6 for the pdex /dev/shm race)"
 
 echo

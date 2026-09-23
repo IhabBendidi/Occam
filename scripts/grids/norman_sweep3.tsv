@@ -1,0 +1,29 @@
+# NORMAN SWEEP, PART 3 -- the small-batch winner under the CORRECT selection metric
+#
+# WHY. F-sweep1: bs 128 (NE25) scored 0.9003 / 0.7940 against sum_of_singles 0.8824 /
+# 0.7757 -- the first model above the additive bar on pearson_delta, on BOTH panels. But
+# NE25, like all 30 sweep arms, was SELECTED on `sum`: `panel_compose` had been wired into
+# the panel path, which selects nothing, while best_model.pth comes from `evaluate()`,
+# which still called forward(). That is now fixed (the log prints
+# "[val] selection metric composes pairs with: decode_seq_mean").
+#
+#   NF30  bs 128 -- BYTE-IDENTICAL to NE25 (same config, same seed 42), so the training
+#         TRAJECTORY is identical and ONLY THE SELECTED EPOCH can differ. NF30 vs NE25 is
+#         therefore a clean test of the selection metric at the winning batch size:
+#           same epoch picked  -> the selection metric does not matter here
+#           a different epoch  -> it does, and which one is better is the answer.
+#   NF31  bs 64   -- the next point down the monotone trend (133,500 steps)
+#   NF32  bs 32   -- the one after that (267,000 steps). bs 128 > 256 > 512 > 2048 is
+#                    monotone so far; these two say whether it keeps going or turns.
+#
+# All three use decode_seq_mean selection (the YAML default, now effective).
+# Anchors (additive / nonadditive pearson_delta): NE25 0.9003 / 0.7940 . sum_of_singles
+# 0.8824 / 0.7757 <- THE BAR . TxPert 5-seed mean 0.8523 / 0.7079 . experimental
+# 0.9165 / 0.8377. Read all four metrics; mae is an ERROR.
+#
+# COST  3 arms, ~3 GPU-h (bs 512/256/128 took 39/48/56 min; runtime grows slowly as
+# batch shrinks because per-step cost falls). Walltime 6 h for margin.
+arm	loss_type	nb_weight	nb_scale	delta_cos_weight	delta_mag_weight	latent_loss_type	latent_loss_weight	latent_cos_weight	latent_cos_target	recon_split	recon_ctrl_weight	recon_delta_weight	recon_split_mode	recon_delta_target	vicreg_var_weight	vicreg_cov_weight	vicreg_gamma	vicreg_target	epochs	eta_min	base	dcos_conc_weight	radial_spread_weight	gene_var_weight	batch_size	lr	seed
+NF30	smooth_l1	0	1.0	0.32977	0.0400866	delta_z	0.00198826	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	150	3e-4	F_bs128_dsmselect_CONTROL_vs_NE25	0.0	0.0	0.0	128	1e-3	42
+NF31	smooth_l1	0	1.0	0.32977	0.0400866	delta_z	0.00198826	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	150	3e-4	F_bs64_dsmselect	0.0	0.0	0.0	64	1e-3	42
+NF32	smooth_l1	0	1.0	0.32977	0.0400866	delta_z	0.00198826	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	150	3e-4	F_bs32_dsmselect	0.0	0.0	0.0	32	1e-3	42
