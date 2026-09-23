@@ -239,6 +239,15 @@ cat > "${RUN_DIR}/slurm_job.json" <<JSON
  "qos": "${SLURM_JOB_QOS:-}", "host": "$(hostname)", "started": "$(date -Is)"}
 JSON
 
+# Ablation hooks (2026-09-23), both opt-in and absent from every earlier launch:
+#   COS_W       profile-cosine weight (default 0.5, the value every run so far used)
+#   EXTRA_SETS  space-separated `key=value` config overrides appended LAST, e.g.
+#               EXTRA_SETS="stages.vcell.graph.graph_types=[go] stages.vcell.graph.no_gnn=true"
+#               They do not enter the run-dir identity, so ablation arms MUST differ by arm id.
+EXTRA_SET_ARGS=()
+for kv in ${EXTRA_SETS:-}; do EXTRA_SET_ARGS+=(--set "$kv"); done
+echo "ablation: COS_W=${COS_W:-0.5}  EXTRA_SETS=${EXTRA_SETS:-none}"
+
 python -m occam.train --config "$CONFIG" --stages vcell \
     --run-suffix "$SUFFIX" \
     --set "stages.vcell.graph.pert_model_type=adjacency_map" \
@@ -246,7 +255,7 @@ python -m occam.train --config "$CONFIG" --stages vcell \
     --set "stages.vcell.optim.lr=${LR}" \
     --set "stages.vcell.optim.decoder_lr=${LR}" \
     --set "stages.vcell.loss.loss_type=${LOSS}" \
-    --set "stages.vcell.loss.cosine_loss_weight=0.5" \
+    --set "stages.vcell.loss.cosine_loss_weight=${COS_W:-0.5}" \
     --set "stages.vcell.loss.nb_weight=${NBW}" \
     --set "stages.vcell.loss.nb_scale=${NBS}" \
     --set "stages.vcell.loss.delta_cos_weight=${DCW}" \
@@ -275,7 +284,8 @@ python -m occam.train --config "$CONFIG" --stages vcell \
     --set "seed=${SEED}" \
     ${EPOCHS:+--set "stages.vcell.optim.epochs=${EPOCHS}"} \
     ${ETA_MIN:+--set "stages.vcell.optim.eta_min=${ETA_MIN}"} \
-    ${SAVE_EVERY:+--set "stages.vcell.optim.save_every_epochs=${SAVE_EVERY}"}
+    ${SAVE_EVERY:+--set "stages.vcell.optim.save_every_epochs=${SAVE_EVERY}"} \
+    ${EXTRA_SET_ARGS[@]+"${EXTRA_SET_ARGS[@]}"}
 
 echo
 echo "finished: $(date -Is)"

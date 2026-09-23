@@ -1,0 +1,31 @@
+# OCCAM ABLATION ARMS -- the single source of truth for scripts/ablation/ablate.py
+#
+# WHY. Which parts of the official rhj_fewshot model (Y06) carry its performance? Every arm is Y06
+# with exactly ONE thing changed, trained on rhj_fewshot at seeds 42-46, scored at 5 split-halves on
+# rhj_fewshot, h1_seen, k562_seen and k562_seen_h1set (nocal). Plan and results: docs/ABLATION_PLAN.md.
+# Reference arm for every axis = Y06 itself (seed 42 = the published run, 43-46 = S4N_Y06).
+#
+# COLUMNS
+#   arm           id; run dirs are runs/rhj_fewshot_S<seed>_<arm>__<tag>, so it must be unique
+#   axis          A = perturbation representation, B = loss terms, C = encoder
+#   change        the ONE thing that differs from Y06, in words
+#   grid          overrides of the Y06 grid row, `column=value` comma-separated ('-' = none);
+#                 column names are the header of scripts/grids/rhj_seeds.tsv
+#   cos_w         profile-cosine weight (Y06: 0.5); passed to the launcher as COS_W
+#   extra_sets    config overrides passed as EXTRA_SETS, space-separated `key=value` ('-' = none)
+#   time          sbatch walltime
+#   status        ready | needs-code (launch refuses needs-code arms)
+arm	axis	change	grid	cos_w	extra_sets	time	status
+ABL_GO	A	perturbation graph prior = GO only	-	0.5	stages.vcell.graph.graph_types=[go]	08:00:00	ready
+ABL_STR	A	perturbation graph prior = STRING only	-	0.5	stages.vcell.graph.graph_types=[string]	08:00:00	ready
+ABL_LRN	A	no prior: learnable embedding per gene	-	0.5	stages.vcell.graph.no_gnn=true	08:00:00	ready
+ABL_GPT	A	frozen GenePT text embedding per gene	-	0.5	TBD	08:00:00	needs-code
+ABL_ESM	A	frozen ESM2 protein embedding per gene	-	0.5	TBD	08:00:00	needs-code
+ABL_L0	B	loss = smooth_l1 only	delta_cos_weight=0.0,delta_mag_weight=0,latent_loss_type=none,latent_loss_weight=0.0	0.0	-	08:00:00	ready
+ABL_L1	B	loss = smooth_l1 + profile cosine 0.5	delta_cos_weight=0.0,delta_mag_weight=0,latent_loss_type=none,latent_loss_weight=0.0	0.5	-	08:00:00	ready
+ABL_L2	B	loss = L1 + delta-cosine 0.5	delta_mag_weight=0,latent_loss_type=none,latent_loss_weight=0.0	0.5	-	08:00:00	ready
+ABL_L3	B	loss = L2 + delta-magnitude 0.01363 (Y06 minus latent MSE)	latent_loss_type=none,latent_loss_weight=0.0	0.5	-	08:00:00	ready
+ABL_C0P	C	pretrained encoder, frozen, NON-stream loader (same-path control for C1-C3)	-	0.5	TBD	24:00:00	needs-code
+ABL_C1	C	pretrained encoder, fine-tuned (non-stream loader)	-	0.5	TBD	48:00:00	needs-code
+ABL_C2	C	random-init encoder trained from scratch (non-stream loader)	-	0.5	TBD	48:00:00	needs-code
+ABL_C3	C	random-init encoder, frozen (non-stream loader)	-	0.5	TBD	24:00:00	needs-code

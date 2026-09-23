@@ -37,6 +37,12 @@ metrics `pearson_delta` ↑, `mae` ↓ (error), `overlap_at_N` ↑, `discriminat
 `scripts/score_ledger.py`; the table itself `data/release/final/scores_by_seed_split.csv`
 (`scripts/final_table.py`).
 
+## Ablation grid (in progress, 2026-09-23)
+
+Y06 with one part changed per arm (perturbation prior, loss terms, encoder), 5 seeds, scored on
+rhj + 3 OOD panels: `docs/ABLATION_PLAN.md`; driver `scripts/ablation/ablate.py` (arms in
+`scripts/ablation/arms.tsv`); table `data/release/ablation/`.
+
 ## Where each current number lives
 
 | topic | doc |
