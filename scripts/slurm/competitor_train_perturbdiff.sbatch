@@ -172,7 +172,14 @@ cd "$HERE/competitors/PerturbDiff"
     lightning.callbacks.checkpoint.every_n_train_steps=null \
     lightning.callbacks.checkpoint.every_n_epochs=1 \
     lightning.callbacks.checkpoint.dirpath="$CKPT_DIR" \
-    sampling.output_dir="$PD_OUT/valscore/$PD_RUN_NAME"
+    sampling.output_dir="$PD_OUT/valscore/$PD_RUN_NAME" &
+_TRAIN_PID=$!
+# ⚠️ Backgrounded ONLY so the watchdog can kill it on a hang; `wait` below
+# restores the foreground semantics, including the exit code.
+competitor_watchdog "$_TRAIN_PID" \
+    "$HERE/runs/slurm/cmp_pdiff_${SLURM_ARRAY_JOB_ID:-${SLURM_JOB_ID:-0}}_${SLURM_ARRAY_TASK_ID:-0}.out" \
+    "$HERE/runs/slurm/cmp_pdiff_${SLURM_ARRAY_JOB_ID:-${SLURM_JOB_ID:-0}}_${SLURM_ARRAY_TASK_ID:-0}.err"
+wait "$_TRAIN_PID" || exit $?
 
 echo "=== TRAIN DONE: $PD_RUN_NAME ==="
 echo "--- checkpoint kept (save_top_k=1) ---"

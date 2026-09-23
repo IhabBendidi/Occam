@@ -3234,7 +3234,29 @@ class VirtualCellTrainer:
                 raise ValueError(f"Unexpected batch type: {type(batch)}")
 
             with torch.amp.autocast("cuda", dtype=getattr(self, "_amp_dtype", torch.float16), enabled=(self.device == "cuda")):
-                model_output = fwd_model(ctrl, pert_idx)
+                # ⛔ THIS IS THE FORWARD THAT SELECTS best_model.pth. `val_pearson_delta`,
+                # the selection criterion, is computed from these predictions. It called
+                # `fwd_model(ctrl, pert_idx)` -- i.e. `forward()`, the `sum` mode -- so on a
+                # combinatorial benchmark checkpoint selection optimised `sum` while every
+                # reported number used `decode_seq_mean`.
+                #
+                # ⚠️ CORRECTION, 2026-09-23. `panel_compose` was first wired into the PANEL
+                # evaluation path (predict_panel, ~line 4740), which is an end-of-training
+                # measurement and selects NOTHING. All 30 arms of the norman sweep (jobs
+                # 18363844 / 18363864) therefore ran with `panel_compose: decode_seq_mean`
+                # in their resolved config and were STILL selected on `sum`: the
+                # "[panel] validation composition" line never printed once. Found by
+                # grepping the training logs for it. This is the site that matters.
+                _vc = str(getattr(self.config, "panel_compose", "") or "")
+                if _vc:
+                    _vbase = fwd_model.module if hasattr(fwd_model, "module") else fwd_model
+                    if not getattr(self, "_val_compose_announced", False):
+                        print(f"  [val] selection metric composes pairs with: {_vc}",
+                              flush=True)
+                        self._val_compose_announced = True
+                    model_output = _vbase.forward_composed(ctrl, pert_idx, _vc)
+                else:
+                    model_output = fwd_model(ctrl, pert_idx)
                 prediction = model_output["prediction"]
                 # Count non-finite eval predictions so `[val] loss=nan` EXPLAINS itself instead
                 # of just printing `nan` (F158). Diagnostic only — deliberately NOT repaired: the

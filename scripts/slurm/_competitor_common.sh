@@ -28,6 +28,46 @@ set -euo pipefail
 # be missed -- WANDB_MODE overrides the per-arm entity/project/name flags without touching them.
 export WANDB_MODE="${WANDB_MODE:-offline}"
 
+# ─── pdex SERIAL during in-training validation ──────────────────────────────────────────────
+# pdex's parallel pool deadlocked inside two training processes on 2026-09-22 (TxPert s46,
+# PerturbDiff s42, norman_combo): each went SILENT for 7+ h at "Processing batches", 0%
+# progress, one H100 held idle apiece. A pool forked from a process that already holds
+# CUDA and dataloader workers can deadlock; a serial run has no pool to deadlock. Read by
+# TxPert's gspp/celleval_eval.py and PerturbDiff's sampling_eval_celleval.py. The
+# validation set is small (norman 20 pairs), so serial costs seconds. The standalone
+# SCORE leg (competitor_score.sbatch) is a fresh process with no CUDA context and keeps
+# its own threads.
+export CELLEVAL_NUM_THREADS="${CELLEVAL_NUM_THREADS:-1}"
+
+# ─── stall watchdog: a hang must free its GPU, not hold it for hours ─────────────────────────
+# `competitor_watchdog <pid> <logfile>` kills <pid> if <logfile> has not been written for
+# STALL_SECS (default 45 min). Every legitimate phase writes far more often than that: an
+# epoch is minutes, a validation cell-eval logs per batch. Both hangs above were caught
+# only by a human reading mtimes 7 h later.
+competitor_watchdog() {
+    # competitor_watchdog <pid> <log> [<log> ...] -- the NEWEST mtime across the logs is
+    # what counts: tqdm writes .err constantly during training while loguru writes .out
+    # during validation, so either one alone goes quiet during a healthy phase.
+    local pid="$1"; shift
+    local limit="${STALL_SECS:-2700}"
+    ( while kill -0 "$pid" 2>/dev/null; do
+          sleep 300
+          local newest=0 f m
+          for f in "$@"; do
+              [ -f "$f" ] || continue
+              m=$(stat -c %Y "$f"); [ "$m" -gt "$newest" ] && newest=$m
+          done
+          [ "$newest" -gt 0 ] || continue
+          local age=$(( $(date +%s) - newest ))
+          if [ "$age" -gt "$limit" ]; then
+              echo "[watchdog] no log written for ${age}s (> ${limit}s): killing $pid so" \
+                   "the GPU is released. This is a HANG, not a slow run." >&2
+              kill -TERM "$pid" 2>/dev/null; sleep 30; kill -KILL "$pid" 2>/dev/null
+              exit 0
+          fi
+      done ) &
+}
+
 # ─── nodes to avoid ─────────────────────────────────────────────────────────────────────────
 # hop39's GPU is dead -- `nvidia-smi` there returns "Unable to determine the device handle for
 # GPU0 ... Unknown Error" / "No devices were found" -- while sinfo still reports the node `mix`,

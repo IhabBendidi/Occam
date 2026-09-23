@@ -127,6 +127,18 @@ def run_cell_eval(
         )
 
     n_threads = effective_cpu_count()
+    # ⚠️ HANG GUARD. With N > 1, pdex builds a multiprocessing pool ("Initializing parallel
+    # processing pool" -> "Processing batches"). Inside a training process that already
+    # holds CUDA and forked dataloader workers, that pool can deadlock: on 2026-09-22 two
+    # arms (TxPert s46 and PerturbDiff s42 on norman_combo) went SILENT for 7+ hours at
+    # exactly that line, 0 progress, each holding an H100. The same family as the 10 h
+    # PerturbDiff stall recorded in _competitor_common.sh.
+    # CELLEVAL_NUM_THREADS=1 makes pdex run serially -- no pool, nothing to deadlock. The
+    # validation set is small (norman: 20 pairs), so serial costs seconds, not minutes.
+    # Unset keeps the previous behaviour, so rhj_fewshot runs reproduce.
+    _override = os.environ.get("CELLEVAL_NUM_THREADS", "").strip()
+    if _override:
+        n_threads = max(1, int(_override))
     for cell_type in ct_real:
         logger.info("cell-eval: scoring %s (%d threads) ...", cell_type, n_threads)
         evaluator = MetricsEvaluator(

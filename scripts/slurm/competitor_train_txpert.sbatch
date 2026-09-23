@@ -169,7 +169,14 @@ cd "$HERE/competitors/TxPert"
     model.omit_cntr="$OMIT_CNTR" \
     wandb.name="txpert-occam-s${SEED}" \
     training.checkpoint.dirpath="$CKPT_DIR" \
-    training.validation_celleval.output_dir="$VAL_DIR"
+    training.validation_celleval.output_dir="$VAL_DIR" &
+_TRAIN_PID=$!
+# ⚠️ Backgrounded ONLY so the watchdog can kill it on a hang; `wait` below
+# restores the foreground semantics, including the exit code.
+competitor_watchdog "$_TRAIN_PID" \
+    "$HERE/runs/slurm/cmp_txpert_${SLURM_ARRAY_JOB_ID:-${SLURM_JOB_ID:-0}}_${SLURM_ARRAY_TASK_ID:-0}.out" \
+    "$HERE/runs/slurm/cmp_txpert_${SLURM_ARRAY_JOB_ID:-${SLURM_JOB_ID:-0}}_${SLURM_ARRAY_TASK_ID:-0}.err"
+wait "$_TRAIN_PID" || exit $?
 
 echo "=== TRAIN DONE ==="
 MARKER="$CKPT_DIR/best_ckpt_path.txt"

@@ -642,3 +642,154 @@ non-additive), so the middle of the field is cleanly ordered; only the top two s
 ⚠️ Still n=1 SEED. Paired-over-splits removes split noise, not seed noise, and
 `decode_seq_mean` was selected on this benchmark while TxPert's additive sum is its
 published mechanism.
+
+---
+
+## NORMAN SWEEP RESULTS (2026-09-23, overnight) — 27 of 30 arms scored
+
+**The question.** The shipped default (NQ02) was tuned on `rhj_fewshot` and moved over
+wholesale. Does a different schedule, batch size, loss scale or lr do better on Norman?
+`nocal`, seed 42, 5 splits, `decode_seq_mean` at eval. Sorted by `nonadditive`
+`pearson_delta`. **`mae` is an ERROR, lower better.** Bar: `sum_of_singles` 0.8824 / 0.7757.
+
+| arm | config | pd add | pd non | mae add ↓ | mae non ↓ | ovl add | ovl non | dl1 add | dl1 non |
+|---|---|---|---|---|---|---|---|---|---|
+| **NE25** | **bs 128**, 150 ep, eta 3e-4 | **0.9003** | **0.7940** | **0.0114** | **0.0134** | 0.3080 | 0.2942 | 0.8717 | 0.7489 |
+| **NB10** | **bs 256**, eta 1e-3 | **0.8910** | **0.7763** | **0.0112** | 0.0137 | **0.3207** | **0.3037** | 0.8804 | 0.7564 |
+| **NB12** | **bs 512**, eta 1e-3 | **0.8877** | 0.7700 | 0.0116 | 0.0139 | 0.3043 | 0.2953 | 0.8579 | 0.7548 |
+| NE22 | bs 2048, eta **3e-3** (> lr!) | 0.8595 | 0.7686 | 0.0124 | 0.0141 | 0.2654 | 0.2630 | 0.8013 | 0.7365 |
+| NB09 | bs 256, eta 3e-4 | 0.8785 | 0.7660 | 0.0114 | 0.0140 | 0.3092 | 0.2881 | 0.8928 | 0.7425 |
+| NE29 | lr **3e-3** (n=3/5 splits) | 0.8335 | 0.7384 | 0.0130 | 0.0146 | 0.2397 | 0.2280 | 0.7782 | 0.7316 |
+| *NQ02* | *PUBLISHED* bs 2048, 150 ep | *0.8169* | *0.7380* | *0.0123* | *0.0146* | *0.3059* | *0.2843* | *0.9091* | *0.7708* |
+| NB11 | bs 512, eta 3e-4 | 0.8336 | 0.7304 | 0.0120 | 0.0145 | 0.2877 | 0.2804 | 0.8890 | 0.7441 |
+| NC15 | bs 4096, 600 ep | 0.7841 | 0.7289 | 0.0135 | 0.0149 | 0.2411 | 0.2322 | 0.7992 | 0.7055 |
+| NE24 | 240 ep | 0.8183 | 0.7222 | 0.0125 | 0.0147 | 0.2813 | 0.2682 | 0.8417 | 0.7493 |
+| NE27 | loss scale **4×** | 0.7893 | 0.7044 | 0.0128 | 0.0150 | 0.2664 | 0.2555 | 0.8463 | 0.7202 |
+| ND19 | loss scale 2× | 0.7410 | 0.6964 | 0.0134 | 0.0150 | 0.2562 | 0.2554 | 0.8410 | 0.7278 |
+| NA06 | 180 ep, eta 1e-4 | 0.7687 | 0.6850 | 0.0133 | 0.0153 | 0.2927 | 0.2642 | 0.8619 | 0.7328 |
+| NE20 | eta **1e-5** | 0.7789 | 0.6838 | 0.0143 | 0.0169 | 0.2129 | 0.2027 | 0.8967 | 0.7273 |
+| NE21 | eta **1e-6** | 0.7819 | 0.6829 | 0.0127 | 0.0154 | 0.3115 | 0.2813 | 0.9016 | 0.7385 |
+| NE23 | **60 ep** | 0.7397 | 0.6688 | 0.0138 | 0.0161 | 0.2655 | 0.2551 | 0.8684 | 0.7332 |
+| NC14 | bs 4096, 300 ep | 0.7639 | 0.6675 | 0.0136 | 0.0158 | 0.2482 | 0.2417 | 0.8471 | 0.7023 |
+| NC13 | bs 1024, 300 ep | 0.7734 | 0.6645 | 0.0132 | 0.0159 | 0.2127 | 0.2090 | 0.8515 | 0.7200 |
+| NA07 | 180 ep, eta 3e-4 | 0.7461 | 0.6625 | 0.0140 | 0.0161 | 0.2820 | 0.2590 | 0.8643 | 0.7235 |
+| NA01 | 120 ep, eta 3e-4 | 0.7451 | 0.6611 | 0.0134 | 0.0154 | 0.2890 | 0.2718 | 0.8622 | 0.7361 |
+| NA02 · NA05 · NA08 | 120/150/180 ep, eta 1e-3 | 0.7409 | 0.6611 | 0.0141 | 0.0162 | 0.2324 | 0.2222 | 0.8387 | 0.7123 |
+| NA03 | 150 ep, eta 1e-4 | 0.7705 | 0.6601 | 0.0142 | 0.0171 | 0.2312 | 0.2016 | 0.9112 | 0.7033 |
+| NE26 | loss scale 0.25× | 0.7233 | 0.6480 | 0.0152 | 0.0170 | 0.2426 | 0.2287 | 0.8656 | 0.7245 |
+| NA00 | 120 ep, eta 1e-4 | 0.7037 | 0.6265 | 0.0166 | 0.0187 | 0.1653 | 0.1604 | 0.8726 | 0.7246 |
+| ND18 | loss scale 0.5× | 0.7554 | 0.6135 | 0.0137 | 0.0180 | 0.2529 | 0.2212 | 0.8761 | 0.7138 |
+| NE28 | lr **3e-4** | 0.6581 | 0.5783 | 0.0162 | 0.0186 | 0.2207 | 0.2268 | 0.8583 | 0.6616 |
+
+Pending: **NA04** (the selection-metric control, relaunched), **NC16 / NC17** (bs 4096 /
+8192 at 1200 ep; hit the 2 h walltime at epoch ~685, relaunched at 6 h). NE29 splits 0 and
+2 are re-running after the pdex shared-memory race.
+
+### F-sweep1. SMALLER BATCH WINS, and bs 128 is the first model to BEAT THE BAR on `pearson_delta`
+
+**NE25 (bs 128) scores 0.9003 / 0.7940 against `sum_of_singles` 0.8824 / 0.7757 — above
+the additive bar on BOTH panels.** No arm and no competitor had done that before. It is
+also best on `mae` on both panels (0.0114 / 0.0134, bar 0.0126 / 0.0168).
+
+The ordering is monotone in batch size on `pearson_delta` at eta 3e-4 / 150 ep:
+bs 128 **0.9003** > bs 256 0.8785 > bs 512 0.8336 > bs 2048 0.8169 (additive). That is the
+step-count hypothesis the grid was built to test: at bs 2048 Norman gets **27 optimiser
+steps per epoch** (4,050 total), against rhj_fewshot's 298 (44,700). bs 128 gives 66,750.
+The small-batch winners also selected LATE epochs (NB10 108, NB12 142, NE25 119 of 150)
+where the bs-2048 arms peaked at 14–57 — consistent with "still improving when the
+schedule ends".
+
+⚠️ **n=1 seed, and the margin over the bar on `nonadditive` is +0.018.** Before calling this
+"beats additivity", it needs seed replicates: State's seed-to-seed SD on this panel is
+0.067 and CellFlow's 0.029 (below). A 0.018 margin is inside either.
+
+⚠️ **The large-batch arms did NOT recover by training longer.** bs 4096 at 600 ep (7,800
+steps) is 0.7289 non-additive, below bs 512 at 150 ep (16,650 steps, 0.7304) — so step
+count is not the whole story; smaller batches win at matched steps too.
+
+### F-sweep2. The loss-weight SCALE is already at its optimum
+
+| scale | 0.25× | 0.5× | **1×** | 2× | 4× |
+|---|---|---|---|---|---|
+| pd non-additive | 0.6480 | 0.6135 | **0.7380** | 0.6964 | 0.7044 |
+
+The scale-matched point (1×, `norman_loss_scale.py`) beats every multiplier in both
+directions. That axis is closed.
+
+### F-sweep3. Two arms are the SAME measurement, and one schedule is inverted
+
+**NA02, NA05 and NA08 are identical to 4 decimals on all 8 numbers.** They are 120 / 150 /
+180 epochs at `eta_min` 1e-3 — and `lr` is also 1e-3, so the cosine runs from 1e-3 to 1e-3:
+a **constant** learning rate. Their first 120 epochs are therefore the same trajectory, all
+three selected epoch 51, and they are one measurement, not three.
+
+**NE22 has `eta_min` 3e-3 > `lr` 1e-3**, so its cosine *rises* over training. It still ranks
+4th (0.7686 non-additive), which fits F-sweep1: a higher late learning rate behaves like
+more effective optimisation on a step-starved corpus.
+
+⚠️ **`lr` 3e-4 is the worst arm in the sweep** (0.5783). Lower lr hurts here, the opposite
+of what a smaller batch would want by the linear-scaling rule — which says the win from
+smaller batches is not a learning-rate artifact.
+
+### ⚠️ CORRECTION: all 30 arms were selected on `sum`, not `decode_seq_mean`
+
+`panel_compose` was first wired into the **panel** evaluation path (`predict_panel`), which
+is an end-of-training measurement and **selects nothing**. The metric that chooses
+`best_model.pth` is `val_pearson_delta`, computed in `evaluate()`, which still called
+`forward()` — the `sum` mode. So every arm above ran with `panel_compose: decode_seq_mean`
+in its resolved config and was **still selected on `sum`**: the confirmation line never
+printed once. Found by grepping the logs for it, not from the numbers.
+
+**Consequence: the 27 arms above are all `sum`-selected, exactly like the published NQ02,
+so they are directly comparable to it and to each other.** Only the relaunched NA04 uses
+the new selection (`[val] selection metric composes pairs with: decode_seq_mean`,
+confirmed in its log), so NA04-vs-NQ02 is now a clean test of the selection metric alone.
+
+---
+
+## COMPETITOR SEED REPLICATES on `norman_combo` — `pearson_delta` per seed
+
+5 splits per seed, averaged within seed (the seed is the unit of replication —
+`scripts/seed_split_test.py`).
+
+| arm | panel | s42 | s43 | s44 | s45 | s46 | **mean** | **seed SD** |
+|---|---|---|---|---|---|---|---|---|
+| TxPert | additive | 0.8580 | 0.8603 | 0.8407 | 0.8502 | *running* | **0.8523** | **0.0089** |
+| TxPert | nonadditive | 0.7139 | 0.7138 | 0.7057 | 0.6982 | *running* | **0.7079** | **0.0075** |
+| CellFlow | additive | 0.7603 | 0.7661 | 0.7608 | 0.7538 | 0.6941 | **0.7470** | **0.0299** |
+| CellFlow | nonadditive | 0.6921 | 0.6871 | 0.6834 | 0.6807 | 0.6229 | **0.6733** | **0.0285** |
+| State | additive | 0.6947 | 0.7131 | 0.5227 | 0.4986 | 0.6141 | **0.6086** | **0.0973** |
+| State | nonadditive | 0.5905 | 0.6459 | 0.4964 | 0.4835 | 0.5531 | **0.5539** | **0.0672** |
+
+### F-seed1. Seed variance differs 10x between methods, and seed 42 flattered State
+
+- **TxPert is stable** — seed SD 0.009 / 0.008. Its seed-42 number was representative
+  (0.8580 vs a 4-seed mean of 0.8523).
+- **CellFlow is stable except one seed** — s46 is 0.07 below the other four on both panels.
+- **State is unstable** — seed SD **0.097** additive. s44 and s45 score ~0.50, against
+  0.69 at s42. **Its seed-42 number overstated it by 0.086** (0.6947 vs a mean of 0.6086).
+
+⚠️ This is exactly why every single-seed number in this document needs its replicate
+before a margin is quoted. Occam's own seed variance is still UNMEASURED; the 4 replicate
+seeds are written (`scripts/grids/norman_seeds.tsv`) and not launched.
+
+---
+
+## INFRASTRUCTURE, overnight
+
+**Two jobs hung for 7+ h each**, silent at the same line: TxPert s46 and PerturbDiff s42,
+both inside pdex's parallel pool (`Processing batches`) during in-training validation, each
+holding an H100 idle. Found by reading log mtimes, killed, fixed, relaunched:
+- `CELLEVAL_NUM_THREADS=1` in `_competitor_common.sh` makes in-training validation run pdex
+  **serially** — no pool, nothing to deadlock. Validation is small (20 pairs), so it costs
+  seconds.
+- `competitor_watchdog` kills a trainer whose `.out` and `.err` have both been silent for
+  45 min, so a future hang frees its GPU instead of holding it. Verified on a synthetic
+  stall (killed) and a healthy process (spared) before it was relied on.
+
+**Three sweep arms hit the 2 h walltime** — `rhj_loss_sweep.sbatch` carries
+`--time=02:00:00`, sized for rhj's 30-epoch runs. My error, not the arms'. NA04 reached
+epoch 113 in 2 h where NA03 and NA05 at the same config finished in ~30 min — a slow node.
+
+**PerturbDiff's control-count fix held**: its first validation published a score
+(`pearson_delta` 0.514) at 18:17 before the hang.
