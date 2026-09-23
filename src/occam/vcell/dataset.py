@@ -39,6 +39,11 @@ class PerturbationBatch:
     cell_types: List[str]  # cell type per sample
     gene_masks: torch.Tensor  # (B, num_encoder_genes) bool — True where gene exists
     is_sc: Optional[torch.Tensor] = None  # (B,) bool, True for SC samples
+    # (B,) int64 row of the (source, cell_line, pert) group-mean table, -1 = none (controls,
+    # or no table). Set only by VirtualCellStreamingDataset when given `row_group_index`; it
+    # is what lets `delta_cos_weight` / `delta_mag_weight` run on the non-stream_v2 path
+    # (they are SILENTLY ZERO without it -- the F-loss1 shape).
+    group_ids: Optional[torch.Tensor] = None
 
 
 # ---------------------------------------------------------------------------
@@ -1065,7 +1070,21 @@ class VirtualCellStreamingDataset(IterableDataset):
         extra_samples: Optional[Tuple] = None,
         fixed_pairs: bool = False,
         batch_match: bool = False,
+        interleave: str = "roundrobin",
+        row_group_index: Optional[Dict[Tuple[str, str, str], int]] = None,
     ):
+        # NON-stream_v2 options (encoder ablation, 2026-09-23). StreamingDatasetV2 subclasses
+        # this class but passes neither, so both stay at their no-op values there and its
+        # behaviour is unchanged: it overrides `_ordered_chunks` for "proportional" and
+        # `__iter__` entirely.
+        #   interleave      : "proportional" ports StreamingDatasetV2's chunk order (same rng
+        #                     draws), so the epoch tail stays source-mixed (F162).
+        #   row_group_index : (source, cell_line, pert) -> row of the group-mean table; each
+        #                     yielded batch then carries `group_ids`.
+        if interleave not in ("roundrobin", "proportional"):
+            raise ValueError(f"interleave must be 'roundrobin' or 'proportional', got {interleave!r}")
+        self._v1_interleave = interleave
+        self._v1_row_group_index = row_group_index
         if n_controls != 1:
             raise ValueError(
                 f"VirtualCellStreamingDataset is single-cell only: n_controls must be 1, "
@@ -1124,6 +1143,21 @@ class VirtualCellStreamingDataset(IterableDataset):
             ]
         else:
             self.active_metas = list(file_metas)
+
+        # Per-row group-mean row, same key and lookup as StreamingDatasetV2._group_of.
+        self._v1_group_of: Dict[int, np.ndarray] = {}
+        if row_group_index is not None:
+            from occam.vcell.stream_v2 import source_name_of   # lazy: stream_v2 imports us
+            for mi, fm in enumerate(self.active_metas):
+                src = source_name_of(fm.path)
+                is_c = np.asarray(fm.is_control, dtype=bool)
+                cls_ = np.asarray(fm.obs_cell_lines, dtype=str)
+                names_ = np.asarray(fm.pert_gene_names, dtype=str)
+                ukeys, uinv = np.unique(np.char.add(np.char.add(cls_, "|"), names_),
+                                        return_inverse=True)
+                lut = np.array([row_group_index.get((src, *k.split("|", 1)), -1)
+                                for k in ukeys], dtype=np.int64)
+                self._v1_group_of[mi] = np.where(is_c, -1, lut[uinv])
 
         # Build global chunk list: (meta_idx, chunk_start, chunk_end)
         self._chunks = []
@@ -1264,6 +1298,26 @@ class VirtualCellStreamingDataset(IterableDataset):
         by_file: Dict[int, List[int]] = {}
         for ci, (mi, _, _) in enumerate(self._chunks):
             by_file.setdefault(mi, []).append(ci)
+        if self.balance_sources and getattr(self, "_v1_interleave", "roundrobin") == "proportional":
+            # Verbatim port of StreamingDatasetV2._ordered_chunks("proportional"): the next
+            # chunk comes from each file with probability proportional to its remaining
+            # chunks, so batches stay source-mixed to the end of the epoch.
+            lists = []
+            for mi in sorted(by_file):
+                lst = list(by_file[mi])
+                if self.shuffle:
+                    rng.shuffle(lst)
+                lists.append(lst)
+            remaining = np.array([len(l) for l in lists], dtype=np.float64)
+            pos = [0] * len(lists)
+            order: List[int] = []
+            while remaining.sum() > 0:
+                p = remaining / remaining.sum()
+                k = int(rng.choice(len(lists), p=p))
+                order.append(lists[k][pos[k]])
+                pos[k] += 1
+                remaining[k] -= 1
+            return order
         if not self.balance_sources:
             order = [ci for lst in by_file.values() for ci in lst]
             if self.shuffle:
@@ -1390,6 +1444,7 @@ class VirtualCellStreamingDataset(IterableDataset):
             all_exact_ctrl = []    # for control_identity_mode="exact": the row itself
             all_row_uid = []       # (file, global row) — the key `fixed_pairs` hashes on
             all_batch_id = []      # cell_line__batch, for `batch_match`
+            all_group = []         # group-mean row per sample (-1 = none), `row_group_index`
 
             for ci in chunk_group:
                 mi, c_start, c_end = self._chunks[ci]
@@ -1452,6 +1507,7 @@ class VirtualCellStreamingDataset(IterableDataset):
                     row_cl = fm.obs_cell_lines[global_i]
 
                     if fm.is_control[global_i]:
+                        all_group.append(-1)
                         all_targets.append(chunk_expr[pos])
                         all_pert_indices.append([-1])
                         all_pert_names.append("non-targeting")
@@ -1472,6 +1528,8 @@ class VirtualCellStreamingDataset(IterableDataset):
                     if _pidx is None:
                         continue
 
+                    all_group.append(int(self._v1_group_of[mi][global_i])
+                                     if mi in self._v1_group_of else -1)
                     all_targets.append(chunk_expr[pos])
                     all_pert_indices.append(_pidx)
                     all_pert_names.append(fm.pert_gene_names[global_i])
@@ -1551,6 +1609,7 @@ class VirtualCellStreamingDataset(IterableDataset):
                         all_pert_names.append(e_names[k])
                         all_cell_types.append(e_cts[k])
                         all_mask_indices.append(-1)     # -1 => use the extras' own mask
+                        all_group.append(-1)
                     n_samples = len(all_targets)
                     # build_h1_identity_samples returns `gene_mask.unsqueeze(0).expand(n, -1)`
                     # — one mask broadcast over every row — so a single registered entry
@@ -1569,12 +1628,15 @@ class VirtualCellStreamingDataset(IterableDataset):
             tgt_tensor = torch.stack(all_targets)
             # Expand gene masks from indices — only 3 unique masks
             mask_idx_arr = np.array(all_mask_indices, dtype=np.int64)
+            group_arr = np.array(all_group, dtype=np.int64)
+            assert len(group_arr) == n_samples, (len(group_arr), n_samples)
 
             if self.shuffle:
                 perm = rng.permutation(n_samples)
                 ctrl_tensor = ctrl_tensor[perm]
                 tgt_tensor = tgt_tensor[perm]
                 mask_idx_arr = mask_idx_arr[perm]
+                group_arr = group_arr[perm]
                 all_pert_indices = [all_pert_indices[p] for p in perm]
                 all_pert_names = [all_pert_names[p] for p in perm]
                 all_cell_types = [all_cell_types[p] for p in perm]
@@ -1611,6 +1673,8 @@ class VirtualCellStreamingDataset(IterableDataset):
                     pert_names=all_pert_names[b_start:b_end],
                     cell_types=all_cell_types[b_start:b_end],
                     gene_masks=batch_masks,
+                    group_ids=(torch.from_numpy(np.ascontiguousarray(group_arr[b_start:b_end]))
+                               if self._v1_row_group_index is not None else None),
                 )
 
 

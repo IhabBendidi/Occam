@@ -13,19 +13,22 @@
 #                 column names are the header of scripts/grids/rhj_seeds.tsv
 #   cos_w         profile-cosine weight (Y06: 0.5); passed to the launcher as COS_W
 #   extra_sets    config overrides passed as EXTRA_SETS, space-separated `key=value` ('-' = none)
+#   config        base config passed as CONFIG. `--set` can only change keys the config already has,
+#                 so arms that need new keys use a copy (rhj_fewshot_pertemb.yaml = rhj_fewshot.yaml +
+#                 the 2 pert_embedding keys; a test asserts they differ only by those)
 #   time          sbatch walltime
 #   status        ready | needs-code (launch refuses needs-code arms)
-arm	axis	change	grid	cos_w	extra_sets	time	status
-ABL_GO	A	perturbation graph prior = GO only	-	0.5	stages.vcell.graph.graph_types=[go]	08:00:00	ready
-ABL_STR	A	perturbation graph prior = STRING only	-	0.5	stages.vcell.graph.graph_types=[string]	08:00:00	ready
-ABL_LRN	A	no prior: learnable embedding per gene	-	0.5	stages.vcell.graph.no_gnn=true	08:00:00	ready
-ABL_GPT	A	frozen GenePT text embedding per gene	-	0.5	TBD	08:00:00	needs-code
-ABL_ESM	A	frozen ESM2 protein embedding per gene	-	0.5	TBD	08:00:00	needs-code
-ABL_L0	B	loss = smooth_l1 only	delta_cos_weight=0.0,delta_mag_weight=0,latent_loss_type=none,latent_loss_weight=0.0	0.0	-	08:00:00	ready
-ABL_L1	B	loss = smooth_l1 + profile cosine 0.5	delta_cos_weight=0.0,delta_mag_weight=0,latent_loss_type=none,latent_loss_weight=0.0	0.5	-	08:00:00	ready
-ABL_L2	B	loss = L1 + delta-cosine 0.5	delta_mag_weight=0,latent_loss_type=none,latent_loss_weight=0.0	0.5	-	08:00:00	ready
-ABL_L3	B	loss = L2 + delta-magnitude 0.01363 (Y06 minus latent MSE)	latent_loss_type=none,latent_loss_weight=0.0	0.5	-	08:00:00	ready
-ABL_C0P	C	pretrained encoder, frozen, NON-stream loader (same-path control for C1-C3)	-	0.5	TBD	24:00:00	needs-code
-ABL_C1	C	pretrained encoder, fine-tuned (non-stream loader)	-	0.5	TBD	48:00:00	needs-code
-ABL_C2	C	random-init encoder trained from scratch (non-stream loader)	-	0.5	TBD	48:00:00	needs-code
-ABL_C3	C	random-init encoder, frozen (non-stream loader)	-	0.5	TBD	24:00:00	needs-code
+arm	axis	change	grid	cos_w	extra_sets	config	time	status
+ABL_GO	A	perturbation graph prior = GO only	-	0.5	stages.vcell.graph.graph_types=[go]	configs/rhj_fewshot.yaml	08:00:00	ready
+ABL_STR	A	perturbation graph prior = STRING only	-	0.5	stages.vcell.graph.graph_types=[string]	configs/rhj_fewshot.yaml	08:00:00	ready
+ABL_LRN	A	no prior: learnable embedding per gene	-	0.5	stages.vcell.graph.no_gnn=true	configs/rhj_fewshot.yaml	08:00:00	ready
+ABL_GPT	A	frozen GenePT text embedding per gene (GenePT v2, 3072-d, full-vocab table 17,843/18,216)	-	0.5	stages.vcell.graph.pert_embedding_path=data/assets/genept_full_occam_rhj_fewshot.pkl	configs/rhj_fewshot_pertemb.yaml	08:00:00	ready
+ABL_ESM	A	frozen ESM2 protein embedding per gene (esm2 650M, 1280-d, precomputed: genbio-ai HF d67ba210)	-	0.5	stages.vcell.graph.pert_embedding_path=data/assets/esm2_t33_650M_UR50D_occam_rhj_fewshot.pkl	configs/rhj_fewshot_pertemb.yaml	08:00:00	ready
+ABL_L0	B	loss = smooth_l1 only	delta_cos_weight=0.0,delta_mag_weight=0,latent_loss_type=none,latent_loss_weight=0.0	0.0	-	configs/rhj_fewshot.yaml	08:00:00	ready
+ABL_L1	B	loss = smooth_l1 + profile cosine 0.5	delta_cos_weight=0.0,delta_mag_weight=0,latent_loss_type=none,latent_loss_weight=0.0	0.5	-	configs/rhj_fewshot.yaml	08:00:00	ready
+ABL_L2	B	loss = L1 + delta-cosine 0.5	delta_mag_weight=0,latent_loss_type=none,latent_loss_weight=0.0	0.5	-	configs/rhj_fewshot.yaml	08:00:00	ready
+ABL_L3	B	loss = L2 + delta-magnitude 0.01363 (Y06 minus latent MSE)	latent_loss_type=none,latent_loss_weight=0.0	0.5	-	configs/rhj_fewshot.yaml	08:00:00	ready
+ABL_C0P	C	pretrained encoder, frozen, NON-stream loader (same-path control for C1-C3)	-	0.5	stages.vcell.stream.stream_v2=false	configs/rhj_fewshot_encoder.yaml	3-00:00:00	ready
+ABL_C1	C	pretrained encoder, fine-tuned at encoder_lr 1e-5 (non-stream loader)	-	0.5	stages.vcell.stream.stream_v2=false stages.vcell.encoder.freeze_encoder=false stages.vcell.encoder.encoder_lr=1e-5	configs/rhj_fewshot_encoder.yaml	3-00:00:00	ready
+ABL_C2	C	random-init encoder trained from scratch at encoder_lr 1e-3 (non-stream loader)	-	0.5	stages.vcell.stream.stream_v2=false stages.vcell.encoder.freeze_encoder=false stages.vcell.encoder.random_encoder=true stages.vcell.encoder.encoder_lr=1e-3	configs/rhj_fewshot_encoder.yaml	3-00:00:00	ready
+ABL_C3	C	random-init encoder, frozen (non-stream loader)	-	0.5	stages.vcell.stream.stream_v2=false stages.vcell.encoder.random_encoder=true	configs/rhj_fewshot_encoder.yaml	3-00:00:00	ready

@@ -4,6 +4,8 @@ Ported from txpert's gspp/models/pert_models/simple_adjacency_map.py.
 Each gene's embedding = MLP(adjacency_row). No learned message passing.
 """
 
+import os
+
 import torch
 import torch.nn as nn
 
@@ -151,3 +153,184 @@ class LearnableEmbeddingModel(nn.Module):
 
     def forward(self, edge_index, edge_weight=None):
         return self.embedding.weight
+
+
+# ---------------------------------------------------------------------------
+# Frozen external per-gene embeddings (GenePT, ESM2, ...) -> the adjacency-map MLP
+# ---------------------------------------------------------------------------
+#
+# WHY THIS EXISTS. The perturbation-representation ablation asks what the GO+STRING adjacency
+# row contributes to Y06. SimpleAdjacencyMapModel is `MLP(adjacency_row[g])`; this module is
+# `MLP(frozen_table[g])` with the SAME MLP (map_to_latent, built from the same adj_* knobs), so
+# the only thing that changes between the arms is the source of the per-gene input vector.
+#
+# MISSING-GENE POLICY (documented, and logged at build time):
+#   * A gene of the perturbation vocabulary that has no row in the table gets an all-zero input
+#     row PLUS one shared, learned `missing_embedding` vector (initialised at zero, so at step 0
+#     a missing gene's input is exactly the zero vector -- which, under the default `zscore`
+#     normalisation, is the mean present gene).
+#   * All missing genes therefore share one representation and are indistinguishable from each
+#     other. That is the honest reading of "no information about this gene", and it is why
+#     coverage is printed at build time and stored in the checkpoint.
+#
+# NORMALISATION (`norm`, applied once at build over PRESENT rows only; missing rows stay 0):
+#   zscore : per-dimension standardisation (default). Puts GenePT (~0.02/dim) and ESM2
+#            (~0.1-1/dim) on the same input scale for a fixed-lr MLP.
+#   l2     : unit-norm rows.
+#   none   : the raw table.
+# The normalised table is a persistent buffer, so a checkpoint reloads self-contained and
+# bit-exact without the table file; the path + sha256 are recorded for provenance only.
+
+PERT_EMBEDDING_NORMS = ("zscore", "l2", "none")
+
+
+def _file_sha256(path: str, chunk: int = 1 << 24) -> str:
+    import hashlib
+    h = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for block in iter(lambda: fh.read(chunk), b""):
+            h.update(block)
+    return h.hexdigest()
+
+
+def read_gene_embedding_table(path: str):
+    """Read a per-gene embedding table into ``{symbol: np.ndarray[float32]}``.
+
+    Accepted formats:
+      * ``.pkl`` / ``.pickle``: a dict ``{gene_symbol: vector}`` (the GenePT asset format,
+        ``data/assets/genept_occam_rhj_fewshot.pkl``: 2,376 keys x 3,072, lists of float64).
+      * ``.npz``: arrays ``genes`` (str, [N]) and ``embeddings`` (float, [N, D]).
+    """
+    import pickle
+    import numpy as np
+
+    if path.endswith(".npz"):
+        z = np.load(path, allow_pickle=False)
+        genes = [str(g) for g in z["genes"]]
+        emb = np.asarray(z["embeddings"], dtype=np.float32)
+        table = {g: emb[i] for i, g in enumerate(genes)}
+    else:
+        with open(path, "rb") as fh:
+            raw = pickle.load(fh)
+        if not isinstance(raw, dict):
+            raise ValueError(f"{path}: expected a dict {{symbol: vector}}, got {type(raw).__name__}")
+        table = {str(k): np.asarray(v, dtype=np.float32).reshape(-1) for k, v in raw.items()}
+    if not table:
+        raise ValueError(f"{path}: empty embedding table")
+    dims = {v.shape[0] for v in table.values()}
+    if len(dims) != 1:
+        raise ValueError(f"{path}: inconsistent embedding dims {sorted(dims)[:5]}")
+    return table
+
+
+def build_pert_embedding_matrix(path: str, pert2id: dict, norm: str = "zscore"):
+    """Align a per-gene table to ``pert2id`` order.
+
+    Returns ``(matrix [num_genes, D] float32 tensor, present bool tensor [num_genes], info)``
+    where ``info`` holds the path, sha256, dim, norm and coverage counts.
+    """
+    import numpy as np
+
+    if not os.path.isabs(path) and not os.path.exists(path):
+        # relative paths resolve against the repo root too (src/occam/vcell -> repo)
+        repo = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
+            os.path.abspath(__file__)))))
+        cand = os.path.join(repo, path)
+        if os.path.exists(cand):
+            path = cand
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"pert_embedding_path not found: {path}")
+    if norm not in PERT_EMBEDDING_NORMS:
+        raise ValueError(f"pert_embedding_norm={norm!r}; expected one of {PERT_EMBEDDING_NORMS}")
+    table = read_gene_embedding_table(path)
+    dim = next(iter(table.values())).shape[0]
+    num_genes = max(pert2id.values()) + 1
+    mat = np.zeros((num_genes, dim), dtype=np.float32)
+    present = np.zeros(num_genes, dtype=bool)
+    for sym, idx in pert2id.items():
+        vec = table.get(sym)
+        if vec is not None:
+            mat[idx] = vec
+            present[idx] = True
+    n_present = int(present.sum())
+    if n_present == 0:
+        raise ValueError(f"{path}: 0/{num_genes} perturbation-vocabulary genes found in the table "
+                         f"-- wrong key space (symbols expected)?")
+    if norm == "zscore":
+        mu = mat[present].mean(axis=0, keepdims=True)
+        sd = mat[present].std(axis=0, keepdims=True)
+        sd[sd < 1e-8] = 1.0
+        mat[present] = (mat[present] - mu) / sd
+    elif norm == "l2":
+        nrm = np.linalg.norm(mat[present], axis=1, keepdims=True)
+        nrm[nrm < 1e-12] = 1.0
+        mat[present] = mat[present] / nrm
+    info = {
+        "path": os.path.abspath(path),
+        "sha256": _file_sha256(path),
+        "dim": int(dim),
+        "norm": norm,
+        "n_table_keys": len(table),
+        "n_vocab": int(num_genes),
+        "n_present": n_present,
+        "n_missing": int(num_genes - n_present),
+        "missing_policy": "zero_row_plus_shared_learned_missing_vector",
+    }
+    return torch.from_numpy(mat), torch.from_numpy(present), info
+
+
+class FrozenEmbeddingModel(nn.Module):
+    """Frozen per-gene embedding table -> the SimpleAdjacencyMapModel MLP.
+
+    Output: ``[num_genes, out_dim]``, same as SimpleAdjacencyMapModel / LearnableEmbeddingModel.
+    Forward signature matches them: ``forward(edge_index, edge_weight=None)`` (both ignored).
+
+    Trainable: ``map_to_latent`` (identical construction to SimpleAdjacencyMapModel) and the
+    single ``missing_embedding`` vector. The table itself is a buffer and receives no gradient.
+    """
+
+    def __init__(
+        self,
+        embedding_matrix: torch.Tensor,
+        present_mask: torch.Tensor,
+        hidden_dim: int = 128,
+        out_dim: int = 64,
+        dropout: float = 0.2,
+        use_ffn: bool = True,
+        activation: str = "relu",
+    ):
+        super().__init__()
+        if embedding_matrix.dim() != 2:
+            raise ValueError(f"embedding_matrix must be 2-D, got {tuple(embedding_matrix.shape)}")
+        num_genes, in_dim = embedding_matrix.shape
+        if present_mask.shape != (num_genes,):
+            raise ValueError("present_mask must have shape [num_genes]")
+        self.num_genes = int(num_genes)
+        self.in_dim = int(in_dim)
+        self.register_buffer("embedding_table", embedding_matrix.detach().float().clone())
+        self.register_buffer("present_mask", present_mask.detach().bool().clone())
+        self.missing_embedding = nn.Parameter(torch.zeros(in_dim))
+
+        if use_ffn:
+            self.map_to_latent = nn.Sequential(
+                nn.Linear(in_dim, hidden_dim),
+                _make_activation(activation),
+                nn.Dropout(dropout),
+                nn.Linear(hidden_dim, out_dim),
+            )
+        else:
+            self.map_to_latent = nn.Linear(in_dim, out_dim)
+
+    @classmethod
+    def empty_like_state(cls, state_dict: dict, **kwargs) -> "FrozenEmbeddingModel":
+        """Build a shell with the buffer shapes of a saved state dict (reload path)."""
+        tbl = state_dict["embedding_table"]
+        return cls(torch.zeros_like(tbl, dtype=torch.float32),
+                   torch.zeros(tbl.shape[0], dtype=torch.bool), **kwargs)
+
+    def node_features(self) -> torch.Tensor:
+        miss = (~self.present_mask).unsqueeze(1).to(self.embedding_table.dtype)
+        return self.embedding_table + miss * self.missing_embedding.unsqueeze(0)
+
+    def forward(self, edge_index=None, edge_weight=None):
+        return self.map_to_latent(self.node_features())

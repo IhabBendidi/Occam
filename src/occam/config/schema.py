@@ -312,7 +312,13 @@ VCELL_SCHEMA: Dict[str, Dict[str, Optional[str]]] = {
         "max_cells_per_pert": "max_cells_per_pert_stream",
         "min_cells_per_pert": "min_cells_per_pert_stream",
     },
-    "encoder": {"freeze_encoder": "freeze_encoder", "freeze_decoder": "freeze_decoder"},
+    "encoder": {"freeze_encoder": "freeze_encoder", "freeze_decoder": "freeze_decoder",
+                # Encoder-ablation axis (docs/ABLATION_PLAN.md, axis C). Routed so --set can
+                # reach them; absent from a YAML they stay at the dataclass defaults
+                # (encoder_lr 1e-5, unused while frozen; random_encoder False).
+                # ⚠️ An unfrozen encoder needs stages.vcell.stream.stream_v2=false.
+                "encoder_lr": "encoder_lr", "random_encoder": "random_encoder",
+                "encoder_lr_delay_frac": "encoder_lr_delay_frac"},
     "graph": {
         # Perturbation-model selection. `adjacency_map` is SimpleAdjacencyMapModel: each
         # gene's embedding is MLP(its adjacency row), with no learned message passing, so
@@ -324,6 +330,10 @@ VCELL_SCHEMA: Dict[str, Dict[str, Optional[str]]] = {
         "adj_self_loops": "adj_self_loops", "adj_only_reverse": "adj_only_reverse",
         "adj_make_undirected": "adj_make_undirected", "adj_use_ffn": "adj_use_ffn",
         "adj_activation": "adj_activation",
+        # Opt-in frozen per-gene table (GenePT/ESM2) fed to the adjacency-map MLP in place of
+        # the adjacency row. Empty = off. Ablation arms A4/A5 (docs/ABLATION_PLAN.md).
+        "pert_embedding_path": "pert_embedding_path",
+        "pert_embedding_norm": "pert_embedding_norm",
         "graph_type": "graph_type", "graph_cache_dir": "graph_cache_dir",
         "master_gene_set_path": "master_gene_set_path",
         "graph_types": "graph_types", "graph_edge_filter_mode": "graph_edge_filter_mode",

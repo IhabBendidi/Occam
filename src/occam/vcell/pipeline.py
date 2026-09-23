@@ -406,8 +406,20 @@ class VirtualCellTrainer:
             self.pert2id, self.id2pert = filter_pert2id(self.pert2id, data_genes)
             print(f"  Filtered pert2id: {len(self.pert2id)} genes (from {original_count})")
 
+        # Opt-in frozen per-gene table (ablation A4 GenePT / A5 ESM2). Empty = off.
+        pert_emb_path = str(getattr(config, "pert_embedding_path", "") or "")
+        if pert_emb_path and config.pert_model_type != "adjacency_map":
+            raise ValueError("pert_embedding_path requires pert_model_type=adjacency_map "
+                             f"(got {config.pert_model_type!r})")
+        self._pert_embedding_info = None
+
         # Load graph (single or multi-KG)
-        if config.no_gnn:
+        if pert_emb_path:
+            num_nodes = max(self.pert2id.values()) + 1
+            edge_index = torch.zeros(2, 0, dtype=torch.long)
+            edge_weight = torch.zeros(0)
+            print(f"  No graph (pert_embedding_path set): {num_nodes} nodes, frozen table")
+        elif config.no_gnn:
             num_nodes = len(self.pert2id)
             edge_index = torch.zeros(2, 0, dtype=torch.long)
             edge_weight = torch.zeros(0)
@@ -440,7 +452,28 @@ class VirtualCellTrainer:
             )
 
         # Create perturbation model
-        if config.no_gnn and config.pert_model_type == "adjacency_map":
+        if pert_emb_path:
+            from occam.vcell.adjacency_map import (FrozenEmbeddingModel,
+                                                   build_pert_embedding_matrix)
+            emb_mat, emb_present, emb_info = build_pert_embedding_matrix(
+                pert_emb_path, self.pert2id,
+                norm=str(getattr(config, "pert_embedding_norm", "zscore")))
+            self._pert_embedding_info = emb_info
+            pert_model = FrozenEmbeddingModel(
+                embedding_matrix=emb_mat,
+                present_mask=emb_present,
+                hidden_dim=config.adj_hidden_dim,
+                out_dim=config.pert_latent_dim,
+                dropout=config.adj_dropout,
+                use_ffn=config.adj_use_ffn,
+                activation=config.adj_activation,
+            )
+            print(f"  Frozen pert embeddings: {emb_info['path']} (sha256 {emb_info['sha256'][:12]}), "
+                  f"dim={emb_info['dim']}, norm={emb_info['norm']}")
+            print(f"  [pert_embedding coverage] {emb_info['n_present']}/{emb_info['n_vocab']} "
+                  f"vocab genes present, {emb_info['n_missing']} missing -> shared learned "
+                  f"missing vector (table has {emb_info['n_table_keys']} keys)")
+        elif config.no_gnn and config.pert_model_type == "adjacency_map":
             from occam.vcell.adjacency_map import LearnableEmbeddingModel
             pert_model = LearnableEmbeddingModel(
                 num_genes=num_nodes,
@@ -639,6 +672,44 @@ class VirtualCellTrainer:
             self.scheduler = CosineAnnealingLR(
                 self.optimizer, T_max=config.epochs, eta_min=config.eta_min
             )
+        # ⚠️ ENCODER GROUP FLOOR (encoder ablation, 2026-09-23). CosineAnnealingLR's `eta_min`
+        # is ABSOLUTE and shared by every param group, so an encoder group whose base lr is
+        # below it (encoder_lr 1e-5 vs the recipe's eta_min 3e-4) is annealed UPWARD to 3e-4
+        # -- 30x its intended lr for most of training. Only when an encoder group exists
+        # (freeze_encoder=false; impossible on stream_v2, which refuses it) the cosine phase
+        # is rebuilt with a per-group floor: every non-encoder group keeps exactly
+        # eta_min (the same curve as before), and the encoder floors at
+        # eta_min * encoder_lr / lr, i.e. the same RELATIVE floor as the rest of the model.
+        _enc_groups = [i for i, pg in enumerate(self.optimizer.param_groups)
+                       if pg.get("name") == "encoder"]
+        if _enc_groups:
+            import math
+            from torch.optim.lr_scheduler import LambdaLR
+            _T = max(1, config.epochs - max(0, config.warmup_epochs))
+            _lams = []
+            for i, pg in enumerate(self.optimizer.param_groups):
+                base = float(pg.get("initial_lr", pg["lr"]))
+                if i in _enc_groups:
+                    r = float(config.eta_min) / float(config.lr) if config.lr else 0.0
+                else:
+                    r = float(config.eta_min) / base if base > 0 else 0.0
+                _lams.append(lambda t, r=r: r + (1.0 - r) * 0.5 * (1.0 + math.cos(math.pi * min(t, _T) / _T)))
+            # Rebuild from a clean state: the schedulers above already stepped once at
+            # construction, so restore each group's base lr before re-creating them.
+            for pg in self.optimizer.param_groups:
+                pg["lr"] = float(pg.get("initial_lr", pg["lr"]))
+                pg.pop("initial_lr", None)
+            if config.warmup_epochs > 0:
+                warmup = LinearLR(self.optimizer, start_factor=1e-2,
+                                  total_iters=config.warmup_epochs)
+                self.scheduler = SequentialLR(
+                    self.optimizer, schedulers=[warmup, LambdaLR(self.optimizer, _lams)],
+                    milestones=[config.warmup_epochs])
+            else:
+                self.scheduler = LambdaLR(self.optimizer, _lams)
+            print(f"  [encoder] trainable, encoder_lr={config.encoder_lr:g}, floor "
+                  f"{float(config.eta_min) * float(config.encoder_lr) / float(config.lr):.3g} "
+                  f"(relative eta_min; non-encoder groups unchanged)")
 
         # Loss
         if config.loss_type == "smooth_l1":
@@ -850,7 +921,19 @@ class VirtualCellTrainer:
         pert_model_type = gc_.get("pert_model_type", tc.get("pert_model_type", "gnn"))
 
         no_gnn = gc_.get("no_gnn", False)
-        if pert_model_type == "adjacency_map" and no_gnn:
+        if pert_model_type == "adjacency_map" and gc_.get("pert_embedding"):
+            # Frozen-table arm: the (normalised) table is a buffer in gnn_state_dict, so the
+            # shell only needs its shape; the table file itself is NOT re-read.
+            from occam.vcell.adjacency_map import FrozenEmbeddingModel
+            pert_model = FrozenEmbeddingModel.empty_like_state(
+                ckpt["gnn_state_dict"],
+                hidden_dim=gc_.get("adj_hidden_dim", 128),
+                out_dim=gc_.get("out_dim", 64),
+                dropout=gc_.get("adj_dropout", 0.2),
+                use_ffn=gc_.get("adj_use_ffn", True),
+                activation=gc_.get("adj_activation", "relu"),
+            )
+        elif pert_model_type == "adjacency_map" and no_gnn:
             from occam.vcell.adjacency_map import LearnableEmbeddingModel
             pert_model = LearnableEmbeddingModel(
                 num_genes=num_pert_nodes,
@@ -2131,6 +2214,10 @@ class VirtualCellTrainer:
                 target = batch.perturbed_expression.to(self.device, non_blocking=True)
                 pert_idx = batch.pert_indices
                 gene_mask = batch.gene_masks.to(self.device, non_blocking=True)
+                # Non-stream parity: group ids for delta_cos / delta_mag (None = terms off).
+                _gids = getattr(batch, "group_ids", None)
+                self._last_group_id = (None if _gids is None
+                                       else _gids.to(self.device, non_blocking=True))
             elif isinstance(batch, SparseBatch):
                 ctrl, target, pert_idx, gene_mask = self._materialise_sparse(batch)
             else:
@@ -3530,10 +3617,9 @@ class VirtualCellTrainer:
             yield False
             return
 
-        if not self.config.freeze_encoder:
-            print("  [ckpt] WARNING: encoder is trainable, but checkpoints store an "
-                  "init-time encoder snapshot. Swapping gnn/decoder/interaction only; "
-                  "the encoder stays at its final-epoch weights.")
+        # A trainable encoder is saved LIVE (save_checkpoint), so it is swapped with the
+        # rest; the checkpoint keys carry the AutoEncoder's "encoder." prefix.
+        _swap_encoder = not self.config.freeze_encoder
 
         modules = {
             "gnn_state_dict": getattr(fwd_model, "gnn", None),
@@ -3549,6 +3635,12 @@ class VirtualCellTrainer:
                     continue
                 saved[key] = copy.deepcopy(mod.state_dict())
                 mod.load_state_dict(ckpt[key])
+            if _swap_encoder and "encoder_state_dict" in ckpt:
+                _enc_sd = {k[len("encoder."):]: v for k, v in ckpt["encoder_state_dict"].items()
+                           if k.startswith("encoder.")}
+                saved["encoder_state_dict"] = copy.deepcopy(fwd_model.encoder.state_dict())
+                modules["encoder_state_dict"] = fwd_model.encoder
+                fwd_model.encoder.load_state_dict(_enc_sd)
             # MANDATORY after swapping gnn weights. `_gnn_cache` memoises the GNN's
             # perturbation embeddings `z_graph` and forward() returns it verbatim when
             # populated. Training invalidates it after every optimizer step, but by the
@@ -3576,6 +3668,10 @@ class VirtualCellTrainer:
                 fwd_model.invalidate_gnn_cache()
                 print("  [ckpt] restored final-epoch weights; gnn cache invalidated")
 
+    def _encoder_is_live(self) -> bool:
+        """True when the encoder's weights are not the init-time pretrained snapshot."""
+        return (not self.config.freeze_encoder) or bool(getattr(self.config, "random_encoder", False))
+
     def save_checkpoint(self, path: str, split_info: Dict = None):
         """Save unified checkpoint."""
         fwd_model = (
@@ -3597,7 +3693,15 @@ class VirtualCellTrainer:
                                    for k, v in bench.exclude_file_perts.items()},
             } if bench is not None else None),
             "val_cell_lines": list(getattr(self, "_val_cell_lines", []) or []),
-            "encoder_state_dict": self._encoder_state_dict,
+            # ⚠️ `_encoder_state_dict` is an INIT-TIME snapshot of the PRETRAINED weights,
+            # taken before `random_encoder` re-initialises them. Correct only for a frozen
+            # pretrained encoder (every run to date). A trained or random encoder must save
+            # its LIVE weights, or the checkpoint silently carries the pretrained encoder
+            # (encoder ablation C1/C2/C3). Same "encoder."-prefixed keys as the snapshot.
+            "encoder_state_dict": (
+                {f"encoder.{k}": v.detach().cpu()
+                 for k, v in fwd_model.encoder.state_dict().items()}
+                if self._encoder_is_live() else self._encoder_state_dict),
             "gnn_state_dict": fwd_model.gnn.state_dict(),
             "decoder_state_dict": fwd_model.decoder.state_dict(),
             "interaction_state_dict": fwd_model.interaction.state_dict(),
@@ -3632,6 +3736,11 @@ class VirtualCellTrainer:
                     "adj_make_undirected": self.config.adj_make_undirected,
                     "adj_activation": self.config.adj_activation,
                    } if self.config.pert_model_type == "adjacency_map" else {}),
+                # Frozen-table arm only (absent for every other config): provenance of the
+                # table (path + sha256 + coverage) and the MLP knobs the reload needs.
+                **({"pert_embedding": dict(self._pert_embedding_info),
+                    "adj_use_ffn": self.config.adj_use_ffn,
+                   } if getattr(self, "_pert_embedding_info", None) else {}),
             },
             "interaction_config": {
                 "interaction_type": self.config.interaction_type,
@@ -3670,6 +3779,10 @@ class VirtualCellTrainer:
             "best_metric": self.best_metric,
             "training_config": {
                 "pert_model_type": self.config.pert_model_type,
+                **({"pert_embedding_path": self._pert_embedding_info["path"],
+                    "pert_embedding_sha256": self._pert_embedding_info["sha256"],
+                    "pert_embedding_norm": self._pert_embedding_info["norm"],
+                   } if getattr(self, "_pert_embedding_info", None) else {}),
                 "graph_type": self.config.graph_type,
                 "graph_types": self.config.graph_types,
                 "data_perts_only": self.config.data_perts_only,
@@ -3794,6 +3907,12 @@ class VirtualCellTrainer:
                         "adj_make_undirected": config.adj_make_undirected,
                         "adj_activation": config.adj_activation,
                        } if config.pert_model_type == "adjacency_map" else {}),
+                    **({"pert_embedding_path": self._pert_embedding_info["path"],
+                        "pert_embedding_sha256": self._pert_embedding_info["sha256"],
+                        "pert_embedding_norm": self._pert_embedding_info["norm"],
+                        "pert_embedding_n_present": self._pert_embedding_info["n_present"],
+                        "pert_embedding_n_vocab": self._pert_embedding_info["n_vocab"],
+                       } if getattr(self, "_pert_embedding_info", None) else {}),
                     # v2
                     "interaction_type": config.interaction_type,
                     "film_scale": config.film_scale,
@@ -4266,6 +4385,34 @@ class VirtualCellTrainer:
                 train_dataset, train_loader = self._build_stream_v2(
                     config, file_metas, control_matcher, train_perts, train_cell_lines, _extra)
             else:
+                # ⚠️ NON-stream_v2 parity with the stream_v2 recipe (encoder ablation,
+                # 2026-09-23). The loss terms below read `self._stream_v2_state` and
+                # `self._last_group_id`, which only the v2 loader used to set -- so on this
+                # path `delta_cos_weight` and `delta_mag_weight` were SILENTLY ZERO (the
+                # F-loss1 shape), i.e. a non-stream "Y06" trained a different loss.
+                # The shared loss code keeps reading the same attribute name; only the
+                # three tables it needs are provided here.
+                _v1_group_index = None
+                if (int(getattr(config, "target_pb_k", 1)) != 1
+                        or int(getattr(config, "ctrl_avg_k", 1)) != 1):
+                    raise ValueError(
+                        "target_pb_k / ctrl_avg_k != 1 are implemented by stream_v2 only; "
+                        "the non-stream loader would silently ignore them.")
+                if (float(getattr(config, "delta_mag_weight", 0.0)) > 0
+                        or float(getattr(config, "delta_cos_weight", 0.0)) > 0
+                        or bool(getattr(config, "recon_split", False))):
+                    _mean_dir = str(getattr(config, "pert_mean_dir", "cache/pert_means"))
+                    if not (Path(_mean_dir).is_dir() and any(Path(_mean_dir).glob("*.npz"))):
+                        raise FileNotFoundError(
+                            f"delta_mag/delta_cos/recon_split need the group-mean table, but "
+                            f"{_mean_dir} has no *.npz (scripts/pert_group_means.py). "
+                            f"Refusing to train with a silently-zero term.")
+                    from occam.vcell.stream_v2 import load_group_means, source_name_of
+                    _v1_group_index, _gm, _cm, _gl = load_group_means(
+                        _mean_dir, self.device,
+                        sources={source_name_of(fm.path) for fm in file_metas})
+                    self._stream_v2_state = {"gmeans": _gm, "cmeans": _cm, "gline": _gl,
+                                             "raw_pool": None, "disp": None}
                 # Training: optim streaming mode
                 train_dataset = VirtualCellStreamingDataset(
                     file_metas=file_metas,
@@ -4289,10 +4436,16 @@ class VirtualCellTrainer:
                     extra_samples=_extra,
                     fixed_pairs=getattr(config, "stream_fixed_pairs", False),
                     batch_match=getattr(config, "stream_batch_match", False),
+                    interleave=getattr(config, "stream_interleave", "roundrobin"),
+                    row_group_index=_v1_group_index,
                 )
                 train_loader = DataLoader(
                     train_dataset, batch_size=None, num_workers=0
                 )
+                print(f"  [stream_v1] interleave={getattr(config, 'stream_interleave', 'roundrobin')} "
+                      f"group_means={'on' if _v1_group_index is not None else 'off'} "
+                      f"freeze_encoder={config.freeze_encoder} "
+                      f"random_encoder={getattr(config, 'random_encoder', False)}")
 
             # Validation: in-memory
             if val_perts:

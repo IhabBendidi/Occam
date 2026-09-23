@@ -1,7 +1,6 @@
 # Occam ablation grid (rhj_fewshot, Y06 base, 5 seeds)
 
-**Status 2026-09-23:** 7 arms (A1–A3, B0–B3) × 5 seeds launched, pending in the queue (jobs
-18387759–765). A4/A5 (GenePT, ESM2) and C (encoder) are waiting on code, being prepared now.
+**Status 2026-09-23:** all 13 arms × 5 seeds launched (65 trainings): A1–A3 + B0–B3 18387759–765; A5 18388251; A4 18388318; C0P/C1/C2/C3 18388346–349.
 No ablation results yet.
 
 ## 1. Objective and question
@@ -40,8 +39,8 @@ Y06 0.4043 (seed 42) / 0.3953 ± 0.0077 (4 seeds).
 | `ABL_GO` (A1) | GO graph only | launched, 18387759 |
 | `ABL_STR` (A2) | STRING graph only | launched, 18387760 |
 | `ABL_LRN` (A3) | no prior: learnable embedding per gene (`no_gnn`) | launched, 18387761 |
-| `ABL_GPT` (A4) | frozen GenePT text embedding per gene → same trainable module | code in progress |
-| `ABL_ESM` (A5) | frozen ESM2 protein embedding per gene → same trainable module | code + embedding build in progress |
+| `ABL_GPT` (A4) | frozen GenePT v2 text embedding per gene → Y06's adjacency-map MLP (full-vocab table `data/assets/genept_full_occam_rhj_fewshot.pkl`, 17,843/18,216 vocab, 1,652/1,657 train, 621/621 test; builder `scripts/build_genept_full_vocab.py`) | launched, 18388318 |
+| `ABL_ESM` (A5) | frozen ESM2 protein embedding per gene → Y06's adjacency-map MLP (esm2 650M, 1280-d, precomputed table from HF genbio-ai/foundation-models-perturbation @ d67ba210; pooling not recorded in the source; coverage 18,149/18,216 vocab, 621/621 test perts) | launched, 18388251 |
 
 ### Axis B: loss terms, added one at a time
 | arm | loss | status |
@@ -60,10 +59,29 @@ against Y06, so that the loader change is not counted as an encoder effect.
 
 | arm | encoder | status |
 |---|---|---|
-| `ABL_C0P` | pretrained, frozen (same as Y06, non-stream loader) | path check in progress |
-| `ABL_C1` | pretrained, fine-tuned | path check in progress |
-| `ABL_C2` | random init, trained from scratch | path check in progress |
-| `ABL_C3` | random init, frozen | path check in progress |
+| `ABL_C0P` | pretrained, frozen (Y06's encoder, non-stream loader) | launched, 18388346 |
+| `ABL_C1` | pretrained, fine-tuned, encoder_lr 1e-5 (codebase default) | launched, 18388347 |
+| `ABL_C2` | random init, trained from scratch, encoder_lr 1e-3 (= rest of the network) | launched, 18388348 |
+| `ABL_C3` | random init, frozen | launched, 18388349 |
+
+Config `configs/rhj_fewshot_encoder.yaml` (= `rhj_fewshot.yaml` + the `encoder_lr` /
+`random_encoder` keys; re-sync if the base changes). Walltime 3 days: the non-stream loader
+runs at 531–1,600 samples/s vs ~11,000 for stream_v2 (18–50 h per 150-epoch run) and the vcell
+stage has no mid-run resume.
+
+Non-stream path fixes made before launch (stream_v2 untouched; stream batches do not reach the
+edited branch):
+1. `delta_cos` / `delta_mag` were silently ZERO on the non-stream path -> group means loaded and
+   `group_ids` carried per batch (`dataset.py`, `pipeline.py`). Without this C0P would not be Y06.
+2. Checkpoints stored the init-time pretrained encoder snapshot -> a trained or random encoder
+   is now saved as it is, and the best-checkpoint swap includes it.
+3. `eta_min` 3e-4 is an absolute floor, which annealed a 1e-5 encoder UP to 3e-4 -> encoder floor
+   is now `eta_min * encoder_lr / lr`; other groups unchanged.
+4. Proportional interleave ported from stream_v2 (was roundrobin only).
+Checked on CPU: 580,212 perturbed training cells (same as the Y06 log), zero HepG2 val/test
+perturbations eligible for training. Not equalised: control-draw and shuffle random streams
+differ between the loaders; controls are encoded per batch (float-tolerance difference).
+Caveat for C1/C2: the latent-MSE target (0.0044) moves as the encoder trains.
 
 ## 3. How to run it (reusable)
 
@@ -81,6 +99,9 @@ against Y06, so that the loader change is not counted as an encoder effect.
   - `EXTRA_SETS` config overrides;
   - walltime;
   - status.
+- A4/A5 use `configs/rhj_fewshot_pertemb.yaml` (= `rhj_fewshot.yaml` + 2 opt-in keys, empty by
+  default; `--set` cannot add keys, and adding them to the base config would change Y06's stage
+  hash). Module: `FrozenEmbeddingModel` in `src/occam/vcell/adjacency_map.py`.
 - Launching goes through `scripts/slurm/rhj_loss_sweep.sbatch`. That script gained two opt-in
   hooks: `COS_W` and `EXTRA_SETS`. Both are absent from every earlier launch.
 - The grids are generated from `scripts/grids/rhj_seeds.tsv:S43_Y06`, so they are Y06
@@ -88,6 +109,14 @@ against Y06, so that the loader change is not counted as an encoder effect.
 - Scoring is automatic: the score ledger daemon picks up the registered units once
   `final_model.pth` exists.
 - To add an arm: add one row to `arms.tsv`, then run `grids`, `launch` and `register`.
+
+### Embedding tables (not in git: 94 MB / 220 MB exceed GitHub's 100 MB limit)
+
+    python scripts/ablation/build_esm2_embeddings.py        # ESM2, --source precomputed, CPU ~1 min
+    python scripts/build_genept_full_vocab.py               # GenePT full vocab, CPU ~1 min
+
+Each writes `data/assets/<table>.pkl` plus a `.json` sidecar (committed) with the source,
+sha256, retired-name handling and per-split coverage.
 
 ## 4. Outputs
 

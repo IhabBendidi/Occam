@@ -1,0 +1,365 @@
+{
+  "built": "scripts/build_genept_full_vocab.py",
+  "coverage": {
+    "rhj_fewshot_all": {
+      "missing": [
+        "ALG1L",
+        "C14orf178",
+        "C1orf109",
+        "CCDC130",
+        "CCDC144NL",
+        "DDN",
+        "FRG2",
+        "GOLGA6L1",
+        "KRTAP4-7",
+        "MTRNR2L1",
+        "NEDD8-MDP1",
+        "OR4F4",
+        "RBM14-RBM4",
+        "RPS10-NUDT3",
+        "TDGF1"
+      ],
+      "n": 2391,
+      "present": 2376
+    },
+    "rhj_fewshot_ineligible": {
+      "missing": [
+        "ALG1L",
+        "C14orf178",
+        "CCDC144NL",
+        "GOLGA6L1",
+        "KRTAP4-7",
+        "MTRNR2L1",
+        "NEDD8-MDP1",
+        "OR4F4",
+        "RBM14-RBM4",
+        "RPS10-NUDT3"
+      ],
+      "n": 10,
+      "present": 0
+    },
+    "rhj_fewshot_test": {
+      "missing": [],
+      "n": 621,
+      "present": 621
+    },
+    "rhj_fewshot_train": {
+      "missing": [
+        "C1orf109",
+        "CCDC130",
+        "DDN",
+        "FRG2",
+        "TDGF1"
+      ],
+      "n": 1657,
+      "present": 1652
+    },
+    "rhj_fewshot_val": {
+      "missing": [],
+      "n": 103,
+      "present": 103
+    },
+    "vocab": {
+      "n": 18216,
+      "present": 17843
+    }
+  },
+  "date": "2026-09-23",
+  "dim": 3072,
+  "format": "pickle dict {gene_symbol: np.float32[3072]}; absent key = no GenePT vector",
+  "merge_rule": "full release \u222a PerturbDiff pickle, their value on a shared key",
+  "n_keys": 17843,
+  "retired_name_handling": {
+    "aliased": [
+      {
+        "alias": "DAP",
+        "alias_in_vocab": true,
+        "route": "current->synonym",
+        "symbol": "DNPEP"
+      },
+      {
+        "alias": "DUSP13B",
+        "alias_in_vocab": true,
+        "route": "retired->current",
+        "symbol": "DUSP13"
+      },
+      {
+        "alias": "LPLAT",
+        "alias_in_vocab": false,
+        "route": "current->synonym",
+        "symbol": "MBOAT7"
+      },
+      {
+        "alias": "PXR1",
+        "alias_in_vocab": false,
+        "route": "current->synonym",
+        "symbol": "PINX1"
+      },
+      {
+        "alias": "RAP1GAP2",
+        "alias_in_vocab": true,
+        "route": "ensembl->current",
+        "symbol": "AC002316.1"
+      },
+      {
+        "alias": "ARHGAP45",
+        "alias_in_vocab": true,
+        "route": "ensembl->current",
+        "symbol": "AC004151.1"
+      },
+      {
+        "alias": "ZNF304",
+        "alias_in_vocab": true,
+        "route": "ensembl->current",
+        "symbol": "AC005261.1"
+      },
+      {
+        "alias": "GAS7",
+        "alias_in_vocab": true,
+        "route": "ensembl->current",
+        "symbol": "AC005747.1"
+      },
+      {
+        "alias": "ERN2",
+        "alias_in_vocab": true,
+        "route": "ensembl->current",
+        "symbol": "AC008870.1"
+      },
+      {
+        "alias": "ZNF256",
+        "alias_in_vocab": true,
+        "route": "ensembl->current",
+        "symbol": "AC010326.1"
+      },
+      {
+        "alias": "SPTBN4",
+        "alias_in_vocab": true,
+        "route": "ensembl->current",
+        "symbol": "AC020929.1"
+      },
+      {
+        "alias": "ZNF225",
+        "alias_in_vocab": true,
+        "route": "ensembl->current",
+        "symbol": "AC021092.2"
+      },
+      {
+        "alias": "USP36",
+        "alias_in_vocab": true,
+        "route": "ensembl->current",
+        "symbol": "AC022966.1"
+      },
+      {
+        "alias": "PLEKHG4",
+        "alias_in_vocab": true,
+        "route": "ensembl->current",
+        "symbol": "AC040160.1"
+      },
+      {
+        "alias": "ULK3",
+        "alias_in_vocab": true,
+        "route": "ensembl->current",
+        "symbol": "AC091230.1"
+      },
+      {
+        "alias": "ZNF254",
+        "alias_in_vocab": true,
+        "route": "ensembl->current",
+        "symbol": "AC092279.1"
+      },
+      {
+        "alias": "IRAK4",
+        "alias_in_vocab": true,
+        "route": "ensembl->current",
+        "symbol": "AC093012.1"
+      },
+      {
+        "alias": "MSANTD5",
+        "alias_in_vocab": true,
+        "route": "ensembl->current",
+        "symbol": "AC113348.1"
+      },
+      {
+        "alias": "SPATA5",
+        "alias_in_vocab": true,
+        "route": "current->synonym",
+        "symbol": "AFG2A"
+      },
+      {
+        "alias": "SPATA5L1",
+        "alias_in_vocab": true,
+        "route": "current->synonym",
+        "symbol": "AFG2B"
+      },
+      {
+        "alias": "SPATA7",
+        "alias_in_vocab": true,
+        "route": "ensembl->current",
+        "symbol": "AL049834.1"
+      },
+      {
+        "alias": "RIN3",
+        "alias_in_vocab": true,
+        "route": "ensembl->current",
+        "symbol": "AL159141.1"
+      },
+      {
+        "alias": "ZNF593OS",
+        "alias_in_vocab": true,
+        "route": "ensembl->current",
+        "symbol": "AL391650.1"
+      },
+      {
+        "alias": "FLRT1",
+        "alias_in_vocab": true,
+        "route": "ensembl->current",
+        "symbol": "AP006333.1"
+      },
+      {
+        "alias": "MOP3",
+        "alias_in_vocab": false,
+        "route": "current->synonym",
+        "symbol": "BMAL1"
+      },
+      {
+        "alias": "KIAA2026",
+        "alias_in_vocab": true,
+        "route": "current->synonym",
+        "symbol": "BRD10"
+      },
+      {
+        "alias": "WDR92",
+        "alias_in_vocab": true,
+        "route": "current->synonym",
+        "symbol": "DNAAF10"
+      },
+      {
+        "alias": "LAS1",
+        "alias_in_vocab": false,
+        "route": "current->synonym",
+        "symbol": "DNAI7"
+      },
+      {
+        "alias": "FAM102B",
+        "alias_in_vocab": true,
+        "route": "current->synonym",
+        "symbol": "EEIG2"
+      },
+      {
+        "alias": "GARS",
+        "alias_in_vocab": true,
+        "route": "current->synonym",
+        "symbol": "GARS1"
+      },
+      {
+        "alias": "GLUC",
+        "alias_in_vocab": false,
+        "route": "current->synonym",
+        "symbol": "GBA1"
+      },
+      {
+        "alias": "ZNF720",
+        "alias_in_vocab": true,
+        "route": "current->synonym",
+        "symbol": "KRBOX5"
+      },
+      {
+        "alias": "SOGA1",
+        "alias_in_vocab": true,
+        "route": "current->synonym",
+        "symbol": "MTCL2"
+      },
+      {
+        "alias": "SOGA3",
+        "alias_in_vocab": true,
+        "route": "current->synonym",
+        "symbol": "MTCL3"
+      },
+      {
+        "alias": "MRLC2",
+        "alias_in_vocab": false,
+        "route": "current->synonym",
+        "symbol": "MYL11"
+      },
+      {
+        "alias": "LIN-10",
+        "alias_in_vocab": false,
+        "route": "current->synonym",
+        "symbol": "PHAF1"
+      },
+      {
+        "alias": "PHB",
+        "alias_in_vocab": true,
+        "route": "current->synonym",
+        "symbol": "PHB1"
+      },
+      {
+        "alias": "PRPF4B",
+        "alias_in_vocab": true,
+        "route": "retired->current",
+        "symbol": "PRP4K"
+      },
+      {
+        "alias": "RIG1",
+        "alias_in_vocab": false,
+        "route": "current->synonym",
+        "symbol": "RIGI"
+      },
+      {
+        "alias": "HLP",
+        "alias_in_vocab": false,
+        "route": "current->synonym",
+        "symbol": "SKIC2"
+      },
+      {
+        "alias": "WDR61",
+        "alias_in_vocab": true,
+        "route": "current->synonym",
+        "symbol": "SKIC8"
+      },
+      {
+        "alias": "TAZ",
+        "alias_in_vocab": true,
+        "route": "current->synonym",
+        "symbol": "TAFAZZIN"
+      }
+    ],
+    "order": [
+      "retired->current (unique NCBI synonym owner)",
+      "current->synonym (NCBI synonyms of g)",
+      "ensembl->current (Occam Ensembl map)"
+    ],
+    "routes": {
+      "current->synonym": 22,
+      "direct": 17801,
+      "ensembl->current": 18,
+      "retired->current": 2
+    }
+  },
+  "sha256": "a93e1131beb9722228e32d847ebc6f19b0e6d77c3a0a8374b0552320624181c8",
+  "sources": {
+    "alias_table": {
+      "path": "/rxrx/scratch/sandbox/ihab.bendidi/foundation-models-perturbation/benchmark/data/gene_embeddings/ESM2_(D=1280).h5ad",
+      "sha256": "43e099440857d8084856c5f86c7f6b47488fcedf1b703eeb1a1384bb7a489e59",
+      "what": "obs symbol/synonyms (NCBI gene info) of genbio-ai foundation-models-perturbation ESM2_(D=1280).h5ad"
+    },
+    "full_release": {
+      "n_keys": 133736,
+      "path": "/rxrx/scratch/sandbox/ihab.bendidi/tx_pretrained_models/GenePT/genept_embeddings/extracted/GenePT_emebdding_v2/GenePT_gene_protein_embedding_model_3_text.pickle.",
+      "sha256": "cd64611edab310b517cbb461295605a37821f6cd4f8ddae90ba18a2f861a6618"
+    },
+    "occam_ensembl_map": "assets/gene_ids/ensembl_to_symbol.tsv",
+    "perturbdiff_pickle": {
+      "n_keys": 2024,
+      "path": "/rxrx/scratch/sandbox/ihab.bendidi/perturbdiff_out/assets_dl/perturb_data/gene_names/replogle_gene_emb_dict_perturbation_emb_dict.pkl",
+      "sha256": "8c43bce711e34b4b7cb27541e1dc654d54d01a0efb225993b5c396124c4a7574"
+    }
+  },
+  "value_check_vs_existing_asset": {
+    "max_abs_diff": 0.0,
+    "n_keys": 2376,
+    "path": "data/assets/genept_occam_rhj_fewshot.pkl"
+  },
+  "vocab": "data/graphs/master_gene_set_sorted.csv",
+  "vocab_sha256": "c62e4648a2a2e88d49b7d602a8a4147586dc7916b4f27df243e2903e2eb9533b"
+}

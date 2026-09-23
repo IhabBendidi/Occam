@@ -51,6 +51,13 @@ class VirtualCellConfig:
     adj_make_undirected: bool = True
     adj_use_ffn: bool = True
     adj_activation: str = "relu"
+    # --- Frozen external per-gene embeddings (opt-in; "" = off, every existing config) ---
+    # With pert_model_type="adjacency_map", a non-empty path replaces the adjacency ROW with a
+    # frozen per-gene vector from this table (GenePT / ESM2 ...) and feeds it to the SAME MLP
+    # (adj_hidden_dim / adj_dropout / adj_use_ffn / adj_activation). The graph is not loaded.
+    # See FrozenEmbeddingModel in adjacency_map.py for the missing-gene policy.
+    pert_embedding_path: str = ""
+    pert_embedding_norm: str = "zscore"  # zscore | l2 | none (over present genes)
 
     # --- Per-KG settings (for multi-KG loading) ---
     kg_norm_weights: Optional[List[str]] = None  # KGs that get norm_weights=True (default: ["go"])
