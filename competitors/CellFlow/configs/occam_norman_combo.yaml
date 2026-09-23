@@ -174,4 +174,5 @@ train:
     # they move.
 output:
   dir: /rxrx/scratch/sandbox/ihab.bendidi/tx_pretrained_models/Occam/runs/competitors/cellflow
-  run_name: occam_rhj_fewshot_s42
+  # The launcher overrides this with --run-name (occam_s<seed>__norman_combo).
+  run_name: occam_norman_combo_s42

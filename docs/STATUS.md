@@ -31,6 +31,12 @@ metrics `pearson_delta` ↑, `mae` ↓ (error), `overlap_at_N` ↑, `discriminat
 | `configs/rhj_fewshot.yaml` | Q02 loss base, 150 ep, eta_min 3e-4, bs 2048, lr 1e-3 (= Y06) | `default_recipe.md` |
 | `configs/norman_combo.yaml` | Q02 Norman weights, 150 ep, **bs 256, eta_min 1e-3** (= NB10, adopted 2026-09-23), `decode_seq_mean` | `default_recipe.md` |
 
+## Final tables (in progress, 2026-09-23)
+
+5 seeds × 5 splits for every model and baseline: `docs/FINAL_TABLES_PLAN.md`; completeness by
+`scripts/score_ledger.py`; the table itself `data/release/final/scores_by_seed_split.csv`
+(`scripts/final_table.py`).
+
 ## Where each current number lives
 
 | topic | doc |

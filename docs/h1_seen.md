@@ -35,8 +35,8 @@ control cell, cell-eval 0.6.0, nocal), the 4 headline metrics: `pearson_delta` �
 | perturbations | **80** = `data/benchmarks/shared/h1_k562_perts.json`: H1 perts eligible in rhj_fewshot with ≥ 10 cells in H1 AND in the K562 essential screen. 56 RHJ-`train` (trained in HepG2, Jurkat, RPE1), 22 `test` + 2 `val` (withheld from HepG2) |
 | controls | 38,176 (identical in all 3 VCC files, read once) |
 | per split | 33,559 perturbed + 19,088 control cells per half |
-| gene axis | **6,535** of the 6,983 RHJ axis genes (448 absent in H1 → 0 at input, not scored) |
-| normalisation | log1p(count / rowsum × 2000), rowsum over the 8,910 H1 genes also in the RHJ HepG2 file |
+| gene axis | **6,535** of the 6,983 RHJ axis genes (448 absent in H1 → 0 at input, not scored). ⛔ The 448 carry 21.6 % of HepG2's axis mass (MT-CO1, EEF1A1, RPL/RPS…): zero there is a fake strong down-regulation |
+| normalisation | log1p(count / rowsum × 2000), rowsum over the 8,910 H1 genes also in the RHJ HepG2 file. ⛔ **Not the training rule** (audit 2026-09-23): training uses the full source-file panel; H1 ∩ HepG2 misses the heavy hitters (72 % of HepG2 counts), so H1 inputs are inflated ~1.39×. See docs/audits_2026-09-23.md |
 | depth | median 53,674 UMI (not thinned; part of the shift) |
 | `meanpert` | RHJ HepG2 training grand-mean DELTA placed on the H1 control mean |
 | `transfer` | cell-weighted mean delta of the same pert over the RHJ lines where it was TRAINED |
@@ -70,6 +70,32 @@ rebuilds cohort, splits and baselines, compares every quantity with the publishe
 | CellFlow | 18368108 → 18368109 |
 | PerturbDiff genept | 18368110 → 18368111 |
 
-## Results
+## Results (80 perts) — Occam and baselines COMPLETE; ⏳ competitors relaunched
 
-⏳ Pending. Written here as each arm's 5 splits land, before being reported.
+Occam: 5 splits, seed 42. Baselines: mean over control-draw seeds 42–46 × 5 splits (24 of 25
+split-seeds; seed 46 split 4 still running). `mae` ↓. Strata: pΔ over the 56 perts also trained
+in HepG2 (`train`) vs the 24 withheld from HepG2 (trained only in Jurkat/RPE1).
+
+| arm | pΔ ↑ | mae ↓ | overlap_at_N ↑ | disc_l1 ↑ (chance 0.5) | pΔ, 56 `train` | pΔ, 24 held from HepG2 |
+|---|---|---|---|---|---|---|
+| ctrlcell (floor) | 0.0009 | 0.0147 | 0.0000 | 0.5090 | 0.0004 | 0.0020 |
+| ctrlmean | 0.0037 | 0.0137 | 0.1700 | 0.5082 | 0.0026 | 0.0063 |
+| M03 | 0.0818 ± 0.0021 | 0.1388 | 0.3227 | 0.5591 | 0.0854 | 0.0735 |
+| meanpert | 0.0848 | 0.0162 | 0.1882 | 0.5096 | 0.0922 | 0.0673 |
+| Y06 (published) | 0.0925 ± 0.0020 | 0.1377 | 0.3212 | **0.6032** | 0.0970 | 0.0821 |
+| M06 | 0.0928 ± 0.0021 | 0.1419 | 0.3245 | 0.5737 | 0.0979 | 0.0810 |
+| Q02 | 0.0944 ± 0.0021 | 0.1420 | 0.3264 | 0.5718 | 0.0996 | 0.0824 |
+| **transfer** | **0.2325** | 0.0175 | 0.2542 | 0.5695 | 0.2442 | 0.2052 |
+| experimental | 0.8882 | 0.0065 | 0.6054 | 0.9869 | 0.8908 | 0.8821 |
+
+### F-h1-1 (80-pert panel). Occam does not carry a seen perturbation into H1
+
+Every Occam checkpoint sits at pΔ 0.082–0.094: at most +0.010 over `meanpert` (0.0848) and
+**−0.138 under `transfer`** (copying the RHJ delta of the same perturbation onto an H1
+control). The ordering holds in both strata. Occam's `mae` is ~9× every baseline on the same
+panel (0.138–0.142 vs 0.014–0.018, including `ctrlcell`, which is the input cell itself): the
+model's reconstruction of an H1 cell is far from the cell, and because the scored control rows
+are the real half-B cells that offset enters the predicted delta directly. Whether the effect
+itself fails to transfer or only the reconstruction does is not separated yet (the
+`delta_sum_realctrl` emission test, which adds the model's delta to the real control, is proposed,
+not run). Y06 has the best `disc_l1` (0.6032). Same conclusion as on the superseded 99-pert panel.

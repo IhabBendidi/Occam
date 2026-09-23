@@ -54,6 +54,11 @@ sys.path.insert(0, os.path.join(REPO, "src"))
 # Which benchmark an eval root belongs to. The path is the only record -- metrics.json
 # does not carry a benchmark id -- so `n_perts` is exported alongside as a cross-check.
 BENCHMARK_BY_PREFIX = (
+    # the unseen-cell-line panels (rhj_fewshot checkpoints scored on H1 / K562); the trailing
+    # slash keeps runs/k562_seen/ from matching runs/k562_seen_h1set/
+    ("runs/h1_seen/", "h1_seen"),
+    ("runs/k562_seen/", "k562_seen"),
+    ("runs/k562_seen_h1set/", "k562_seen_h1set"),
     ("runs/norman_combo/", "norman_combo"),
     ("runs/rhj_splithalf/", "rhj_fewshot"),
     ("runs/rhj_fewshot/", "rhj_fewshot"),
@@ -63,8 +68,12 @@ BENCHMARK_BY_PREFIX = (
 PANEL_DIR = {
     "norman_combo": "data/benchmarks/norman_combo/splithalf",
     "rhj_fewshot": "data/benchmarks/rhj_fewshot/splithalf",
+    "h1_seen": "data/benchmarks/h1_seen/splithalf",
+    "k562_seen": "data/benchmarks/k562_seen/splithalf",
+    "k562_seen_h1set": "data/benchmarks/k562_seen_h1set/splithalf",
 }
-EXPECTED_N_PERTS = {"norman_combo": 111, "rhj_fewshot": 611}
+EXPECTED_N_PERTS = {"norman_combo": 111, "rhj_fewshot": 611, "h1_seen": 80, "k562_seen": 528,
+                    "k562_seen_h1set": 80}
 
 # ERRORS: lower is better. Everything else here is "higher is better". Metrics whose
 # direction is genuinely ambiguous are listed as "context" and must not be ranked on.
@@ -159,7 +168,8 @@ def main() -> int:
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--out", default="data/release/metrics")
     ap.add_argument("--benchmark", default="all",
-                    choices=["all", "norman_combo", "rhj_fewshot"])
+                    choices=["all", "norman_combo", "rhj_fewshot", "h1_seen", "k562_seen",
+                             "k562_seen_h1set"])
     ap.add_argument("--calibration", default="nocal", choices=["nocal", "all"])
     ap.add_argument("--scope", default="published", choices=["published", "all"],
                     help="`published` (default) keeps our published arms "

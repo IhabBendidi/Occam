@@ -163,8 +163,16 @@ def main(argv=None) -> int:
 
     if not args.skip_space_check:
         from emission_space import assert_representable, space_diagnostics
-        assert_representable(pred, n_genes=base.n_keep,
-                             name=f"{args.arm} pred.npy")
+        try:
+            assert_representable(pred, n_genes=base.n_keep,
+                                 name=f"{args.arm} pred.npy")
+        except Exception as e:  # noqa: BLE001 -- only the library-size band may be waived
+            if (os.environ.get("OCCAM_WAIVE_LIBSIZE_CHECK") == "1"
+                    and "median library size" in str(e)):
+                print(f"[compet] ⚠️ library-size check WAIVED (OCCAM_WAIVE_LIBSIZE_CHECK=1): "
+                      f"{str(e).split('. This is')[0]}")
+            else:
+                raise
         rep = space_diagnostics(pred, base.real_X_model[a_rows],
                                 pred_name=f"{args.arm} pred.npy",
                                 target_name="panel half-A")

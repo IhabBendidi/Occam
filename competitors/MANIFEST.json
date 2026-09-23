@@ -1,7 +1,7 @@
 {
   "arms": {
     "CellFlow": {
-      "bytes": 1441724,
+      "bytes": 1448066,
       "files": {
         ".python-version": {
           "bytes": 5,
@@ -196,20 +196,20 @@
           "sha256": "9577cdd18492cf7376427a0edb361315ed8196bf3d36866bcf068470191f278f"
         },
         "cellflow_selection.py": {
-          "bytes": 25924,
-          "sha256": "303f78f3a3ec92a5d2f4db0306a98cab17aeb58c144d294fd18085e5938c756d"
+          "bytes": 27637,
+          "sha256": "b3ab56d3881997bd8bbc468334e8a1239030619da3a896a94dbd7d329b1efb86"
         },
         "configs/occam_norman_combo.yaml": {
-          "bytes": 9360,
-          "sha256": "272e84e1655b327a4496cc02fba81a99c7ec7e1b047c53c551b34e5334e27a25"
+          "bytes": 9440,
+          "sha256": "dc080a0876dc28c310a8dc3134097e4313eb33d083bc938b85f2ac889da9d877"
         },
         "configs/occam_rhj_fewshot.yaml": {
           "bytes": 6898,
           "sha256": "c2a5afe4ad61aaf212208623989d0660e08d804efbefd50cd852c046205a2e50"
         },
         "export_occam.py": {
-          "bytes": 16473,
-          "sha256": "05fce555ecc69dfa19c6a671e3700e67593d620ab7bf5e37d43cf48e50d79160"
+          "bytes": 17374,
+          "sha256": "5315fa9f9d663f832a3a7ab5fc813fde82a391fcca06063660325e727f8ac710"
         },
         "occam_bridge/__init__.py": {
           "bytes": 1267,
@@ -220,8 +220,8 @@
           "sha256": "60cd15b6838ab2cde6d55c1654503170a9cf1ed93f98653be18b2c48f321910b"
         },
         "occam_bridge/occam.py": {
-          "bytes": 12817,
-          "sha256": "fc81ad0151d3c0ded74720e2a6c37b1c3f4d3bb2caceefbea47e431902dbb033"
+          "bytes": 14636,
+          "sha256": "3d9936158c6be2e2ff2895d32379938039652d45c16411ad3f5b085f5d130023"
         },
         "occam_bridge/pca.py": {
           "bytes": 4410,
@@ -244,14 +244,14 @@
           "sha256": "547607c148539e6c4ccb9ce2dcfd3c866285a8bba6f6a0c24ff6d05bd1727b64"
         },
         "train_cellflow.py": {
-          "bytes": 37126,
-          "sha256": "9a6983bfa14c8c9f242810ff8485647c79630ea8e2aa9a1753599e4e28621009"
+          "bytes": 38955,
+          "sha256": "4bdd9db6ab1cf0a791d44e5ac3a9c9beb6f9ff243431a9d714e4d372ee787c81"
         }
       },
       "n_files": 61
     },
     "PerturbDiff": {
-      "bytes": 2808371,
+      "bytes": 2809722,
       "files": {
         ".python-version": {
           "bytes": 5,
@@ -370,8 +370,8 @@
           "sha256": "2dc0ac264b54bd6ce287f9a0cbd3ce5001f9ef482798a9cc8ee471055f639476"
         },
         "export_occam.py": {
-          "bytes": 28685,
-          "sha256": "cc562615dafd9d2cc7d8e5af62df4c876467848805f4d85ca96ef7613b0ad268"
+          "bytes": 30036,
+          "sha256": "424af0e66b84520fd5a38e16d2ec600a8633d97c8aea163186631f3212a57811"
         },
         "pyproject.toml": {
           "bytes": 3559,
@@ -673,11 +673,11 @@
       "n_files": 104
     },
     "STATE": {
-      "bytes": 1173072,
+      "bytes": 1200022,
       "files": {
         "export_occam.py": {
-          "bytes": 24772,
-          "sha256": "f047f1198a6a081c0f71832a665b5058b8d4abc82a0e1dad9ade9fc961d45d89"
+          "bytes": 20347,
+          "sha256": "be199d58965956197f4555c2eba4e5322cad33dfcca1a75b00de5f63f98a6578"
         },
         "state/.python-version": {
           "bytes": 5,
@@ -976,8 +976,8 @@
           "sha256": "8d0197523d775c4e81a981964ce9ac2a533da88f39f9ef90df41b3c856ba8fdc"
         },
         "state/src/state/tx/callbacks/validation_celleval.py": {
-          "bytes": 10310,
-          "sha256": "eaf50935a5236c236e064845a9618a1e9fb3c536a232d365dcf50fe2c359cf3b"
+          "bytes": 17051,
+          "sha256": "043c396f613823788b61c61e7a2af924d09cea93db6cb18ec2c47d91d5696e9a"
         },
         "state/src/state/tx/data/__init__.py": {
           "bytes": 3307,
@@ -1143,6 +1143,10 @@
           "bytes": 12868,
           "sha256": "30dc320813e326516d22fc47162d5ec571511a25345af3f0e0fc1cef94ffd715"
         },
+        "state/src/state/tx/pure_sentence.py": {
+          "bytes": 11151,
+          "sha256": "654ab9323bd1ca21bb32f91eb57e90d17b1d862c86fc88d9e86f98f9f63e82d3"
+        },
         "state/src/state/tx/utils/__init__.py": {
           "bytes": 14624,
           "sha256": "21937ca9060c2c209354d3d0e2f46b0ae750f97f7e72d0e303b75b8e507635f5"
@@ -1151,12 +1155,16 @@
           "bytes": 486,
           "sha256": "9b229850fb05befbc65c9006c4829605cd64f4be7a28806f41de697942d419d2"
         },
+        "state/tests/test_validation_composition.py": {
+          "bytes": 13483,
+          "sha256": "60bfa102a795ed5b7d9e58589c7a04ab126d693267d47bcf40e44584253ad8a8"
+        },
         "state/uv.lock": {
           "bytes": 293669,
           "sha256": "3a9a3140964ed6334134f4ddb695b58a19266b0a12a67ae7699fb2a28f627905"
         }
       },
-      "n_files": 120
+      "n_files": 122
     },
     "TxPert": {
       "bytes": 910876,

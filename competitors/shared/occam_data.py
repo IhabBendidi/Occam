@@ -418,7 +418,9 @@ def load_occam_adata(bench: OccamBenchmark,
 
     adata = ad.AnnData(X=np.concatenate(blocks, axis=0), obs=obs, var=var)
     adata.uns["occam"] = {
-        "benchmark_id": "rhj_fewshot",
+        # the artifact's own id (rhj_fewshot's splits.json says "rhj_fewshot", so it is
+        # unchanged there); it was hardcoded, and stamped norman_combo data as rhj_fewshot
+        "benchmark_id": str(bench.split.get("benchmark_id") or "rhj_fewshot"),
         "benchmark_sha256": bench.benchmark_sha256,
         "gene_axis_sha256": bench.axis_sha256,
         "n_axis_genes": bench.n_genes,

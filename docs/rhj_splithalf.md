@@ -3763,3 +3763,79 @@ logs every move to runs/slurm/qos_rebalance_*.out).
 `scripts/repro/baselines.sh` now takes `SEED` (the half-B control draw, rng = seed + 1000·split;
 moves ctrlcell / meanpert / transfer, not ctrlmean / experimental). Jobs 18365483–86 →
 `runs/rhj_splithalf/reference_s4N`. Seed 42 = the published `runs/rhj_splithalf/reference`.
+
+### Retries 2026-09-23 (pdex /dev/shm race, "cell-eval returned no metrics" after 3 attempts)
+Resubmitted exactly the failed splits: baselines s43 split 4 (18368323), s44 split 3 (18368324),
+s45 split 4 (18368325), s46 splits 1,3,4 (18368326); PerturbDiff genept s44 splits 0,1,3
+(18368321), s46 split 1 (18368322); RB512 split 1 (18368327).
+
+## F-infra1 ROOT CAUSE and FIX (2026-09-23)
+
+**Cause:** systemd-logind on the hop nodes runs with `RemoveIPC=true` (live value via
+`busctl get-property org.freedesktop.login1 /org/freedesktop/login1 org.freedesktop.login1.Manager
+RemoveIPC` → `b true`; logind.conf is silent, so the default applies). When a user's last login
+session on a node ends, logind deletes every /dev/shm object that user owns. Slurm jobs are not
+login sessions (`UsePam=no`), but every `ssh <node>` is — so one monitoring ssh wipes the live pdex
+segment (`/psm_*`) of every cell-eval on that node ~10–20 s after logout, and torch DataLoader
+`/torch_*` segments too. More jobs per node = more victims per wipe. Reproduced on hop01. Not the
+CPython resource-tracker bug (pdex workers are forked and share the parent's tracker).
+
+**Fix (live, default ON):** `scripts/cell_eval_shmsafe.py` runs the same cell-eval CLI with pdex's
+SharedMemory replaced by an anonymous MAP_SHARED mmap inherited by the forked workers (no /dev/shm
+name to delete); `src/occam/decoder_train/metrics.py::run_cell_eval` invokes it with the jupyter
+interpreter resolved from the `cell-eval` executable. Verified: real_de / pred_de / results /
+agg_results byte-identical to stock cell-eval (anonymous and file backends, and through
+run_cell_eval); stress test deleting /psm_* every 0.5 s: stock fails with the production error,
+launcher exits 0 with identical outputs. `OCCAM_CELLEVAL_SHMSAFE=0` restores stock.
+
+**Rules until an admin sets `RemoveIPC=no`:** never `ssh` into a node running our jobs (use
+`srun --jobid=<id> --overlap`, which opens no login session); torch DataLoader workers remain
+exposed (PerturbDiff relaunched with `PD_WORKERS=0`).
+
+### RB ladder — first result (2026-09-23): RB512 is WORSE than Y06 on pΔ and mae
+
+Seed 42, 5 splits, nocal. `mae` ↓. Anchors: meanpert 0.1324 · transfer 0.2323 · experimental 0.3722.
+
+| arm | batch | pΔ ↑ | mae ↓ | overlap_at_N ↑ | disc_l1 ↑ |
+|---|---|---|---|---|---|
+| Y06 | 2048 | **0.4043 ± 0.0019** | **0.0215** | 0.0946 | 0.7288 |
+| RB512 | 512 | 0.3878 ± 0.0028 | 0.0245 | **0.1006** | **0.7374** |
+
+On RHJ, going from bs 2048 to 512 costs −0.017 pΔ and +0.003 mae, and gains +0.006 overlap and
++0.009 disc_l1 — the opposite of Norman, where smaller batches won on pΔ (F-sweep1). Consistent
+with the step-starvation reading (Norman 27 steps/epoch at bs 2048, RHJ 298). n = 1 seed.
+
+Status: RB256 finished training (scoring via the ledger); RB064 epoch 43, RB032 epoch 30.
+⚠️ RB128 HUNG at epoch 37 from 06:06 (its dataloader /dev/shm on hop21 was wiped by an ssh logout
+at ~05:31 — F-infra1; NF32's earlier hang on the same node has the same cause). Cancelled, run dir
+archived, relaunched from scratch: job 18368869 (36 h).
+
+### F-seed-Y06 (2026-09-23 15:30). Y06 across seeds: seed 42 was a favourable draw
+
+nocal, 5 splits per seed, `mae` ↓. Seed 43 hung and is being retrained (job 18385637).
+
+| seed | pΔ ↑ | mae ↓ | overlap_at_N ↑ | disc_l1 ↑ |
+|---|---|---|---|---|
+| 42 | 0.4043 | 0.0215 | 0.0946 | 0.7288 |
+| 44 | 0.3980 | 0.0216 | 0.0946 | 0.7223 |
+| 45 | 0.3929 | 0.0226 | 0.0835 | 0.7249 |
+| 46 | 0.3859 | 0.0226 | 0.0834 | 0.7179 |
+| **mean ± SD (4 seeds)** | **0.3953 ± 0.0077** | 0.0221 | 0.0890 | 0.7235 |
+
+The seed SD of pΔ (0.0077) is 4× the split SD (0.0019) and larger than every gap among the
+rhj recipe arms (AA03 0.4044, AA02 0.4035, Y06 s42 0.4043, Y03 0.4015, RB256 0.3978): the single-
+seed ranking of those arms is NOT resolved. Y06 stays above TxPert (0.3463) and `experimental`
+(0.3721) at every seed. RB256 (bs 256, seed 42): 0.3978 / mae 0.0217 / ovl 0.0989 / dl1 0.7291.
+
+Y06 seeds on the unseen-cell-line panels (pΔ, seeds 42 / 44 / 45 / 46): h1_seen 0.0925 / 0.0930 /
+0.0972 / 0.0972; k562_seen 0.1716 / 0.1677 / 0.1770 / 0.1728; k562_seen_h1set 0.1630 / 0.1599 /
+0.1637 / 0.1626 — stable across seeds.
+
+⚠️ NF42 and S43_Y06 hung (dataloader stall, no output for ~4 h, timed out at 6 h on hop50 /
+hop21) with no ssh from me after 05:31; relaunched unchanged (num_workers is part of the
+determinism contract): NF42 18385636, S43_Y06 18385637.
+
+### AA03 seed replicates launched (2026-09-23, user request)
+Y06 stays the official rhj run. AA03 (Q02 base, 180 ep, eta_min 7e-4; 0.4044 at seed 42, a tie
+with Y06) at seeds 43–46 to see its seed behaviour: `scripts/grids/rhj_seeds_aa03.tsv`, job
+18386809; scored on rhj_fewshot by the ledger.

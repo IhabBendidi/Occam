@@ -415,14 +415,62 @@ def run_cell_eval(
     genes becomes ~212,000 pool tasks -- each of which re-attaches to the one
     POSIX shared-memory segment holding the expression matrix. On a panel that
     size that run died with ``FileNotFoundError: /psm_...``: the segment was
-    gone before a task could attach (CPython's shared-memory resource tracker
-    unlinks segments early, fixed only in 3.13, and cell-eval runs under 3.10).
+    gone before a task could attach (deleted by systemd-logind RemoveIPC, see
+    the F-infra1 comment below -- not the CPython tracker bug first blamed).
     Raising the batch size cuts the task count proportionally. Left at None,
     cell-eval's own default applies.
     """
     os.makedirs(output_dir, exist_ok=True)
-    cmd = [
-        "cell-eval", "run",
+    # ⛔ F-infra1, ROOT CAUSE (2026-09-23). The `FileNotFoundError: '/psm_<hex>'` is not a
+    # CPython resource-tracker race: pdex's pool workers are forked and share the parent's
+    # tracker, so that bug cannot fire inside one cell-eval. The segment is deleted from
+    # OUTSIDE. systemd-logind on the GPU nodes runs with RemoveIPC=yes (live value, although
+    # logind.conf does not mention it), and when a user's last logind session on a node ends
+    # it deletes every /dev/shm object that user owns. Slurm jobs are not logind sessions, but
+    # any `ssh <node>` is -- so one monitoring ssh wipes the live pdex segment of every
+    # cell-eval we have running on that node, ~10 s after it logs out. Reproduced on hop01: a
+    # /dev/shm/psm_* file vanished after `ssh hop01 true`. More jobs per node = more victims
+    # per wipe, which is the concurrency dependence; retries only re-roll the timing.
+    #
+    # Fix: scripts/cell_eval_shmsafe.py runs the same cell-eval CLI with pdex's SharedMemory
+    # swapped for an anonymous MAP_SHARED mmap inherited by the forked workers -- no name in
+    # /dev/shm, so nothing can unlink it. Same bytes in, same DE out (verified identical).
+    # OCCAM_CELLEVAL_SHMSAFE=0 restores the stock `cell-eval` executable.
+    if os.environ.get("OCCAM_CELLEVAL_SHMSAFE", "1") != "0":
+        launcher = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            "..", "..", "..", "scripts", "cell_eval_shmsafe.py")
+        launcher = os.path.normpath(launcher)
+        # The launcher must run under the SAME interpreter as the `cell-eval` executable (the
+        # jupyter env, which has cell_eval + pdex). A bare "python" inside a Slurm job resolves
+        # to the system interpreter and fails with `No module named 'pdex'` (2026-09-23).
+        import shutil as _sh
+        _ce = _sh.which("cell-eval")
+        _py = None
+        if _ce:
+            try:
+                _real = os.path.realpath(_ce)
+                with open(_real, "rb") as _fh:
+                    _first = _fh.readline().decode(errors="ignore").strip()
+                if _first.startswith("#!") and "python" in _first:
+                    _py = _first[2:].split()[0]
+                else:  # pyenv shim: ask pyenv for the real executable
+                    import subprocess as _sp
+                    _real = _sp.run(["pyenv", "which", "cell-eval"], capture_output=True,
+                                    text=True, env={**os.environ, "PYENV_VERSION": "jupyter"}
+                                    ).stdout.strip()
+                    with open(_real, "rb") as _fh:
+                        _first = _fh.readline().decode(errors="ignore").strip()
+                    _py = _first[2:].split()[0] if _first.startswith("#!") else None
+            except Exception:  # noqa: BLE001
+                _py = None
+        exe = [_py, launcher] if (_py and os.path.isfile(launcher)) else ["cell-eval"]
+        if exe == ["cell-eval"]:
+            print(f"  ⚠️ {launcher} not found; running stock cell-eval (shm-unsafe)")
+    else:
+        exe = ["cell-eval"]
+    cmd = exe + [
+        "run",
         "-ap", pred_path,
         "-ar", gt_path,
         "-o", output_dir,

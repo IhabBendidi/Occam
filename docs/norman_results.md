@@ -1002,3 +1002,75 @@ a pΔ 0.014 below NF33. (3) NF33 vs NB10 (same config, selection changed): +0.00
 
 Partial checkpoints of the killed chains were moved to `archive/` (MANIFEST.tsv). Norman
 PerturbDiff s43 / s46 were already training before the shm fix and are left running.
+
+### F-comp7 (2026-09-23). TxPert on norman_combo: leak audit — NO LEAK
+
+Asked: could TxPert's Norman scores (0.8523 / 0.7079, n = 4–5 seeds) be inflated by a leak or an
+evaluation asymmetry? Six routes checked (read-only audit), two claims re-verified by hand:
+
+| route | verdict | evidence |
+|---|---|---|
+| training data | no leak | occam mode masks every `test_unseen_pert` ∪ `val` label in the evaluated line (`gspp/data/datamodule.py:989, 1008-1013`); all 131 doubles are held out (`doubles_in_neither_val_nor_test: []`). **Verified:** validation 5,276 cells + panel perturbed rows 28,921 = 34,197 = `excluded_cells` in benchmark.json |
+| checkpoint selection | no leak | monitor `val/celleval/selection_score` on `split="validation"`; test loader never scored in training. **Verified:** the scored validation file holds exactly the 20 val pairs, 0 test pairs; val ∩ test = ∅. Every seed selected the final epoch anyway |
+| panel overlap | no leak | panel = the 111 test pairs + all 9,702 controls; controls are in TxPert's training control pool — allowed and identical for every arm |
+| export | no leak | input = the drawn half-B control only; pair = sum of the two single-gene embeddings (its published mechanism); half-A target used only by non-mutating checks; clip at 0 (CellFlow does the same). `omit_cntr` differs train/export but is inert for pairs (no ctrl token) |
+| scoring | no leak | same `eval_competitor.py` path as every arm, `pred_ctrl = ctrl_B`, same cohort and cell-eval |
+| hyperparameters | no leak for Norman | same config as RHJ; the upstream test-metric sweep caveat concerns RHJ single-gene data, not Norman doubles |
+
+The one real asymmetry favours Occam: `decode_seq_mean` was chosen on this benchmark, TxPert runs
+its published additive sum. The additive/nonadditive strata are defined from true pair profiles
+(CARD.md caveat), which applies to every arm equally. TxPert's additive score (0.852, below
+`sum_of_singles` 0.8824) is what an embedding-sum model is expected to do.
+
+### ⛔ 2026-09-23: CellFlow norman_combo numbers are DEFECTIVE (audit, docs/audits_2026-09-23.md)
+Pairs were a single opaque token in training/validation (the published set aggregation never
+engaged) and split into two tokens only at export; and validation selection crashed on every
+pass, so all five seeds exported their FINAL state. The CellFlow row (0.7470 / 0.6733) must not be
+quoted as CellFlow's method until the arm is fixed and retrained. No leak was found.
+
+Update (same day): the Norman PerturbDiff s45 relaunch (18368282) died after 4 min on "Pin memory
+thread exited unexpectedly" — `TORCH_SHARING_STRATEGY=file_system` still uses named /dev/shm
+files, which systemd RemoveIPC deletes (the F-infra1 root cause). That default is reverted to
+opt-in; s45 relaunched with `PD_WORKERS=0` (no shared memory): 18368463 → 64 → 65.
+
+### 2026-09-23: CellFlow and STATE norman_combo fixed and retrained (5 seeds each)
+- CellFlow: pairs are two component tokens `[A, B]` in training vocabulary, validation, selection
+  and export (was one opaque "A+B" token, split only at export); the selection callback parses
+  NULL-padded singles and 2-component pairs and restores the best state. rhj build unchanged
+  (verified identical). Chains 18368707–721.
+- STATE: validation predicts pairs by `decode_seq_mean` composition through the same code as the
+  export (`state.tx.pure_sentence`, which imports `compose_sequential`); the untrained "A+B"
+  one-hot is never read. Singles bit-identical. Chains 18368664–678.
+The previous CellFlow / STATE norman numbers are archived (archive/MANIFEST.tsv) and superseded.
+
+### F-sweep7 (2026-09-23 15:30). bs 64 eta_min ladder + bs 32: all within noise of NF31
+
+Seed 42, 5 splits, nocal, decode_seq_mean (selection on decode_seq_mean). `mae` ↓.
+
+| arm | config | pΔ add / non | mae add / non ↓ | ovl add / non | dl1 add / non |
+|---|---|---|---|---|---|
+| NF31 | bs 64, eta 3e-4 | 0.9096 / **0.7982** | 0.0112 / 0.0133 | 0.3153 / 0.3000 | 0.8878 / 0.7644 |
+| NF43 | bs 64, eta 1e-6 | **0.9120** / 0.7977 | 0.0111 / 0.0134 | 0.3153 / 0.2933 | 0.8972 / 0.7613 |
+| NF41 | bs 64, eta 1e-4 | 0.9085 / 0.7952 | 0.0111 / 0.0134 | 0.3171 / 0.2981 | 0.8929 / 0.7681 |
+| NF32 | **bs 32**, eta 3e-4 | 0.9112 / 0.7931 | **0.0109** / 0.0133 | **0.3193** / 0.2956 | **0.9137 / 0.7705** |
+| NF40 | bs 64, eta 2e-4 | 0.9084 / 0.7901 | 0.0112 / 0.0134 | 0.3123 / 0.2947 | 0.8777 / 0.7621 |
+| NF42 | bs 64, eta 1e-5 | ⏳ hung, relaunched (18385636) | | | |
+
+Every bs-64 / bs-32 arm sits within 0.008 pΔ of NF31 — inside the seed SD measured on rhj
+(0.0077, F-seed-Y06). The eta_min floor at bs 64 does not matter measurably; bs 32 is best on
+mae, overlap and disc_l1 (add and non) and 0.005 below NF31 on nonadditive pΔ.
+
+### F-comp8 (2026-09-23 15:40). Norman competitors at 5 seeds × 5 splits (CellFlow retrained, fixed)
+
+nocal, mean over 25 (seed, split) rows. `mae` ↓. Occam NF31 (seed 42 only so far): 0.9096 / 0.7982.
+Bar: sum_of_singles 0.8820 / 0.7755 (5 seeds).
+
+| model | pΔ add (SD) | pΔ non (SD) | mae add / non ↓ | ovl add / non | dl1 add / non |
+|---|---|---|---|---|---|
+| TxPert | 0.8513 (0.0077) | 0.7069 (0.0082) | 0.0136 / 0.0192 | 0.3236 / 0.3009 | 0.9747 / 0.7156 |
+| **CellFlow (fixed, retrained)** | 0.7655 (0.0141) | 0.6984 (0.0161) | 0.0139 / 0.0166 | 0.2493 / 0.2531 | 0.9308 / 0.7751 |
+| PerturbDiff | 0.6582 (0.0882) | 0.6128 (0.0576) | 0.0185 / 0.0199 | 0.1651 / 0.1744 | 0.7601 / 0.7357 |
+
+CellFlow selection now runs: 5 validation states scored per seed, best non-final (e.g. s42 `call04`).
+The fixed CellFlow is +0.018 / +0.025 pΔ over its defective archived numbers (0.7470 / 0.6733) and
+now nearly ties TxPert on nonadditive pΔ. STATE norman retrain still training.

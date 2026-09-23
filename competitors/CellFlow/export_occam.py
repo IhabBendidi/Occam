@@ -84,7 +84,7 @@ def _bench_tag(bench_dir: str) -> str:
     return "" if name == "rhj_fewshot" else f"__{name}"
 
 
-def _resolve_run_dir(seed: int, explicit: str, bench_dir: str = "") -> str:
+def _resolve_run_dir(seed: int, explicit: str, bench_dir: str = "") -> tuple[str, dict]:
     """The run directory whose pickle holds the state CellFlow selected on VALIDATION.
 
     ⚠️ Unlike the other three arms there is no `best_*.ckpt`: CellFlow keeps the best
@@ -100,18 +100,27 @@ def _resolve_run_dir(seed: int, explicit: str, bench_dir: str = "") -> str:
             f"no run directory at {d}. Either training has not finished for seed {seed}, or "
             f"it wrote somewhere else.")
     meta_p = os.path.join(d, "run_meta.json")
+    record: dict = {"selected": False}
     if os.path.isfile(meta_p):
-        sel = (json.load(open(meta_p)).get("selection") or {}).get("best")
+        sel_block = json.load(open(meta_p)).get("selection") or {}
+        sel = sel_block.get("best")
         if sel:
+            # The pickle IS the selected state: `SelectionCallback.on_train_end` restores the
+            # best params into the solver before `train_cellflow.py` calls `cf.save()`.
+            record = {"selected": True, "tag": sel.get("tag"),
+                      "final": bool(sel.get("final")),
+                      "selection_score": sel.get("selection_score"),
+                      "n_scored_states": sel_block.get("n_scored_states")}
             print(f"[{ARM}] selected state {sel.get('tag')} "
-                  f"selection_score={sel.get('selection_score')}")
+                  f"selection_score={sel.get('selection_score')} "
+                  f"({sel_block.get('n_scored_states')} validation passes scored)")
         else:
             print(f"[{ARM}] ⚠️ no selection record in run_meta.json: the pickle holds the "
                   f"FINAL state, so this arm is NOT selected-on-validation. Say so beside "
                   f"its number.")
     else:
         print(f"[{ARM}] ⚠️ no run_meta.json at {meta_p}; selection is UNRECORDED")
-    return d
+    return d, record
 
 
 def _evaluated_line(bench_dir: str) -> str:
@@ -162,9 +171,10 @@ def main(argv=None) -> int:
 
     from export_predictions import TRAIN_TARGET_SUM, export_split, load_panel_split
     from occam_bridge import load_pca_artifacts, reconstruct_from_pca
-    from occam_bridge.occam import assert_axis_order
+    from occam_bridge.occam import assert_axis_order, pert_components
+    from occam_bridge.schema import NULL_TOKEN
 
-    run_dir = _resolve_run_dir(args.seed, args.checkpoint, args.bench_dir)
+    run_dir, selection = _resolve_run_dir(args.seed, args.checkpoint, args.bench_dir)
     split = load_panel_split(args.panel_dir, args.split, target_sum=TRAIN_TARGET_SUM)
 
     pca = load_pca_artifacts(os.path.join(run_dir, "pca"))
@@ -199,7 +209,7 @@ def main(argv=None) -> int:
         x_pca_all = (X - means) @ pcs
 
         # How many perturbation slots the TRAINED model has, read off its own obs columns.
-        _NULL_TOKEN = "NULL"
+        _NULL_TOKEN = NULL_TOKEN
         _slot_cols = sorted(c for c in cf.adata.obs.columns
                             if str(c).startswith("gene_") and str(c)[5:].isdigit())
         _n_slots = len(_slot_cols) or 1
@@ -240,7 +250,8 @@ def main(argv=None) -> int:
             block.uns.update(cf.adata.uns)
 
             # ⚠️ ONE SLOT PER `max_combination_length`, built exactly as
-            # occam_bridge/schema.py builds it at TRAINING time: the component ids
+            # occam_bridge/schema.py builds it at TRAINING and VALIDATION time (through the
+            # same `occam.pert_components` the bridge uses): the component ids
             # SORTED (so `A+B` and `B+A` are one condition), then padded with the same
             # NULL token. A single `gene_1` column is only right when
             # max_combination_length == 1; against a model trained at 2 the predict call
@@ -250,7 +261,7 @@ def main(argv=None) -> int:
             # The slot count comes from the TRAINED object's own condition vocabulary, not
             # from a constant here, so this adapter follows whatever the run was trained
             # at instead of asserting a number.
-            parts = sorted(p for p in str(pert).split("+") if p)
+            parts = pert_components(str(pert))
             padded = parts + [_NULL_TOKEN] * max(0, _n_slots - len(parts))
             if len(parts) > _n_slots:
                 raise RuntimeError(
@@ -287,6 +298,8 @@ def main(argv=None) -> int:
                  extra_manifest={
                      "run_dir": run_dir,
                      "seed": args.seed,
+                     # which state the pickle holds: the validation-selected one, or FINAL
+                     "selection": selection,
                      "n_comps": int(pca["n_comps"]),
                      # NOT "emission": that key holds the STRUCTURED, machine-read
                      # {from_target_sum, from_log1p, to_target_sum, map} dict written by

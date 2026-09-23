@@ -1,0 +1,177 @@
+# score registry for scripts/score_ledger.py -- one row per score unit (5 splits each).
+# kind: baseline | occam | occam_norman | competitor. tag: occam run tag; occam_norman '<tag>:<compose>';
+# competitor: panel tag ('' on rhj/norman, '__<panel>' on OOD). seed_jobs: live arrays covering it at registration.
+kind	bench	arm	seed	tag	seed_jobs
+baseline	rhj_fewshot	reference	42		
+baseline	rhj_fewshot	reference	43		18368323,18368426
+baseline	rhj_fewshot	reference	44		18368324,18368427
+baseline	rhj_fewshot	reference	45		18368325,18368428
+baseline	rhj_fewshot	reference	46		18368326,18368429
+baseline	norman_combo	reference	42		
+baseline	norman_combo	reference	43		18368430
+baseline	norman_combo	reference	44		18368431
+baseline	norman_combo	reference	45		18368432
+baseline	norman_combo	reference	46		18368433
+baseline	h1_seen	reference	42		
+baseline	h1_seen	reference	43		
+baseline	h1_seen	reference	44		
+baseline	h1_seen	reference	45		
+baseline	h1_seen	reference	46		
+baseline	k562_seen	reference	42		18368120,18368351
+baseline	k562_seen	reference	43		18368121,18368352
+baseline	k562_seen	reference	44		18368122
+baseline	k562_seen	reference	45		18368123,18368353
+baseline	k562_seen	reference	46		18368124
+baseline	k562_seen_h1set	reference	42		18368134
+baseline	k562_seen_h1set	reference	43		18368135,18368423
+baseline	k562_seen_h1set	reference	44		18368136,18368424
+baseline	k562_seen_h1set	reference	45		18368137,18368425
+baseline	k562_seen_h1set	reference	46		18368138
+occam	rhj_fewshot	Y06	42	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_e150_em3e-4_s42	
+occam	rhj_fewshot	S43_Y06	43	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_e150_em3e-4_s43	
+occam	rhj_fewshot	S44_Y06	44	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_e150_em3e-4_s44	
+occam	rhj_fewshot	S45_Y06	45	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_e150_em3e-4_s45	
+occam	rhj_fewshot	S46_Y06	46	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_e150_em3e-4_s46	
+occam	h1_seen	Y06	42	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_e150_em3e-4_s42	
+occam	h1_seen	S43_Y06	43	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_e150_em3e-4_s43	
+occam	h1_seen	S44_Y06	44	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_e150_em3e-4_s44	
+occam	h1_seen	S45_Y06	45	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_e150_em3e-4_s45	
+occam	h1_seen	S46_Y06	46	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_e150_em3e-4_s46	
+occam	k562_seen	Y06	42	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_e150_em3e-4_s42	18368125
+occam	k562_seen	S43_Y06	43	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_e150_em3e-4_s43	
+occam	k562_seen	S44_Y06	44	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_e150_em3e-4_s44	
+occam	k562_seen	S45_Y06	45	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_e150_em3e-4_s45	
+occam	k562_seen	S46_Y06	46	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_e150_em3e-4_s46	
+occam	k562_seen_h1set	Y06	42	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_e150_em3e-4_s42	
+occam	k562_seen_h1set	S43_Y06	43	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_e150_em3e-4_s43	
+occam	k562_seen_h1set	S44_Y06	44	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_e150_em3e-4_s44	
+occam	k562_seen_h1set	S45_Y06	45	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_e150_em3e-4_s45	
+occam	k562_seen_h1set	S46_Y06	46	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_e150_em3e-4_s46	
+occam	h1_seen	Q02	42	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_s42	
+occam	h1_seen	M06	42	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_s42	
+occam	h1_seen	M03	42	smooth_l1_nbw0_nbs1.0_dcos0.01_s42	
+occam	k562_seen	Q02	42	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_s42	18368125
+occam	k562_seen	M06	42	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_s42	18368125
+occam	k562_seen	M03	42	smooth_l1_nbw0_nbs1.0_dcos0.01_s42	18368125
+occam	k562_seen_h1set	Q02	42	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_s42	
+occam	k562_seen_h1set	M06	42	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_s42	
+occam	k562_seen_h1set	M03	42	smooth_l1_nbw0_nbs1.0_dcos0.01_s42	
+occam	rhj_fewshot	RB512	42	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_bs512_e150_em3e-4_s42	18368350
+occam	rhj_fewshot	RB256	42	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_bs256_e150_em3e-4_s42	
+occam	rhj_fewshot	RB128	42	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_bs128_e150_em3e-4_s42	
+occam	rhj_fewshot	RB064	42	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_bs64_e150_em3e-4_s42	
+occam	rhj_fewshot	RB032	42	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_bs32_e150_em3e-4_s42	
+occam_norman	norman_combo	NF32	42	smooth_l1_nbw0_nbs1.0_dcos0.32977_mag0.0400866_lmse0.00198826_bs32_e150_em3e-4_s42:decode_seq_mean	
+occam_norman	norman_combo	NF40	42	smooth_l1_nbw0_nbs1.0_dcos0.32977_mag0.0400866_lmse0.00198826_bs64_e150_em2e-4_s42:decode_seq_mean	
+occam_norman	norman_combo	NF41	42	smooth_l1_nbw0_nbs1.0_dcos0.32977_mag0.0400866_lmse0.00198826_bs64_e150_em1e-4_s42:decode_seq_mean	
+occam_norman	norman_combo	NF42	42	smooth_l1_nbw0_nbs1.0_dcos0.32977_mag0.0400866_lmse0.00198826_bs64_e150_em1e-5_s42:decode_seq_mean	
+occam_norman	norman_combo	NF43	42	smooth_l1_nbw0_nbs1.0_dcos0.32977_mag0.0400866_lmse0.00198826_bs64_e150_em1e-6_s42:decode_seq_mean	
+competitor	rhj_fewshot	txpert_single	42		
+competitor	rhj_fewshot	txpert_single	43		18365231,18365232,18365233
+competitor	rhj_fewshot	txpert_single	44		18368276,18368277,18368278
+competitor	rhj_fewshot	txpert_single	45		18365234,18365235,18365236
+competitor	rhj_fewshot	txpert_single	46		18365237,18365238,18365239
+competitor	rhj_fewshot	state	42		
+competitor	rhj_fewshot	state	43		18365006,18365007,18365008
+competitor	rhj_fewshot	state	44		18365018,18365019,18365020
+competitor	rhj_fewshot	state	45		18365030,18365031,18365032
+competitor	rhj_fewshot	state	46		18365042,18365043,18365044
+competitor	rhj_fewshot	cellflow	42		
+competitor	rhj_fewshot	cellflow	43		
+competitor	rhj_fewshot	cellflow	44		
+competitor	rhj_fewshot	cellflow	45		
+competitor	rhj_fewshot	cellflow	46		
+competitor	rhj_fewshot	perturbdiff_genept	42		
+competitor	rhj_fewshot	perturbdiff_genept	43		
+competitor	rhj_fewshot	perturbdiff_genept	44		18368348
+competitor	rhj_fewshot	perturbdiff_genept	45		
+competitor	rhj_fewshot	perturbdiff_genept	46		18368349
+competitor	norman_combo	txpert	42		
+competitor	norman_combo	txpert	43		
+competitor	norman_combo	txpert	44		
+competitor	norman_combo	txpert	45		
+competitor	norman_combo	txpert	46		
+competitor	norman_combo	perturbdiff	42		18368358,18368359
+competitor	norman_combo	perturbdiff	43		18365070,18365071,18365072
+competitor	norman_combo	perturbdiff	44		18368480,18368481,18368482
+competitor	norman_combo	perturbdiff	45		18368463,18368464,18368465
+competitor	norman_combo	perturbdiff	46		18365079,18365080,18365081
+competitor	h1_seen	txpert_single	42	__h1_seen	18368294,18368295
+competitor	h1_seen	txpert_single	43	__h1_seen	18368556,18368557
+competitor	h1_seen	txpert_single	44	__h1_seen	18368564,18368565
+competitor	h1_seen	txpert_single	45	__h1_seen	18368572,18368573
+competitor	h1_seen	txpert_single	46	__h1_seen	18368580,18368581
+competitor	h1_seen	state	42	__h1_seen	18368296,18368297
+competitor	h1_seen	state	43	__h1_seen	18386250,18386252
+competitor	h1_seen	state	44	__h1_seen	18386253,18386254
+competitor	h1_seen	state	45	__h1_seen	18368574,18368575
+competitor	h1_seen	state	46	__h1_seen	18386255,18386256
+competitor	h1_seen	cellflow	42	__h1_seen	18368298,18368299
+competitor	h1_seen	cellflow	43	__h1_seen	18368560,18368561
+competitor	h1_seen	cellflow	44	__h1_seen	18368568,18368569
+competitor	h1_seen	cellflow	45	__h1_seen	18368576,18368577
+competitor	h1_seen	cellflow	46	__h1_seen	18368584,18368585
+competitor	h1_seen	perturbdiff_genept	42	__h1_seen	18368300,18368301
+competitor	h1_seen	perturbdiff_genept	43	__h1_seen	18368562,18368563
+competitor	h1_seen	perturbdiff_genept	44	__h1_seen	18368570,18368571
+competitor	h1_seen	perturbdiff_genept	45	__h1_seen	18368578,18368579
+competitor	h1_seen	perturbdiff_genept	46	__h1_seen	18368586,18368587
+competitor	k562_seen	txpert_single	42	__k562_seen	18368302,18368303
+competitor	k562_seen	txpert_single	43	__k562_seen	18368588,18368589
+competitor	k562_seen	txpert_single	44	__k562_seen	18368596,18368597
+competitor	k562_seen	txpert_single	45	__k562_seen	18368604,18368605
+competitor	k562_seen	txpert_single	46	__k562_seen	18368612,18368613
+competitor	k562_seen	state	42	__k562_seen	18368304,18368305
+competitor	k562_seen	state	43	__k562_seen	18368590,18368591
+competitor	k562_seen	state	44	__k562_seen	18368598,18368599
+competitor	k562_seen	state	45	__k562_seen	18368606,18368607
+competitor	k562_seen	state	46	__k562_seen	18368614,18368615
+competitor	k562_seen	cellflow	42	__k562_seen	18368306,18368307
+competitor	k562_seen	cellflow	43	__k562_seen	18368592,18368593
+competitor	k562_seen	cellflow	44	__k562_seen	18368600,18368601
+competitor	k562_seen	cellflow	45	__k562_seen	18368608,18368609
+competitor	k562_seen	cellflow	46	__k562_seen	18368616,18368617
+competitor	k562_seen	perturbdiff_genept	42	__k562_seen	18368308,18368309
+competitor	k562_seen	perturbdiff_genept	43	__k562_seen	18368594,18368595
+competitor	k562_seen	perturbdiff_genept	44	__k562_seen	18368602,18368603
+competitor	k562_seen	perturbdiff_genept	45	__k562_seen	18368610,18368611
+competitor	k562_seen	perturbdiff_genept	46	__k562_seen	18368618,18368619
+competitor	k562_seen_h1set	txpert_single	42	__k562_seen_h1set	18368311,18368312
+competitor	k562_seen_h1set	txpert_single	43	__k562_seen_h1set	18368620,18368621
+competitor	k562_seen_h1set	txpert_single	44	__k562_seen_h1set	18368628,18368629
+competitor	k562_seen_h1set	txpert_single	45	__k562_seen_h1set	18368636,18368637
+competitor	k562_seen_h1set	txpert_single	46	__k562_seen_h1set	18368644,18368645
+competitor	k562_seen_h1set	state	42	__k562_seen_h1set	18368313,18368314
+competitor	k562_seen_h1set	state	43	__k562_seen_h1set	18368622,18368623
+competitor	k562_seen_h1set	state	44	__k562_seen_h1set	18368630,18368631
+competitor	k562_seen_h1set	state	45	__k562_seen_h1set	18368638,18368639
+competitor	k562_seen_h1set	state	46	__k562_seen_h1set	18368646,18368647
+competitor	k562_seen_h1set	cellflow	42	__k562_seen_h1set	18368315,18368316
+competitor	k562_seen_h1set	cellflow	43	__k562_seen_h1set	18368624,18368625
+competitor	k562_seen_h1set	cellflow	44	__k562_seen_h1set	18368632,18368633
+competitor	k562_seen_h1set	cellflow	45	__k562_seen_h1set	18368640,18368641
+competitor	k562_seen_h1set	cellflow	46	__k562_seen_h1set	18368648,18368649
+competitor	k562_seen_h1set	perturbdiff_genept	42	__k562_seen_h1set	18368317,18368318
+competitor	k562_seen_h1set	perturbdiff_genept	43	__k562_seen_h1set	18368626,18368627
+competitor	k562_seen_h1set	perturbdiff_genept	44	__k562_seen_h1set	18368634,18368635
+competitor	k562_seen_h1set	perturbdiff_genept	45	__k562_seen_h1set	18368642,18368643
+competitor	k562_seen_h1set	perturbdiff_genept	46	__k562_seen_h1set	18368650,18368651
+competitor	norman_combo	state	42		18368664,18368665,18368666
+competitor	norman_combo	state	43		18368667,18368668,18368669
+competitor	norman_combo	state	44		18368670,18368671,18368672
+competitor	norman_combo	state	45		18368673,18368674,18368675
+competitor	norman_combo	state	46		18368676,18368677,18368678
+competitor	norman_combo	cellflow	42		18368707,18368708,18368709
+competitor	norman_combo	cellflow	43		18368710,18368711,18368712
+competitor	norman_combo	cellflow	44		18368713,18368714,18368715
+competitor	norman_combo	cellflow	45		18368716,18368717,18368718
+competitor	norman_combo	cellflow	46		18368719,18368720,18368721
+occam_norman	norman_combo	S43_NF32	43	smooth_l1_nbw0_nbs1.0_dcos0.32977_mag0.0400866_lmse0.00198826_bs32_e150_em3e-4_s43:decode_seq_mean	18386196
+occam_norman	norman_combo	S44_NF32	44	smooth_l1_nbw0_nbs1.0_dcos0.32977_mag0.0400866_lmse0.00198826_bs32_e150_em3e-4_s44:decode_seq_mean	18386196
+occam_norman	norman_combo	S45_NF32	45	smooth_l1_nbw0_nbs1.0_dcos0.32977_mag0.0400866_lmse0.00198826_bs32_e150_em3e-4_s45:decode_seq_mean	18386196
+occam_norman	norman_combo	S46_NF32	46	smooth_l1_nbw0_nbs1.0_dcos0.32977_mag0.0400866_lmse0.00198826_bs32_e150_em3e-4_s46:decode_seq_mean	18386196
+occam	rhj_fewshot	AA03	42	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_e180_em7e-4_s42	
+occam	rhj_fewshot	S43_AA03	43	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_e180_em7e-4_s43	18386809
+occam	rhj_fewshot	S44_AA03	44	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_e180_em7e-4_s44	18386809
+occam	rhj_fewshot	S45_AA03	45	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_e180_em7e-4_s45	18386809
+occam	rhj_fewshot	S46_AA03	46	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_e180_em7e-4_s46	18386809

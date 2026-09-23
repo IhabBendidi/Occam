@@ -235,7 +235,8 @@ def _gene_space_truth(adata_valid, schema) -> dict[str, np.ndarray]:
 
     The selection callback receives validation tensors in `sample_rep` (PCA) space only, so
     scoring against an untouched target needs the original rows. Keyed by the same label
-    `_condition_label` produces, i.e. the bare perturbation symbol.
+    `_condition_label` produces: the bare perturbation symbol for a single, the sorted `A+B`
+    for a combination.
 
     Controls are excluded: the callback appends its own shared control block, and a control
     row appearing twice would distort cell-eval's baseline.
@@ -244,11 +245,13 @@ def _gene_space_truth(adata_valid, schema) -> dict[str, np.ndarray]:
 
     if adata_valid is None:
         return {}
-    # `occam_target_gene` is the raw `target_gene` SYMBOL (`occam_bridge/occam.py:118`),
-    # which is exactly what `_condition_label` returns as parts[0] -- so these keys line up
-    # with the labels the callback builds. The schema dict has no perturbation-column entry,
-    # so name the column here rather than relying on a silent `.get()` fallback.
-    col = "occam_target_gene"
+    # ⚠️ `pert_str`, NOT `occam_target_gene`. `schema.apply_cellflow_gene_schema` writes
+    # `pert_str` as the SORTED component ids joined by "+", and `_condition_label` rebuilds
+    # exactly that from the condition key's gene slots (which the schema also sorted). On
+    # rhj_fewshot the two columns are identical (single symbols); on a combination benchmark
+    # a raw label `B+A` would not match the key-derived `A+B`. Named explicitly rather than
+    # through a silent `.get()` fallback.
+    col = "pert_str"
     if col not in adata_valid.obs.columns:
         raise KeyError(
             f"validation obs has no {col!r} column, so the gene-space truth cannot be keyed "
@@ -335,7 +338,8 @@ def run_train(cfg: dict[str, Any], *, config_path: Path | None = None) -> Path:
         # fixes the model's condition-input width and cannot grow after training: a test
         # perturbation with no column makes cf.predict raise "Representation ... not found".
         extra_tokens = occam_pert_tokens(data_cfg)
-        print(f"[vocab] {len(extra_tokens)} perturbation tokens from rhj_fewshot")
+        print(f"[vocab] {len(extra_tokens)} perturbation tokens (component genes) from "
+              f"{Path(str(data_cfg['occam_bench_dir'])).name}")
     elif vocab_dirs == "__unset__":
         extra_tokens: list[str] = []
     elif vocab_dirs is None:
@@ -385,7 +389,11 @@ def run_train(cfg: dict[str, Any], *, config_path: Path | None = None) -> Path:
         _tv = adata_train.uns[EMBEDDING_KEY] if EMBEDDING_KEY in adata_train.uns else None
         if _tv is not None:
             _n_tok = len(_tv)
-            _n_seen = adata_train.obs["occam_target_gene"].nunique()
+            # distinct COMPONENT genes the training cells activate: the vocabulary is per
+            # gene, and a pair label is two tokens, not one
+            _n_seen = len({t for c in [c for c in adata_train.obs.columns
+                                       if str(c).startswith("gene_") and str(c)[5:].isdigit()]
+                           for t in adata_train.obs[c].astype(str)} - {schema["null_token"]})
             print(f"[vocab] one shared vocabulary: {_n_tok} tokens, "
                   f"{_n_seen} distinct perturbations in the training cells")
             if _n_seen > _n_tok:
@@ -394,8 +402,20 @@ def run_train(cfg: dict[str, Any], *, config_path: Path | None = None) -> Path:
                     f"the model's condition input cannot represent them all, and the excess "
                     f"would silently take another token's column.")
         other["valid"] = adata_valid
-        print(f"[train_cellflow] validation: {adata_valid.n_obs} cells from HEPG2 "
-              f"({adata_valid.obs['occam_target_gene'].nunique()} perturbations)")
+        _val_lines = sorted(adata_valid.obs["cell_type"].astype(str).unique().tolist())
+        print(f"[train_cellflow] validation: {adata_valid.n_obs} cells from {_val_lines} "
+              f"({adata_valid.obs['pert_str'].nunique()} perturbations)")
+        # ⚠️ THE ENCODING CHECK: every validation condition must reach the model through
+        # tokens that exist in the TRAINING vocabulary -- a pair as its two component genes,
+        # never as an `A+B` string. Refuse before training rather than after.
+        _slots = list(schema["perturbation_covariates"]["gene"])
+        _vocab = set(adata_train.uns[EMBEDDING_KEY])
+        _vtok = {t for c in _slots for t in adata_valid.obs[c].astype(str)}
+        _bad = sorted(_vtok - _vocab)
+        if _bad or any("+" in t for t in _vocab):
+            raise ValueError(
+                f"validation tokens outside the training vocabulary {_bad[:5]} or `+` tokens "
+                f"in the vocabulary: a pair must be encoded as its component genes")
     elif multi_source:
         specs = _build_multi_source_specs(data_cfg, fold, train_key=train_key, seed=seed)
         adata_train = load_dump_sources(
@@ -690,6 +710,11 @@ def run_train(cfg: dict[str, Any], *, config_path: Path | None = None) -> Path:
             # raw half-A cells, so selection was optimising a different quantity. Built from
             # `adata_valid` here because the callback only receives PCA-space tensors.
             truth_by_label=_gene_space_truth(adata_valid, schema),
+            # the condition key is (gene_1..gene_K, cell_type): K leading gene slots, padded
+            # with the schema's null token. Without this every key of a length-2 model
+            # failed to parse on its NULL pad and no validation pass was ever scored.
+            n_slots=int(schema["max_combination_length"]),
+            null_token=str(schema.get("null_token", "NULL")),
         )
         print(
             f"[train_cellflow] selection on: {int(ctrl_mask.sum())} control cells, "

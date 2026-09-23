@@ -112,34 +112,54 @@ def read_agg_metrics(results_dir: Path) -> dict[str, float]:
     }
 
 
-def _condition_label(key: Any, *, cell_type: str | None = None) -> str:
+NULL_TOKEN = "NULL"  # the pad token `occam_bridge/schema.py` writes into empty slots
+PAIR_SEP = "+"
+
+
+def _condition_label(key: Any, *, cell_type: str | None = None, n_slots: int = 1,
+                     null_token: str = NULL_TOKEN) -> str:
     """One condition key from the validation sampler as a cell-eval perturbation label.
 
-    ⚠️ RETURNS THE BARE PERTURBATION SYMBOL. CellFlow's condition key is a tuple over the
-    `split_covariates` -- here `(perturbation, cell_type)` -- and joining it with "+" emitted
-    labels like `ALG11+HEPG2`. Nothing else in the pipeline uses that format: the frozen
-    cohort, the panel, and every other arm's export all carry bare symbols. The object is
-    single-cell-type by construction (the callback asserts one `cell_type`), so the suffix
-    added no information and only made the validation metric's DE grouping keyed on a label
-    format that appears nowhere else.
+    CellFlow's validation condition key is the tuple of the `perturb_covar_keys` values, in
+    `DataManager` order: the `max_combination_length` gene slots `gene_1..gene_K` first,
+    then the sample / split covariates (`data/_datamanager.py:128-132`, sampled by
+    `_dataloader.py::_get_key`). So with `n_slots=2` and `split_covariates=[cell_type]`:
 
-    Any non-perturbation components are checked against `cell_type` rather than dropped
-    silently -- a key whose second element is NOT the cell type would mean the condition
-    space is not what this function assumes.
+        single A     -> ("A", "NULL", "K562")  -> "A"
+        pair   A+B   -> ("A", "B",    "K562")  -> "A+B"   (slots already sorted by schema)
+
+    ⚠️ RETURNS THE BARE, SORTED `A+B` LABEL -- the same form `schema` writes to
+    `obs["pert_str"]`, which is what the gene-space truth is keyed by. The cell-type suffix
+    is never part of the label: nothing downstream uses `ALG11+HEPG2`.
+
+    ⚠️ `n_slots` MUST BE THE TRAINED `max_combination_length`. With the old hardcoded
+    "slot 0 is the perturbation, everything else must be the cell type", every key of a
+    length-2 model raised on its `NULL` pad -- `['FOXL2+HOXB9','NULL','K562'] carries
+    component(s) ['NULL']` -- so no validation pass was ever scored and the run exported
+    its FINAL state. At `n_slots=1` (rhj_fewshot) this is exactly the old behaviour.
+
+    Non-slot components are checked against `cell_type` rather than dropped silently.
     """
     if not isinstance(key, (tuple, list)):
         return str(key)
     parts = [str(k) for k in key]
     if not parts:
         raise ValueError("empty condition key")
+    n_slots = int(n_slots)
+    if n_slots < 1 or len(parts) < n_slots:
+        raise ValueError(f"condition key {parts!r} is shorter than its {n_slots} gene slot(s)")
+    slots, rest = parts[:n_slots], parts[n_slots:]
     if cell_type is not None:
-        extra = [x for x in parts[1:] if x != str(cell_type)]
+        extra = [x for x in rest if x != str(cell_type)]
         if extra:
             raise ValueError(
-                f"condition key {parts!r} carries component(s) {extra!r} that are neither the "
-                f"perturbation nor the cell type {cell_type!r}. The label would silently "
-                f"become a format nothing downstream recognises.")
-    return parts[0]
+                f"condition key {parts!r} carries component(s) {extra!r} that are neither a "
+                f"gene slot (n_slots={n_slots}) nor the cell type {cell_type!r}. The label "
+                f"would silently become a format nothing downstream recognises.")
+    genes = [g for g in slots if g != null_token]
+    if not genes:
+        raise ValueError(f"condition key {parts!r} has only {null_token!r} in its gene slots")
+    return PAIR_SEP.join(sorted(genes))
 
 
 class SelectionCallback:
@@ -161,6 +181,9 @@ class SelectionCallback:
     :param output_root: per-validation artifacts and results land under here.
     :param occam_py: interpreter that owns OUR cell-eval 0.6.0.
     :param occam_repo: repo root, put on ``PYTHONPATH`` so `occam.vcell.panel` imports.
+    :param n_slots: the trained ``max_combination_length`` -- how many leading entries of a
+        condition key are gene slots. 1 on rhj_fewshot, 2 on norman_combo.
+    :param null_token: the pad written into empty gene slots (``schema.NULL_TOKEN``).
     """
 
     def __init__(
@@ -178,6 +201,8 @@ class SelectionCallback:
         num_threads: int | None = None,
         keep_artifacts: bool = False,
         truth_by_label: dict[str, np.ndarray] | None = None,
+        n_slots: int = 1,
+        null_token: str = NULL_TOKEN,
     ) -> None:
         self.pcs = np.asarray(pcs)
         self.means = np.asarray(means).reshape(-1)
@@ -193,6 +218,10 @@ class SelectionCallback:
         self.profile = profile
         self.num_threads = num_threads or len(os_sched_affinity())
         self.keep_artifacts = keep_artifacts
+        # the trained `max_combination_length` and its pad token, so condition keys of a
+        # combination model (`(A, NULL, ct)` / `(A, B, ct)`) parse -- see `_condition_label`
+        self.n_slots = int(n_slots)
+        self.null_token = str(null_token)
         # ⚠️ RAW GENE-SPACE TRUTH, keyed by perturbation label. See `_score` for why this
         # exists: without it the metric scored PCA-RECONSTRUCTED ground truth.
         self.truth_by_label = (
@@ -308,7 +337,8 @@ class SelectionCallback:
         for val_key, preds in valid_pred_data.items():
             truths = valid_true_data[val_key]
             for cond, pred in preds.items():
-                label = _condition_label(cond, cell_type=self.cell_type)
+                label = _condition_label(cond, cell_type=self.cell_type,
+                                         n_slots=self.n_slots, null_token=self.null_token)
                 n_comps = self.pcs.shape[1]
                 p = self._decode(np.asarray(pred).reshape(-1, n_comps))
 

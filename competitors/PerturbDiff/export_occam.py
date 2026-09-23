@@ -247,11 +247,31 @@ def main(argv=None) -> int:
 
     split = load_panel_split(args.panel_dir, args.split, target_sum=TRAIN_TARGET_SUM)
 
+    # ⚠️ The model width, the source manifest and the GenePT table are PER BENCHMARK, and must
+    # be the ones the training leg used (scripts/slurm/competitor_train_perturbdiff.sbatch:
+    # model.input_dim / hidden_num / data.pad_length = n_axis_genes, path.manifest_file =
+    # manifests/occam_<bench>.toml, replogle_gene_embedding_path = genept_occam_<bench>.pkl).
+    # This used to hardcode rhj_fewshot's 6,983 and its manifest, so the first norman_combo
+    # export (8,000 genes, K562 only) asked for HEPG2 and died (2026-09-23). rhj_fewshot keeps
+    # its exact previous overrides.
+    _bench = os.path.basename(os.path.normpath(args.bench_dir))
+    with open(os.path.join(args.bench_dir, "gene_axis.csv")) as _fh:
+        _n_axis = sum(1 for ln in _fh if ln.strip()) - 1
+    _repo = os.path.dirname(os.path.dirname(_HERE))
+    _bench_overrides = [f"model.input_dim={_n_axis}", f"model.hidden_num=[{_n_axis},512]"]
+    if _bench != "rhj_fewshot":
+        _bench_overrides += [
+            f"data.pad_length={_n_axis}",
+            f"path.manifest_file={os.path.join(_HERE, 'configs', 'manifests', f'occam_{_bench}.toml')}",
+            f"cov_encoding.replogle_gene_embedding_path="
+            f"{os.path.join(_repo, 'data', 'assets', f'genept_occam_{_bench}.pkl')}",
+        ]
+    print(f"[{ARM}] benchmark {_bench}: {_n_axis} axis genes; overrides {_bench_overrides}")
     with initialize_config_dir(config_dir=os.path.join(_HERE, "configs"), version_base=None):
         cfg = compose(config_name=args.config_name, overrides=[
             "data=occam_h5ad", "path=occam_path", "cov_encoding=occam_h5ad",
             f"path.occam_bench_dir={args.bench_dir}",
-            "model.input_dim=6983", "model.hidden_num=[6983,512]",
+            *_bench_overrides,
             f"optimization.seed={args.seed}",
         ] + ([f"cov_encoding.replogle_gene_encoding={args.penc}"] if args.penc else []))
     with open_dict(cfg):

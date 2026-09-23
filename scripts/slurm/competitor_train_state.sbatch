@@ -123,7 +123,7 @@ rm -f "$OUTPUT_DIR/$RUN_NAME/celleval_manifest.json"
     model=state \
     wandb.entity="valencelabs" \
     wandb.project="Occam-Competitors" \
-    wandb.tags="[rhj_fewshot]" \
+    wandb.tags="[$BENCH]" \
     output_dir="$OUTPUT_DIR" \
     name="$RUN_NAME"
 

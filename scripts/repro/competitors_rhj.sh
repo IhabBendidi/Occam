@@ -62,6 +62,9 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$HERE"
+# ⚠️ PIN the benchmark. Every leg is submitted with --export=ALL, so a BENCH=norman_combo left in
+# the submitting shell would silently turn this "rhj" chain into a norman run (audit 2026-09-23).
+export BENCH=rhj_fewshot
 mkdir -p runs/slurm
 
 ARM="${ARM:?set ARM=txpert|state|cellflow|perturbdiff}"

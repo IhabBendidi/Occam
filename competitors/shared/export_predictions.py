@@ -350,9 +350,21 @@ def export_split(predict: Callable[[np.ndarray, Sequence[str]], np.ndarray],
     print(f"[export]   eval space   : {describe_space(pred).summary()}")
 
     # ⛔ HARD: can this be scored at all? Model-agnostic -- a terrible arm passes.
-    assert_representable(pred, n_genes=split.target.shape[1],
-                         name=f"{arm} prediction", target_sum=EVAL_TARGET_SUM,
-                         target=split.target)
+    # OCCAM_WAIVE_LIBSIZE_CHECK=1 waives ONLY the library-size band (user decision 2026-09-23:
+    # STATE on h1_seen emits 8.3x the target's library size -- a model breakdown on OOD input, not
+    # a normalisation bug -- and is to be scored as is). Every other check still refuses.
+    scale_waived = None
+    try:
+        assert_representable(pred, n_genes=split.target.shape[1],
+                             name=f"{arm} prediction", target_sum=EVAL_TARGET_SUM,
+                             target=split.target)
+    except EmissionSpaceError as e:
+        if os.environ.get("OCCAM_WAIVE_LIBSIZE_CHECK") == "1" and "median library size" in str(e):
+            scale_waived = str(e).split(". This is")[0]
+            print(f"[export]   ⚠️ library-size check WAIVED (OCCAM_WAIVE_LIBSIZE_CHECK=1): "
+                  f"{scale_waived}")
+        else:
+            raise
 
     # DIAGNOSTIC: never a refusal. Library size, density and mean correlation are all
     # confounded with model quality, and refusing on them would exclude exactly the weak
@@ -384,7 +396,8 @@ def export_split(predict: Callable[[np.ndarray, Sequence[str]], np.ndarray],
             "map": ("log1p(expm1(x) * to/from)" if from_log1p
                     else "log1p(x * to/from)"),
         },
-        "representable": True,
+        "representable": scale_waived is None,
+        "libsize_check_waived": scale_waived,
         "ood_context": bool(split.manifest.get("ood_context")),
         "context_proxy": split.context_proxy,
         "space_diagnostics": diag,

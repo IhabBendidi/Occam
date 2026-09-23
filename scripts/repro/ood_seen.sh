@@ -26,7 +26,8 @@
 #                  per-cell draw of HepG2 batches -> score
 #
 # USAGE   BENCH=k562_seen BUILD_JOB=<jobid> bash scripts/repro/ood_seen.sh
-#         ARMS=baselines,occam,competitors (default all)  SEEDS="42 43"  DRY_RUN=1  QOS=vco
+#         ARMS=baselines,occam,competitors (default all)  SEEDS="42 43" (baseline draws)
+#         COMP_SEEDS="43 44 45 46" COMP_ARMS="state txpert" DEP_state_43=<jobid>  DRY_RUN=1  QOS=vco
 # =====================================================================
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -72,26 +73,43 @@ if [[ ",$ARMS," == *",occam,"* ]]; then
 fi
 
 if [[ ",$ARMS," == *",competitors,"* ]]; then
+    # COMP_SEEDS: which rhj_fewshot competitor checkpoints to export (default 42). Seed 42 uses
+    # the pinned headline checkpoints below; seeds 43-46 let each arm's OWN resolver pick the
+    # checkpoint of that seed (txpert: occam_s<seed>_single via TAG_SUFFIX; state: occam_s<seed>;
+    # cellflow: occam_s<seed>; perturbdiff: the `_genept_..._s<seed>` marker). DEP_<arm>_<seed>
+    # (e.g. DEP_state_43=18365006_1) makes that seed's export wait for its training job.
     C=runs/competitors
-    declare -A CKPT=(
+    declare -A CKPT42=(
         [txpert]="$C/txpert/ckpt/occam_s42_single/best-ep49.ckpt"
         [state]="$C/state/occam_s42/checkpoints/best_celleval.ckpt"
         [cellflow]="$C/cellflow/occam_s42"
         [perturbdiff]="$(ls $C/perturbdiff/ckpt/pd_occam_pert_celltype_lr0.002_genept_cs16_s42_genept/epoch=*.ckpt 2>/dev/null | head -1)"
     )
     declare -A SUFFIX=([txpert]=_single [state]= [cellflow]= [perturbdiff]=_genept)
+    declare -A TAGSUF=([txpert]=_single [state]= [cellflow]= [perturbdiff]=)
     declare -A EXTRA=([txpert]= [state]=--proxy-batch-draw [cellflow]= [perturbdiff]="--proxy-batch-draw --penc genept")
-    for ARM in txpert state cellflow perturbdiff; do
-        ck="${CKPT[$ARM]}"
-        [ -e "$ck" ] || { echo "missing checkpoint for $ARM: $ck" >&2; exit 1; }
-        common="ARM=$ARM,ARM_SUFFIX=${SUFFIX[$ARM]},PANEL_OVERRIDE=$HERE/$PANEL,PANEL_TAG=__$BENCH"
-        JE=$(sub $DEP --array=0 --time=04:00:00 \
-             --export="ALL,$common,SEED_BASE=42,ADAPTER_ARGS=--checkpoint $HERE/$ck ${EXTRA[$ARM]}" \
+    for SEED in ${COMP_SEEDS:-42}; do
+      for ARM in ${COMP_ARMS:-txpert state cellflow perturbdiff}; do
+        # ⚠️ BENCH inside the competitor legs names the benchmark the MODEL was trained on (its
+        # vocabulary, cell types, checkpoint names) -- always rhj_fewshot here. This script's own
+        # BENCH (the panel) leaked into them via --export=ALL once and all 12 exports failed.
+        common="ARM=$ARM,ARM_SUFFIX=${SUFFIX[$ARM]},BENCH=rhj_fewshot,PANEL_OVERRIDE=$HERE/$PANEL,PANEL_TAG=__$BENCH"
+        if [ "$SEED" = 42 ]; then
+            ck="${CKPT42[$ARM]}"
+            [ -e "$ck" ] || { echo "missing checkpoint for $ARM s42: $ck" >&2; exit 1; }
+            aargs="--checkpoint $HERE/$ck ${EXTRA[$ARM]}"
+        else
+            aargs="${EXTRA[$ARM]}"
+        fi
+        dvar="DEP_${ARM}_${SEED}"; dep="${!dvar:-}"
+        JE=$(sub ${dep:+--dependency=afterok:$dep} $DEP --array=$(( SEED - 42 )) --time=04:00:00 \
+             --export="ALL,$common,TAG_SUFFIX=${TAGSUF[$ARM]},SEED_BASE=42,ADAPTER_ARGS=$aargs" \
              scripts/slurm/competitor_export.sbatch)
-        JS=$(sub --dependency=afterok:$JE --array=0-4%6 \
-             --export="ALL,$common,SEED=42,SCORE_ROOT=$OUTB" \
+        JS=$(sub --dependency=afterok:$JE --array=0-4%3 \
+             --export="ALL,$common,SEED=$SEED,SCORE_ROOT=$OUTB,OCCAM_CELLEVAL_ATTEMPTS=4" \
              scripts/slurm/competitor_score.sbatch)
-        echo "$ARM${SUFFIX[$ARM]}  export $JE -> score $JS"
+        echo "$ARM${SUFFIX[$ARM]} s$SEED  export $JE${dep:+ (after $dep)} -> score $JS"
+      done
     done
 fi
 echo "results: $OUTB/{reference*,<arm>__<tag>,compet_*}/split_NN/metrics.json"

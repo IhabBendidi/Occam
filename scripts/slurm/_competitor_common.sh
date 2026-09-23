@@ -41,7 +41,11 @@ export CELLEVAL_NUM_THREADS="${CELLEVAL_NUM_THREADS:-1}"
 # DataLoader tensor hand-off through the filesystem, not /dev/shm fds: the fd path died on
 # "could not unlink the shared memory file /torch_*" and hung two PerturbDiff runs
 # (2026-09-23). Read by competitors/PerturbDiff/src/apps/run/rawdata_diffusion_training.py.
-export TORCH_SHARING_STRATEGY="${TORCH_SHARING_STRATEGY:-file_system}"
+# ⚠️ REVERTED to opt-in (2026-09-23): `file_system` still uses NAMED /dev/shm files, which
+# systemd RemoveIPC deletes on any ssh logout to the node (the actual root cause, F-infra1), and
+# the s45 relaunch died on "Pin memory thread exited unexpectedly" with it. Set it explicitly if
+# wanted; the robust option for PerturbDiff is PD_WORKERS=0 (no shared memory at all).
+export TORCH_SHARING_STRATEGY="${TORCH_SHARING_STRATEGY:-}"
 
 # ─── stall watchdog: a hang must free its GPU, not hold it for hours ─────────────────────────
 # `competitor_watchdog <pid> <logfile>` kills <pid> if <logfile> has not been written for
@@ -154,7 +158,15 @@ PYEOF
     # State) or folds TAG_SUFFIX into PD_RUN_NAME (PerturbDiff), so defaulting it here
     # scopes all four training runs by benchmark with no per-arm edit. EMPTY on
     # rhj_fewshot, so every existing checkpoint directory keeps its name.
-    TAG_SUFFIX="${TAG_SUFFIX:-$(competitor_bench_tag)}"
+    # ⚠️ APPEND the benchmark tag to an explicit variant suffix, never replace it: a
+    # `TAG_SUFFIX=_single` on norman_combo used to resolve to rhj's `occam_s42_single` dirs
+    # (audit 2026-09-23). Unchanged for every existing run: rhj's tag is empty, and an empty
+    # TAG_SUFFIX on another benchmark still gives `__<bench>`.
+    _bt="$(competitor_bench_tag)"
+    case "${TAG_SUFFIX:-}" in
+        *"$_bt") TAG_SUFFIX="${TAG_SUFFIX:-}" ;;
+        *)       TAG_SUFFIX="${TAG_SUFFIX:-}${_bt}" ;;
+    esac
     export BENCH BENCH_DIR PANEL_DIR N_AXIS_GENES AXIS_SHA256 BENCH_SHA256 \
            COHORT_SHA256 BENCH_N_SPLITS TAG_SUFFIX EVALUATED_LINE
 }

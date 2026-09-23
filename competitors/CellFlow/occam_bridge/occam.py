@@ -14,7 +14,8 @@ WHAT CELLFLOW NEEDS, AND WHAT IT GETS
 `apply_cellflow_gene_schema` reads exactly three things from obs:
 
 * **`gene_pert`** -- a LIST OF TUPLES per cell, `[(kind, token, effect), ...]`, empty for
-  controls. Built here as `[("genetic", SYMBOL, "")]`.
+  controls. Built here as one `("genetic", SYMBOL, "")` per COMPONENT gene, so a pair
+  `A+B` is two tuples and reaches the model as the set `[A, B]` (see `pert_components`).
 * **`negative_control`** -- bool. `occam_data` emits it.
 * the **`sample_covariates` / `split_covariates`** columns, `["cell_type"]` on this
   benchmark, so a perturbation is matched to controls of its own cell line.
@@ -60,7 +61,7 @@ if os.path.isdir(_SHARED) and _SHARED not in sys.path:
 __all__ = [
     "OCCAM_CELL_LINES", "occam_enabled", "occam_bench_dir", "load_occam_anndata",
     "load_occam_sources", "load_occam_validation", "occam_pert_tokens",
-    "assert_axis_order",
+    "assert_axis_order", "pert_components", "canonical_pert_label",
 ]
 
 # Our casing, which is what lands in obs["cell_type"] and what the config's
@@ -104,14 +105,46 @@ def assert_axis_order(var_names: Sequence[str], bench) -> None:
             f"extra {sorted(set(got) - set(want))[:3]})")
 
 
+PAIR_SEP = "+"
+
+
+def pert_components(label: str) -> List[str]:
+    """`"A+B"` -> `["A", "B"]`, `"A"` -> `["A"]`, SORTED.
+
+    ⚠️ THE ONE PLACE A PERTURBATION LABEL IS SPLIT INTO THE TOKENS CELLFLOW SEES. A
+    combination is a SET of component genes, each its own one-hot token, which CellFlow's
+    set encoder aggregates (`max_combination_length`, `pooling`). It used to be passed
+    through as ONE opaque token `"A+B"`, so validation pairs were `["A+B", NULL]` -- a token
+    no training cell ever activated -- while the export split test pairs into `[A, B]`.
+    Selection therefore scored a different encoding from the one that was reported.
+
+    Sorted, as `schema.apply_cellflow_gene_schema` sorts, so `A+B` and `B+A` are one
+    condition. A label without `+` (every rhj_fewshot symbol) is returned unchanged.
+    """
+    parts = sorted(p for p in str(label).split(PAIR_SEP) if p)
+    if not parts:
+        raise ValueError(f"empty perturbation label {label!r}")
+    return parts
+
+
+def canonical_pert_label(label: str) -> str:
+    """The sorted `A+B` form -- what `schema` writes to `obs["pert_str"]`."""
+    return PAIR_SEP.join(pert_components(label))
+
+
 def _to_cellflow_obs(adata, *, control_label: str) -> pd.DataFrame:
-    """Add the `gene_pert` tuple column CellFlow's schema parses."""
+    """Add the `gene_pert` tuple column CellFlow's schema parses.
+
+    One tuple PER COMPONENT gene: a single is `[("genetic", A, "")]` (the schema pads it to
+    `[A, NULL]`), a pair `A+B` is `[("genetic", A, ""), ("genetic", B, "")]`.
+    """
     perts = np.asarray(adata.obs["target_gene"], dtype=str)
     is_ctrl = np.asarray(adata.obs["is_control"], dtype=bool)
 
     obs = adata.obs.copy()
     obs["gene_pert"] = [
-        [] if c else [("genetic", str(p), "")] for p, c in zip(perts, is_ctrl)
+        [] if c else [("genetic", g, "") for g in pert_components(p)]
+        for p, c in zip(perts, is_ctrl)
     ]
     obs["negative_control"] = is_ctrl
     # keep our own label visible too, for the manifest and for debugging
@@ -257,7 +290,12 @@ def occam_pert_tokens(data_cfg: Dict[str, Any], *,
                                     verify_sources=verify_sources)
     tokens = set()
     for key in ("train", "val", "test_unseen_pert"):
-        tokens.update(str(p) for p in (bench.split.get(key) or []))
+        for p in (bench.split.get(key) or []):
+            if str(p) in (od.CONTROL_LABEL, "empty"):
+                continue
+            # ⚠️ COMPONENT genes, not the `A+B` string: a pair is two tokens (see
+            # `pert_components`). A no-op on rhj_fewshot, whose labels carry no `+`.
+            tokens.update(pert_components(str(p)))
     tokens.discard(od.CONTROL_LABEL)
     tokens.discard("empty")
     return sorted(tokens)

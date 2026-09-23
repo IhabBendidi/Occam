@@ -164,6 +164,13 @@ class ValidationCellEvalCallback(Callback):
                 f"got embed_key={embed_key!r}. Decode predictions before scoring."
             )
 
+        # ⛔ COMBINATORIAL BENCHMARK (norman_combo): pairs are predicted by sequential
+        # composition, exactly as the export does, never through the untrained "A+B" one-hot.
+        # On a single-perturbation benchmark this branch is not taken and the loop below runs
+        # byte for byte as before.
+        if self._has_pairs(dm):
+            return self._predict_validation_composed(dm, pl_module)
+
         loader = dm.val_dataloader_for_scoring()
         device = pl_module.device
 
@@ -200,6 +207,124 @@ class ValidationCellEvalCallback(Callback):
         gene_names = dm.get_var_dims().get("gene_names")
         var = pd.DataFrame(index=list(gene_names)) if gene_names is not None else None
 
+        adata_pred = anndata.AnnData(X=X_pred, obs=obs, var=var)
+        adata_real = anndata.AnnData(X=X_real, obs=obs.copy(), var=var)
+        return adata_pred, adata_real
+
+    # ------------------------------------------------------------------ pairs
+
+    @staticmethod
+    def _has_pairs(dm) -> bool:
+        """True when the validation split carries a combination label (`"A+B"`)."""
+        from state.tx.pure_sentence import is_multi
+
+        ds = (getattr(dm, "val_datasets", None) or [None])[0]
+        if ds is None:
+            return False
+        control = str(dm.get_control_pert())
+        return any(is_multi(p) for p in set(map(str, ds.pert_str)) if p != control)
+
+    def _predict_validation_composed(self, dm, pl_module):
+        """Validation predictions made the way `export_occam.py --compose decode_seq_mean` makes them.
+
+        The export answers a pair `"A+B"` with `compose_sequential` (order `mean`): f(ctrl, A)
+        fed back as the control of f(., B), the same with B first, and the two chains
+        averaged -- every pass through the TRAINED single-gene one-hots. Validation used to
+        send the pair through the one-hot of the literal `"A+B"`, a column that never trains,
+        so `selection_score` ranked checkpoints on an untrained input (audit 2026-09-23).
+
+        Same code as the export, not a copy of it: `state.tx.pure_sentence` holds both the
+        pure-sentence predictor and the composition wrapper (which imports
+        `competitors/shared/export_predictions.py::compose_sequential`).
+
+        What matches the export:
+          * pair rows are ordered by label with a stable sort, like the panel's
+            `np.argsort(labels, kind="stable")`, and the WHOLE pair set goes through the
+            composition in one call, so the chained passes group rows into pure sentences
+            of the first (then second) gene across pairs exactly as the export does;
+          * one pure sentence per `predict_step`, true length, `cell_sentence_len` cap;
+          * per-cell batch covariate = the perturbed cell's own batch (the export's
+            `split.batches` is the perturbed cell's batch too).
+        What is necessarily different: the control input is the validation loader's drawn
+        control (the export's is the frozen panel's drawn half-B control) -- data, not model.
+
+        Single-perturbation rows in the same split (controls; singles on a mixed split) are
+        predicted by `predict_pure_sentences` directly -- what `compose_sequential` does with
+        them too (its pass-through call).
+        """
+        import anndata
+        import pandas as pd
+
+        from state.tx.pure_sentence import (is_multi, make_composed_pair_predict,
+                                            predict_pure_sentences)
+
+        loader = dm.val_dataloader_for_scoring()
+        ctrl, real, names, ct_names, ct_oh, b_oh, b_names = [], [], [], [], [], [], []
+        for batch_idx, batch in enumerate(loader):
+            if self.max_batches is not None and batch_idx >= self.max_batches:
+                break
+            ctrl.append(batch["ctrl_cell_emb"].reshape(-1, batch["ctrl_cell_emb"].shape[-1]))
+            real.append(batch["pert_cell_emb"].reshape(-1, batch["pert_cell_emb"].shape[-1]))
+            names.extend(map(str, batch["pert_name"]))
+            ct_names.extend(map(str, batch["cell_type"]))
+            ct_oh.append(batch["cell_type_onehot"])
+            b_oh.append(batch["batch"])
+            b_names.extend(map(str, batch["batch_name"]))
+        if not ctrl:
+            raise RuntimeError("validation loader yielded no batches")
+
+        X_ctrl = torch.cat(ctrl).float().cpu().numpy().astype(np.float32)
+        X_real = torch.cat(real).float().cpu().numpy().astype(np.float32)
+        ct_oh_t = torch.cat(ct_oh).cpu()
+        b_oh_t = torch.cat(b_oh).cpu()
+        names_a = np.asarray(names, dtype=object)
+        n = len(names_a)
+        if not (X_ctrl.shape[0] == X_real.shape[0] == n == len(ct_names) == len(b_names)
+                == len(ct_oh_t) == len(b_oh_t)):
+            raise RuntimeError("validation batch fields are not row-aligned")
+
+        # the export's row order: stable sort by label
+        order = np.argsort(names_a.astype(str), kind="stable")
+        X_ctrl, X_real, names_a = X_ctrl[order], X_real[order], names_a[order]
+        ct_names = np.asarray(ct_names, dtype=object)[order]
+        b_names = np.asarray(b_names, dtype=object)[order]
+        ct_oh_t, b_oh_t = ct_oh_t[order], b_oh_t[order]
+
+        S = int(getattr(dm, "cell_sentence_len", None)
+                or getattr(pl_module, "cell_sentence_len"))
+        device = pl_module.device
+        pl_module.eval()
+
+        def _single(rows):
+            def _p(c, labels):
+                return predict_pure_sentences(
+                    pl_module, c, labels,
+                    pert_onehot_map=dm.pert_onehot_map,
+                    batch_onehot=b_oh_t[rows], batch_names=b_names[rows],
+                    cell_type_onehot=ct_oh_t[rows], cell_type_names=ct_names[rows],
+                    sentence_len=S, device=device, dataset_name="occam_val")
+            return _p
+
+        multi = np.array([is_multi(p) for p in names_a], dtype=bool)
+        X_pred = np.full_like(X_ctrl, np.nan)
+        pair_rows = np.flatnonzero(multi)
+        one_rows = np.flatnonzero(~multi)
+        if len(one_rows):
+            X_pred[one_rows] = _single(one_rows)(X_ctrl[one_rows], list(names_a[one_rows]))
+        if len(pair_rows):
+            composed = make_composed_pair_predict(_single(pair_rows), n_rows=len(pair_rows),
+                                                  order="mean")
+            X_pred[pair_rows] = composed(X_ctrl[pair_rows], list(names_a[pair_rows]))
+        if np.isnan(X_pred).any():
+            raise RuntimeError("validation prediction left NaN rows")
+        logger.info(
+            "validation cell-eval: %d pair rows (%d pairs) by sequential composition "
+            "decode_seq_mean, %d single/control rows by pure sentences",
+            len(pair_rows), len(set(names_a[pair_rows])), len(one_rows))
+
+        obs = pd.DataFrame({dm.pert_col: list(names_a), dm.cell_type_key: list(ct_names)})
+        gene_names = dm.get_var_dims().get("gene_names")
+        var = pd.DataFrame(index=list(gene_names)) if gene_names is not None else None
         adata_pred = anndata.AnnData(X=X_pred, obs=obs, var=var)
         adata_real = anndata.AnnData(X=X_real, obs=obs.copy(), var=var)
         return adata_pred, adata_real

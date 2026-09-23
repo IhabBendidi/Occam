@@ -75,3 +75,9 @@ controls) × 8,563 genes, 2.57 GB, sha256 `3bcdc909…`. Axis 6,640 genes; norma
 ## Results
 
 ⏳ Pending.
+
+⚠️ 2026-09-23: all 12 competitor exports (h1_seen, k562_seen, k562_seen_h1set) FAILED at start:
+`ood_seen.sh`'s own `BENCH` (the panel) leaked into the competitor legs through `--export=ALL`,
+where `BENCH` names the model's TRAINING benchmark. Fixed (`BENCH=rhj_fewshot` passed
+explicitly) and relaunched: h1_seen 18368294–301, k562_seen 18368302–309, k562_seen_h1set
+18368311–318 (export → score pairs).

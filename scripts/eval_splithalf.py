@@ -533,7 +533,11 @@ def main() -> int:
         def predict_fn(ctrl_t, pert_indices):
             return ctrl_t
 
-        pert2id = {p: 0 for p in cohort["perts"]}
+        # PER GENE, not per label (same fix as scripts/eval_competitor.py): the identity
+        # predict_fn never reads it, and `_assert_in_pert2id` rightly refuses a whole "A+B"
+        # key, so a label-keyed map made every norman_combo reference run die at start
+        # (seeds 43-46, 2026-09-23). Identical on single-gene panels.
+        pert2id = {g: 0 for p in cohort["perts"] for g in str(p).split("+") if g}
         what = "PROBE" if args.probe else "REFERENCE"
         print(f"[splithalf] {what}: identity prediction, scoring {arms}")
     else:
