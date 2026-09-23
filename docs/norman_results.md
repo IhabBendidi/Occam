@@ -1,5 +1,9 @@
 # `norman_combo` — results: 6 arms × 12 composition modes, 5 splits, 4 metrics
 
+> **Chronological findings log.** Current numbers: `docs/STATUS.md`. Arms, checkpoints and
+> scores that this log mentions but that are not in STATUS were moved to `archive/` on
+> 2026-09-23 (`archive/MANIFEST.tsv` gives each one's new path); treat them as history.
+
 **Objective.** Predict a perturbation's effect in a context where that exact perturbation was
 never measured. Here the form is **COMPOSITION**: train on single-gene perturbations, predict
 PAIRS, where both genes were seen individually and the pair never was.
@@ -907,3 +911,94 @@ that is larger than most between-arm gaps, so the NA04 retrain control is what s
 NE29 (lr 3e-3, bs 2048, 150 ep, eta 3e-4) after the split 0/2 re-eval (job 18364991):
 pΔ 0.8326 / 0.7401, mae 0.0129 / 0.0146 ↓, ovl 0.2392 / 0.2274, dl1 0.7775 / 0.7325 (add / non).
 The 3/5 reading (0.8335 / 0.7384) moved by < 0.002; its place in the sweep table is unchanged.
+
+### F-sweep5 (2026-09-23). Validation composed with `decode_seq_mean` picks the SAME checkpoint; bs 64 is the new best
+
+**Question.** NQ02 and NE25 selected their checkpoint on a `sum`-composed validation metric
+while being reported on `decode_seq_mean`. Does aligning the selection metric pick a better
+epoch? And does the batch-size trend continue below 128?
+
+Seed 42, 5 splits, nocal, `decode_seq_mean`. `mae` ↓. Bar: `sum_of_singles` pΔ 0.8824 / 0.7757.
+
+| arm | what | best epoch | pΔ add / non | mae add / non ↓ | ovl add / non | dl1 add / non |
+|---|---|---|---|---|---|---|
+| NQ02 | bs 2048, `sum` selection (published) | — | 0.8169 / 0.7380 | 0.0123 / 0.0146 | 0.3059 / 0.2843 | 0.9091 / 0.7708 |
+| NA04 | = NQ02, `decode_seq_mean` selection | 44 | 0.8169 / 0.7380 | 0.0123 / 0.0146 | 0.3059 / 0.2843 | 0.9091 / 0.7708 |
+| NE25 | bs 128, `sum` selection | 119 | 0.9003 / 0.7940 | 0.0114 / 0.0134 | 0.3080 / 0.2942 | 0.8717 / 0.7489 |
+| NF30 | = NE25, `decode_seq_mean` selection | 119 | 0.9003 / 0.7940 | 0.0114 / 0.0134 | 0.3080 / 0.2942 | 0.8717 / 0.7489 |
+| NB10 | bs 256, eta 1e-3 (current default) | 108 | 0.8910 / 0.7763 | 0.0112 / 0.0137 | 0.3207 / 0.3037 | 0.8804 / 0.7564 |
+| **NF31** | **bs 64**, eta 3e-4, `decode_seq_mean` selection | 144 | **0.9096 / 0.7982** | **0.0112 / 0.0133** | 0.3153 / 0.3000 | 0.8878 / 0.7644 |
+
+**Reading.** (1) The selection change is a no-op on both checked arms: NA04 and NF30 reproduce
+NQ02 and NE25 to 4 decimals on all 8 numbers, with the same selected epoch — training is
+deterministic and both metrics peak at the same epoch. The NQ02 / NE25 numbers stand.
+(2) bs 64 (NF31) beats bs 128 on all 8 numbers and clears the additivity bar on both panels
+(+0.027 / +0.023 pΔ). It selected epoch 144 of 150 — still improving at the end of the schedule.
+n = 1 seed. NF32 (bs 32) still training.
+
+⚠️ **NF32 (bs 32) HUNG and was restarted** (2026-09-23): job 18364996_2 went silent at epoch 92
+step 684 at 04:06 (data-loader workers idle, no output for 1.5 h). Cancelled; run dir moved to
+`runs/_hung_NF32_2026-09-23__*`; relaunched from scratch on vco as job 18365474 (no resume support).
+
+
+## ⏳ Sweep 5 — NF31 (bs 64) with a LOWER eta_min (launched 2026-09-23, job 18365491)
+
+NF31 (bs 64, eta 3e-4) is the best arm (0.9096 / 0.7982) and eta_min was never varied at bs 64.
+Grid `scripts/grids/norman_sweep5.tsv`, rows identical to NF31 except eta_min, decode_seq_mean
+selection. Read against NF31 and the bs-256 ladder (sweep 4) BEFORE seed replicates of bs 64
+(user, 2026-09-23: no bs-64 seeds yet).
+
+| arm | eta_min |
+|---|---|
+| NF31 | 3e-4 (reference, done) |
+| NF40 | 2e-4 |
+| NF41 | 1e-4 |
+| NF42 | 1e-5 |
+| NF43 | 1e-6 |
+
+Baselines at control-draw seeds 43–46 launched the same day: jobs 18365487–90
+(`runs/norman_combo/reference_s4N`).
+
+### F-sweep6 (2026-09-23). bs 256 eta_min ladder (sweep 4) — no floor beats constant LR by more than noise; NC16/NC17 long-large-batch arms lose
+
+Seed 42, 5 splits, nocal, `decode_seq_mean`, selection on `decode_seq_mean`. `mae` ↓. Bar:
+`sum_of_singles` pΔ 0.8824 / 0.7757. All arms bs 256, lr 1e-3, 150 ep unless stated.
+
+| arm | eta_min | pΔ add / non | mae add / non ↓ | ovl add / non | dl1 add / non |
+|---|---|---|---|---|---|
+| **NF33** | 1e-3 (= NB10 re-run, new selection) | **0.8957 / 0.7862** | 0.0115 / 0.0136 | 0.3196 / 0.3004 | 0.8588 / 0.7551 |
+| NF37 | 7e-4 | 0.8915 / 0.7788 | 0.0115 / 0.0135 | 0.3048 / 0.2946 | 0.8686 / 0.7498 |
+| NF38 | 5e-4 | 0.8914 / 0.7803 | 0.0115 / 0.0136 | 0.3098 / 0.2965 | 0.8559 / 0.7318 |
+| NB09 | 3e-4 (old selection) | 0.8785 / 0.7660 | 0.0114 / 0.0140 | 0.3092 / 0.2881 | 0.8928 / 0.7425 |
+| NF39 | 2e-4 | 0.8615 / 0.7455 | 0.0118 / 0.0140 | 0.2835 / 0.2779 | 0.8688 / 0.7391 |
+| NF34 | 1e-4 | 0.8778 / 0.7647 | 0.0116 / 0.0139 | 0.3065 / 0.2919 | 0.8659 / 0.7342 |
+| NF35 | 1e-5 | 0.8821 / 0.7750 | 0.0113 / 0.0140 | 0.3108 / 0.2951 | **0.9073 / 0.7778** |
+| NF36 | 1e-6 | 0.8920 / 0.7773 | 0.0116 / 0.0136 | 0.3093 / 0.2942 | 0.8580 / 0.7431 |
+| *NB10* | *1e-3 (default, old selection)* | *0.8910 / 0.7763* | *0.0112 / 0.0137* | *0.3207 / 0.3037* | *0.8804 / 0.7564* |
+| NC16 | bs 4096, 1200 ep | 0.8066 / 0.7043 | 0.0129 / 0.0146 | 0.2450 / 0.2549 | 0.7606 / 0.6930 |
+| NC17 | bs 8192, 1200 ep | 0.7595 / 0.6584 | 0.0139 / 0.0161 | 0.2270 / 0.2072 | 0.8208 / 0.6859 |
+| ref: NF31 | bs 64, eta 3e-4 | 0.9096 / 0.7982 | 0.0112 / 0.0133 | 0.3153 / 0.3000 | 0.8878 / 0.7644 |
+
+**Reading.** (1) At bs 256 the pΔ ladder is non-monotone: 1e-3 (NF33) is best on pΔ, 2e-4 worst
+(0.8615 / 0.7455), and 1e-6 recovers to 0.8920 / 0.7773 — a 0.035 swing between neighbours on
+n = 1 seed, so the ordering inside 0.86–0.90 is not resolved. (2) NF35 (1e-5) has the best
+`disc_l1` of any Norman arm (0.9073 / 0.7778, above NQ02's 0.9091 / 0.7708 on nonadditive) at
+a pΔ 0.014 below NF33. (3) NF33 vs NB10 (same config, selection changed): +0.0047 / +0.0099 pΔ,
+−0.022 dl1 add — the new selection metric picked a different epoch here, unlike NA04/NF30.
+(4) Very long, very-large-batch training (NC16/NC17) does not recover what small batches give:
+0.8066 / 0.7043 at bs 4096 × 1200 ep. (5) bs 64 (NF31) is still best on pΔ and mae.
+
+⚠️ NF32 (bs 32) relaunch and NF40–NF43 (bs 64 eta ladder) FAILED at start (4 s) on
+`ModuleNotFoundError: yaml` — submitted without the Occam python env (my error). Relaunched
+2026-09-23: NF32 job 18368255, NF40–43 job 18368256.
+
+### Competitor chain failures and relaunches (2026-09-23)
+
+| chain | failure | fix | relaunch |
+|---|---|---|---|
+| RHJ TxPert s44 | pdex `mp.Pool(1)` fork deadlock in in-training validation (started before the in-process fix) | in-process pool (already in code) | 18368276 → 77 → 78 |
+| Norman PerturbDiff s42 export | checkpoint lookup matched 3 seed-42 markers (norman + 2 rhj encodings) and refused | resolver now filters by benchmark tag (`__norman_combo`) | export 18368285 → score 18368286 |
+| Norman PerturbDiff s44, s45 | DataLoader `could not unlink the shared memory file /torch_*`, then hang; watchdog kill after ~2.5 h | `TORCH_SHARING_STRATEGY=file_system` (infra only) | s44 18368279 → 80 → 81 · s45 18368282 → 83 → 84 |
+
+Partial checkpoints of the killed chains were moved to `archive/` (MANIFEST.tsv). Norman
+PerturbDiff s43 / s46 were already training before the shm fix and are left running.

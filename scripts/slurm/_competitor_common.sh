@@ -38,6 +38,10 @@ export WANDB_MODE="${WANDB_MODE:-offline}"
 # SCORE leg (competitor_score.sbatch) is a fresh process with no CUDA context and keeps
 # its own threads.
 export CELLEVAL_NUM_THREADS="${CELLEVAL_NUM_THREADS:-1}"
+# DataLoader tensor hand-off through the filesystem, not /dev/shm fds: the fd path died on
+# "could not unlink the shared memory file /torch_*" and hung two PerturbDiff runs
+# (2026-09-23). Read by competitors/PerturbDiff/src/apps/run/rawdata_diffusion_training.py.
+export TORCH_SHARING_STRATEGY="${TORCH_SHARING_STRATEGY:-file_system}"
 
 # ─── stall watchdog: a hang must free its GPU, not hold it for hours ─────────────────────────
 # `competitor_watchdog <pid> <logfile>` kills <pid> if <logfile> has not been written for

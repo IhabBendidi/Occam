@@ -11,8 +11,11 @@
 #
 # WHAT THIS BENCHMARK IS
 #   rhj_fewshot checkpoints (trained on HepG2 + Jurkat + RPE1) scored on H1 hESC from the
-#   VCC 2025 dataset -- a cell line none of them saw, not even its controls -- on the 99
-#   H1 perturbations that ARE in rhj_fewshot training ("seen perturbation, unseen line").
+#   VCC 2025 dataset -- a cell line none of them saw, not even its controls, in an assay they
+#   did not see either -- on 80 perturbations that ARE in rhj_fewshot training ("seen
+#   perturbation, unseen assay, unseen cell line"). The 80 are the H1 perts also measured in
+#   the K562 essential screen (data/benchmarks/shared/h1_k562_perts.json, in git), so
+#   k562_seen_h1set scores the same set in a seen assay.
 #   Same split-half protocol as rhj_fewshot: 5 seeded splits into halves A/B of the H1
 #   cells; the model gets half-B controls, half A is the reference. docs/h1_seen.md.
 #
@@ -23,9 +26,9 @@
 #
 # INPUTS, from the HuggingFace repo (docs/hf_release.md)
 #   benchmarks/h1_seen/h1_seen_raw.h5ad   -> data/benchmarks/h1_seen/
-#       126,546 cells x 18,080 genes, raw counts: the 99 perturbations + 38,176 controls,
-#       already selected from the 3 VCC 2025 files, in build order.
-#       sha256 3cf2642fbe0cd1c38b98e73b2ab21b6bd85d4d8b9a7dd9683913d9b06e857183
+#       raw counts on all 18,080 H1 genes: the 80 perturbations + 38,176 controls, already
+#       selected from the 3 VCC 2025 files, in build order.
+#       sha256 73ea83694d7c34fc2eaad94697b35fa7758c2606ca5a056b8913b096482d76d0
 #   benchmarks/rhj_fewshot/               -> data/benchmarks/rhj_fewshot/
 #       the axis the checkpoints were trained on, and which perturbations are "seen"
 #   eval/pert/{nadig_2024_hepg2,nadig_2024_jurkat,replogle_2022_rpe1_e}.h5ad
@@ -54,7 +57,7 @@ HERE="$(cd "${SLURM_SUBMIT_DIR:-$(dirname "${BASH_SOURCE[0]}")/../..}" && pwd)"
 cd "$HERE"
 export PYTHONPATH="$HERE/src${PYTHONPATH:+:$PYTHONPATH}"
 
-RAW_SHA256="3cf2642fbe0cd1c38b98e73b2ab21b6bd85d4d8b9a7dd9683913d9b06e857183"
+RAW_SHA256="73ea83694d7c34fc2eaad94697b35fa7758c2606ca5a056b8913b096482d76d0"
 PUBLISHED="${PUBLISHED:-data/benchmarks/h1_seen}"
 OUT="${OUT:-data/benchmarks/h1_seen}"
 RAW="${RAW:-data/benchmarks/h1_seen/h1_seen_raw.h5ad}"
@@ -67,7 +70,7 @@ if [ -f "$OUT/benchmark.json" ] && [ -z "${FORCE:-}" ]; then
     exit 2
 fi
 
-for f in "$RAW" data/benchmarks/rhj_fewshot/benchmark.json \
+for f in "$RAW" data/benchmarks/rhj_fewshot/benchmark.json data/benchmarks/shared/h1_k562_perts.json \
          data/eval/pert/nadig_2024_hepg2.h5ad data/eval/pert/nadig_2024_jurkat.h5ad \
          data/eval/pert/replogle_2022_rpe1_e.h5ad; do
     if [ ! -f "$f" ]; then

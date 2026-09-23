@@ -251,7 +251,7 @@
       "n_files": 61
     },
     "PerturbDiff": {
-      "bytes": 2806938,
+      "bytes": 2808371,
       "files": {
         ".python-version": {
           "bytes": 5,
@@ -370,8 +370,8 @@
           "sha256": "2dc0ac264b54bd6ce287f9a0cbd3ce5001f9ef482798a9cc8ee471055f639476"
         },
         "export_occam.py": {
-          "bytes": 27850,
-          "sha256": "47e8ef2582f0c78ee9ef2a021638f5984bcd304c53e7892c0ab2d29a05bf5ed2"
+          "bytes": 28685,
+          "sha256": "cc562615dafd9d2cc7d8e5af62df4c876467848805f4d85ca96ef7613b0ad268"
         },
         "pyproject.toml": {
           "bytes": 3559,
@@ -406,8 +406,8 @@
           "sha256": "178631adb0bf7d8b0ca3592cc911277359f81740c2ebcc09a9202d99edbe3b1f"
         },
         "src/apps/run/rawdata_diffusion_training.py": {
-          "bytes": 3039,
-          "sha256": "8b1dbc4b80d3378676395c23fd74a76b63b69f84fe70aea49556b2c7337ed37a"
+          "bytes": 3637,
+          "sha256": "83168ddbbe3b37e44c7b6b755dc1ad3294f1d5349bd38c1640339814eb9964b3"
         },
         "src/apps/sampling/ZARR_BENCHMARK.md": {
           "bytes": 10833,

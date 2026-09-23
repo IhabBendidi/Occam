@@ -1,0 +1,20 @@
+# NORMAN SWEEP 5 -- NF31 (bs 64) with LOWER eta_min, under decode_seq_mean SELECTION
+#
+# OBJECTIVE. Best Occam on norman_combo pairs (additive / nonadditive panels, nocal, 5 splits,
+# decode_seq_mean). Bar: sum_of_singles pd 0.8824 / 0.7757. NF31 (bs 64, eta 3e-4) 0.9096 / 0.7982,
+# the best arm so far, selected epoch 144/150.
+#
+# QUESTION. Does bs 64 gain from a lower LR floor? Only eta 3e-4 was run at bs 64. Read against
+# the bs-256 eta ladder (sweep 4, NF33-39) before deciding the default or seed replicates.
+#
+# VARIED: eta_min (2e-4, 1e-4, 1e-5, 1e-6). FIXED: Q02 Norman weights, 150 ep, bs 64, lr 1e-3,
+# seed 42. Reference point = NF31 (3e-4), same selection metric.
+#
+# OUTCOMES. A lower floor beats NF31 -> decay helps at bs 64; carry it into the default and the
+#   seed replicates. None does -> 3e-4 stays for bs 64.
+# COST 4 arms, ~1.5-2 h each (bs 64). Walltime 6 h.
+arm	loss_type	nb_weight	nb_scale	delta_cos_weight	delta_mag_weight	latent_loss_type	latent_loss_weight	latent_cos_weight	latent_cos_target	recon_split	recon_ctrl_weight	recon_delta_weight	recon_split_mode	recon_delta_target	vicreg_var_weight	vicreg_cov_weight	vicreg_gamma	vicreg_target	epochs	eta_min	base	dcos_conc_weight	radial_spread_weight	gene_var_weight	batch_size	lr	seed
+NF40	smooth_l1	0	1.0	0.32977	0.0400866	delta_z	0.00198826	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	150	2e-4	H_bs64_em2e-4_dsmselect	0.0	0.0	0.0	64	1e-3	42
+NF41	smooth_l1	0	1.0	0.32977	0.0400866	delta_z	0.00198826	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	150	1e-4	H_bs64_em1e-4_dsmselect	0.0	0.0	0.0	64	1e-3	42
+NF42	smooth_l1	0	1.0	0.32977	0.0400866	delta_z	0.00198826	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	150	1e-5	H_bs64_em1e-5_dsmselect	0.0	0.0	0.0	64	1e-3	42
+NF43	smooth_l1	0	1.0	0.32977	0.0400866	delta_z	0.00198826	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	150	1e-6	H_bs64_em1e-6_dsmselect	0.0	0.0	0.0	64	1e-3	42

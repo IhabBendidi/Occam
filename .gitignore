@@ -183,3 +183,8 @@ cache/pert_disp/
 # HuggingFace as `metrics_all/` and is NOT tracked. The primary records for both remain
 # the metrics.json / results.csv inside each run directory.
 data/release/metrics_all/
+
+# archive/: stale material moved out of the live tree (archive/README.md). Only the README,
+# the move log, docs and scripts are tracked; archived runs and data stay local.
+archive/runs/
+archive/data/

@@ -1,5 +1,6 @@
 #!/usr/bin/env python
-"""Freeze the H1 "seen perturbation, UNSEEN cell line" split-half panel (`h1_seen`).
+"""Freeze a "seen perturbation, UNSEEN cell line" split-half panel: `h1_seen` (default),
+`k562_seen`, or a fixed-set variant (`--eligible`). K562: see scripts/build_k562_seen_panel.py.
 
 WHAT THIS IS FOR
 ----------------
@@ -84,6 +85,23 @@ BATCH_COL = "batch"
 # The three VCC 2025 H1 files (Training / Validation / Test), passed with --h1-files in that
 # order. Their paths and sha256 are recorded in benchmark.json `sources`.
 H1_SPLITS = ("Training", "Validation", "Test")
+# K562 (Replogle 2022 essential CRISPRi screen): seen perturbation, SEEN assay, unseen line.
+K562_SOURCE = "/rxrx/data/valence/biomodality_sc/replogle_2022/replogle_2022_k562_e.h5ad"
+DATASETS = {
+    "h1":   {"bench_id": "h1_seen", "cell_line": "H1", "raw_name": "h1_seen_raw.h5ad",
+             "purpose": "seen perturbation, unseen assay, unseen cell line: score "
+                        "rhj_fewshot checkpoints on H1 (VCC 2025)"},
+    "k562": {"bench_id": "k562_seen", "cell_line": "K562", "raw_name": "k562_seen_raw.h5ad",
+             "purpose": "seen perturbation, seen assay, unseen cell line: score rhj_fewshot "
+                        "checkpoints on K562 (Replogle 2022 essential)",
+             "pert_col": "gene_name", "batch_col": "dataset_batch_num",
+             "var_symbol_col": "gene_name"},
+}
+# ⛔ The 80 perturbations H1 and K562 share (user decision 2026-09-23: ALL H1 evaluation is on
+# these 80, and the K562 twin panel uses the same 80, so the two are scored on one set).
+# = the former 99-pert h1_seen cohort AND >= 10 cells in the K562 essential screen. Frozen;
+# see the file for the rule, the 19 dropped perts and its sha256.
+SHARED_PERTS = os.path.join(REPO, "data", "benchmarks", "shared", "h1_k562_perts.json")
 RHJ_HEPG2 = "nadig_2024_hepg2.h5ad"
 RHJ_OTHERS = ("nadig_2024_jurkat.h5ad", "replogle_2022_rpe1_e.h5ad")
 
@@ -136,18 +154,42 @@ def _read_rows(path: str, rows: np.ndarray, n_vars: int):
     return sp.vstack(out, format="csr")
 
 
+def _write_raw(adata, path):
+    """Local copies are written like the other published h5ad files: CSR, int32 counts, gzip 4."""
+    import scipy.sparse as sp
+    X = sp.csr_matrix(adata.X)
+    if np.array_equal(X.data, np.round(X.data)):
+        adata.X = sp.csr_matrix((X.data.astype(np.int32), X.indices, X.indptr), shape=X.shape)
+    adata.write_h5ad(path, compression="gzip", compression_opts=4)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--rhj-bench-dir", default=os.path.join(REPO, "data", "benchmarks",
                                                             "rhj_fewshot"))
-    ap.add_argument("--out-dir", default=os.path.join(REPO, "data", "benchmarks", BENCH_ID))
+    ap.add_argument("--out-dir", default="",
+                    help="default data/benchmarks/<bench-id>")
     ap.add_argument("--n-splits", type=int, default=5)
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--min-cells", type=int, default=10)
     ap.add_argument("--h1-files", nargs=3, metavar=("TRAINING", "VALIDATION", "TEST"),
                     help="the VCC 2025 adata_{Training,Validation,Test}.h5ad; required "
                          "unless --from-raw")
+    ap.add_argument("--dataset", default="h1", choices=sorted(DATASETS),
+                    help="h1 (VCC 2025 H1, default) or k562 (Replogle 2022 K562 essential)")
+    ap.add_argument("--source", default=K562_SOURCE,
+                    help="k562 only: the raw K562 essential h5ad")
+    ap.add_argument("--eligible", default="",
+                    help="which perturbations form the COHORT. Default: h1 -> the frozen "
+                         "80-pert list (data/benchmarks/shared/h1_k562_perts.json); k562 -> "
+                         "rhj_test. Also: h1set (= that same frozen list), rhj_all (every "
+                         "rhj-eligible pert; the superseded 99-pert h1_seen), file:<perts.json>")
+    ap.add_argument("--write-raw-subset", action="store_true",
+                    help="with --from-raw: also write <out>/<raw_name> holding only the "
+                         "cohort's perturbations + all controls (how the 80-pert H1 copy was "
+                         "cut from the 99-pert one)")
+    ap.add_argument("--bench-id", default="", help="default from --dataset (h1_seen / k562_seen)")
     ap.add_argument("--from-raw", default="",
                     help="start from the published local copy h1_seen_raw.h5ad instead of "
                          "the three VCC 2025 files")
@@ -156,9 +198,17 @@ def main() -> int:
                          "it in every scientific quantity")
     ap.add_argument("--force", action="store_true")
     args = ap.parse_args()
-    if not args.from_raw and not args.h1_files:
+    D = DATASETS[args.dataset]
+    if args.dataset == "h1" and not args.from_raw and not args.h1_files:
         ap.error("pass --h1-files TRAINING VALIDATION TEST, or --from-raw <h1_seen_raw.h5ad>")
     H1_FILES = dict(zip(H1_SPLITS, args.h1_files or ()))
+    bench_id = args.bench_id or D["bench_id"]
+    cell_line = D["cell_line"]
+    eligible_rule = args.eligible or ("file:" + SHARED_PERTS if args.dataset == "h1"
+                                      else "rhj_test")
+    if eligible_rule == "h1set":
+        eligible_rule = "file:" + SHARED_PERTS
+    args.out_dir = args.out_dir or os.path.join(REPO, "data", "benchmarks", bench_id)
 
     import anndata as ad
     import h5py
@@ -213,6 +263,10 @@ def main() -> int:
         with h5py.File(args.from_raw, "r") as f:
             var_sym = np.asarray(read_column(f["var"], f["var"].attrs["_index"]), dtype=str)
             var_ens = np.asarray(read_column(f["var"], "ensembl_gene_id"), dtype=str)
+    elif args.dataset == "k562":
+        with h5py.File(args.source, "r") as f:
+            var_sym = np.asarray(read_column(f["var"], D["var_symbol_col"]), dtype=str)
+            var_ens = np.asarray(read_column(f["var"], "ensembl_gene_id"), dtype=str)
     else:
         # ---- H1 genes: symbols from every file (must agree), Ensembl from Training ------
         var_sym = None
@@ -232,14 +286,25 @@ def main() -> int:
     axis_sym = [s for _, s in axis_pairs]
     axis_cols_h1 = np.array([h1_pos[e] for e in axis_ens], dtype=np.int64)
     rhj_axis_idx = np.array([rhj.axis_ensembl.index(e) for e in axis_ens], dtype=np.int64)
-    print(f"[h1] axis: {len(axis_ens):,} of {len(rhj.axis_ensembl):,} rhj axis genes in H1")
+    print(f"[h1] axis: {len(axis_ens):,} of {len(rhj.axis_ensembl):,} rhj axis genes in {cell_line}")
 
     with h5py.File(rhj_src(RHJ_HEPG2)["path"], "r") as f:
         hep_ens = set(np.asarray(read_column(f["var"], "ensembl_gene_id"), dtype=str))
     norm_cols = np.array([i for i, e in enumerate(var_ens) if e in hep_ens], dtype=np.int64)
-    print(f"[h1] normalisation universe: {len(norm_cols):,} H1 genes also in {RHJ_HEPG2}")
+    print(f"[h1] normalisation universe: {len(norm_cols):,} {cell_line} genes also in {RHJ_HEPG2}")
 
     seen = sorted(set(prow))
+    with open(SHARED_PERTS) as fh:
+        shared = json.load(fh)["perts"]
+    if args.dataset == "k562":
+        # the LOCAL COPY holds the union of every cohort a K562 panel can be built on:
+        # the RHJ test perts and the 80 shared with H1, so one HF file rebuilds both panels.
+        select = sorted({g for g, r in prow.items() if r["split"] == "test"} | set(shared))
+    elif eligible_rule.startswith("file:"):
+        with open(eligible_rule[5:]) as fh:
+            select = sorted(json.load(fh)["perts"])
+    else:
+        select = seen
     if args.from_raw:
         a = ad.read_h5ad(args.from_raw)
         import scipy.sparse as sp
@@ -253,6 +318,28 @@ def main() -> int:
         raw_path = args.from_raw
         print(f"[h1] local copy {args.from_raw}: {raw.shape[0]:,} cells x "
               f"{raw.shape[1]:,} genes (raw counts)")
+    elif args.dataset == "k562":
+        import scipy.sparse as sp
+        with h5py.File(args.source, "r") as f:
+            lab = np.asarray(read_column(f["obs"], D["pert_col"]), dtype=str)
+            bat = np.asarray(read_column(f["obs"], D["batch_col"]), dtype=str)
+            idx = np.asarray(read_column(f["obs"], f["obs"].attrs["_index"]), dtype=str)
+        rows = np.flatnonzero(np.isin(lab, select) | (lab == CONTROL))
+        n_ctrl = int((lab[rows] == CONTROL).sum())
+        print(f"[{args.dataset}] {os.path.basename(args.source)}: "
+              f"{len(set(lab[rows]) - {CONTROL})} selected perts, "
+              f"{len(rows) - n_ctrl:,} perturbed + {n_ctrl:,} control cells")
+        raw = _read_rows(args.source, rows, n_vars)
+        obs = pd.DataFrame({PERT_COL: lab[rows], BATCH_COL: bat[rows],
+                            "source_file": os.path.basename(args.source),
+                            "source_obs": idx[rows]})
+        obs["rhj_split"] = [prow[g]["split"] if g in prow else "control" for g in obs[PERT_COL]]
+        obs.index = [f"K562s_{i}" for i in range(len(obs))]
+        adata = ad.AnnData(X=raw, obs=obs,
+                           var=pd.DataFrame({"ensembl_gene_id": var_ens}, index=var_sym))
+        raw_path = os.path.join(out, D["raw_name"])
+        _write_raw(adata, raw_path)
+        print(f"[{args.dataset}] wrote {raw_path}")
     else:
         # ---- which rows ----------------------------------------------------------
         pieces, meta = [], []
@@ -282,7 +369,7 @@ def main() -> int:
         adata = ad.AnnData(X=raw, obs=obs,
                            var=pd.DataFrame({"ensembl_gene_id": var_ens}, index=var_sym))
         raw_path = os.path.join(out, "h1_seen_raw.h5ad")
-        adata.write_h5ad(raw_path)
+        _write_raw(adata, raw_path)
         print(f"[h1] wrote {raw_path}")
 
     # ---- normalise onto the axis -------------------------------------------
@@ -297,14 +384,52 @@ def main() -> int:
     print(f"[h1] library size median {np.median(lib):,.0f} UMI; normalisation rowsum "
           f"median {np.median(rs):,.0f}")
 
-    strata = {g: prow[g]["split"] for g in seen if g in set(labels)}
+    present = set(labels.tolist())
+    if eligible_rule == "rhj_all":
+        elig = [g for g in seen if g in present]
+    elif eligible_rule == "rhj_test":
+        elig = [g for g in seen if g in present and prow[g]["split"] == "test"]
+    elif eligible_rule.startswith("file:"):
+        with open(eligible_rule[5:]) as fh:
+            elig = list(json.load(fh)["perts"])
+        miss = sorted(set(elig) - present)
+        if miss:
+            raise SystemExit(f"{len(miss)} perturbation(s) of {eligible_rule[5:]} are not in "
+                             f"this data: {miss[:5]}")
+        with open(os.path.join(out, "perts.json"), "w") as fh:
+            json.dump({"perts": sorted(elig), "rule": f"frozen list {eligible_rule[5:]}",
+                       "n": len(elig)}, fh, indent=2)
+    else:
+        raise SystemExit(f"unknown --eligible {eligible_rule!r}")
+    strata = {g: prow[g]["split"] for g in elig}
     cohort = freeze_cohort(
-        labels, eligible=list(strata), min_cells=args.min_cells, context=CELL_LINE,
-        extra={"benchmark_id": BENCH_ID, "seen_from": "rhj_fewshot",
+        labels, eligible=list(strata), min_cells=args.min_cells, context=cell_line,
+        extra={"benchmark_id": bench_id, "seen_from": "rhj_fewshot",
                "rhj_split": {p: strata[p] for p in sorted(strata)},
                "n_axis_genes": len(axis_ens), "builder_version": BUILDER_VERSION,
                "built": str(date.today()), "pert_col_in_source": PERT_COL,
                "batch_col": BATCH_COL})
+    if eligible_rule.startswith(("h1set", "file:")) and cohort["n_perts"] != len(elig):
+        raise SystemExit(f"cohort has {cohort['n_perts']} perts, the frozen list {len(elig)}: "
+                         f"{sorted(set(elig) - set(cohort['perts']))[:5]} fall below "
+                         f"min_cells here, so the two panels would not share a set")
+    if args.write_raw_subset:
+        if not args.from_raw:
+            raise SystemExit("--write-raw-subset only makes sense with --from-raw")
+        keep_raw = np.flatnonzero(np.isin(labels, list(cohort["perts"]) + [CONTROL]))
+        sub = ad.AnnData(X=raw[keep_raw], obs=obs.iloc[keep_raw].copy(),
+                         var=pd.DataFrame({"ensembl_gene_id": var_ens}, index=var_sym))
+        raw_path = os.path.join(out, D["raw_name"])
+        if os.path.abspath(raw_path) == os.path.abspath(args.from_raw):
+            raise SystemExit("--write-raw-subset would overwrite its own input; use --out-dir")
+        _write_raw(sub, raw_path)
+        print(f"[h1] wrote raw subset {raw_path}: {sub.n_obs:,} cells "
+              f"({cohort['n_perts']} perts + {int((labels[keep_raw] == CONTROL).sum()):,} "
+              f"controls)")
+        del sub
+    # the strata record must cover exactly the cohort, not every eligible perturbation (one
+    # RHJ test pert has < min_cells in K562 and is dropped by freeze_cohort)
+    cohort["rhj_split"] = {p: strata[p] for p in cohort["perts"]}
     print(f"[h1] cohort {cohort['n_perts']} perturbations; strata "
           f"{ {k: list(cohort['rhj_split'].values()).count(k) for k in ('train', 'val', 'test')} }")
 
@@ -331,7 +456,7 @@ def main() -> int:
     grand = (hep_delta + h1_ctrl_mean).astype(np.float32)
     grand_info = {k: v for k, v in grand_info.items() if k != "cells_per_pert"}
     grand_info["source"] = (f"rhj_fewshot {RHJ_HEPG2} training perturbations: grand DELTA "
-                            f"(equal weight per pert) + H1 all-control mean")
+                            f"(equal weight per pert) + {cell_line} all-control mean")
     np.save(os.path.join(sh, "train_grand_mean.npy"), grand)
 
     perts = cohort["perts"]
@@ -373,22 +498,25 @@ def main() -> int:
         fh.write("ensembl_gene_id,gene_name\n")
         fh.writelines(f"{e},{s}\n" for e, s in axis_pairs)
     with open(os.path.join(out, "perturbations.csv"), "w") as fh:
-        fh.write("gene_name,rhj_split,n_cells_H1\n")
+        fh.write(f"gene_name,rhj_split,n_cells_{cell_line}\n")
         fh.writelines(f"{p},{cohort['rhj_split'][p]},{cohort['cells_per_pert'][p]}\n"
                       for p in perts)
     bench = {
-        "benchmark_id": BENCH_ID, "cell_line": CELL_LINE, "builder_version": BUILDER_VERSION,
+        "benchmark_id": bench_id, "cell_line": cell_line, "builder_version": BUILDER_VERSION,
         "built": str(date.today()), "git_sha": _git_sha(), "command": " ".join(sys.argv),
-        "purpose": "seen perturbation, unseen cell line: score rhj_fewshot checkpoints on H1",
+        "purpose": D["purpose"], "eligible_rule": eligible_rule,
         "seen_from": {"benchmark_id": "rhj_fewshot", "benchmark_sha256": rhj.sha256,
                       "gene_axis_sha256": rhj.axis_sha256,
                       "n_axis_genes": len(rhj.axis_ensembl)},
         "gene_axis_sha256": axis_sha, "n_axis_genes": len(axis_ens),
-        "n_axis_genes_missing_in_h1": len(rhj.axis_ensembl) - len(axis_ens),
+        f"n_axis_genes_missing_in_{cell_line.lower()}": len(rhj.axis_ensembl) - len(axis_ens),
         "encoder_target_sum": target_sum,
-        "normalisation": f"rowsum over {len(norm_cols)} H1 genes also in {RHJ_HEPG2}, "
+        "normalisation": f"rowsum over {len(norm_cols)} {cell_line} genes also in {RHJ_HEPG2}, "
                          f"then axis restriction, then log1p(x/rowsum*{target_sum:g})",
-        "sources": ({"raw_copy": {"path": raw_path}} if args.from_raw else
+        "sources": ({"raw_copy": {"path": args.from_raw}} if args.from_raw else
+                    {"k562_essential": {"path": args.source,
+                                        "sha256": file_sha256(args.source)}}
+                    if args.dataset == "k562" else
                     {t: {"path": p, "sha256": file_sha256(p)} for t, p in H1_FILES.items()}),
         "raw_copy": {"path": os.path.relpath(os.path.abspath(raw_path), REPO),
                      "sha256": file_sha256(raw_path), "n_cells": int(raw.shape[0])},
@@ -410,10 +538,10 @@ def main() -> int:
     manifest = {
         "protocol": "splithalf/v1", "builder_version": BUILDER_VERSION,
         "built": str(date.today()), "git_sha": _git_sha(), "command": " ".join(sys.argv),
-        "benchmark_id": BENCH_ID, "benchmark_sha256": _sha(bench_bytes),
+        "benchmark_id": bench_id, "benchmark_sha256": _sha(bench_bytes),
         "gene_axis_sha256": axis_sha, "n_axis_genes": len(axis_ens),
         "ood_context": True, "seen_from": bench["seen_from"],
-        "cell_line": CELL_LINE, "pert_col_in_source": PERT_COL, "batch_col": BATCH_COL,
+        "cell_line": cell_line, "pert_col_in_source": PERT_COL, "batch_col": BATCH_COL,
         "control_label": CONTROL, "target_sum": target_sum,
         "normalisation": bench["normalisation"],
         "n_panel_rows": int(Xp.shape[0]), "n_panel_controls": int((lp == CONTROL).sum()),

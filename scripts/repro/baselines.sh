@@ -57,6 +57,7 @@
 #   BENCHMARK=norman_combo sbatch scripts/repro/baselines.sh
 #   BENCHMARK=h1_seen sbatch scripts/repro/baselines.sh        # build: scripts/slurm/build_h1_seen.sbatch
 #   ARMS=meanpert,experimental sbatch scripts/repro/baselines.sh   # a subset
+#   SEED=43 OUT=runs/rhj_splithalf/reference_s43 sbatch scripts/repro/baselines.sh
 #
 # ⚠️ %6 array throttle: cell-eval's Wilcoxon backend (pdex) races on /dev/shm.
 # COST  ~25 min per split; 5 splits concurrent = ~30 min wall.
@@ -74,8 +75,8 @@ export OCCAM_CELLEVAL_ATTEMPTS="${OCCAM_CELLEVAL_ATTEMPTS:-3}"
 
 BENCHMARK="${BENCHMARK:-rhj_fewshot}"
 case "$BENCHMARK" in
-    rhj_fewshot|norman_combo|h1_seen) ;;
-    *) echo "BENCHMARK must be rhj_fewshot, norman_combo or h1_seen, got '$BENCHMARK'" >&2
+    rhj_fewshot|norman_combo|h1_seen|k562_seen|k562_seen_h1set) ;;
+    *) echo "BENCHMARK must be rhj_fewshot, norman_combo, h1_seen, k562_seen or k562_seen_h1set, got '$BENCHMARK'" >&2
        exit 2 ;;
 esac
 
@@ -95,9 +96,13 @@ if [ ! -d "$PANEL" ]; then
 fi
 mkdir -p "$OUT" "$CACHE"
 
+# SEED re-draws the half-B control cell each predicted row starts from
+# (predict_panel: rng = SEED + 1000*split). It moves ctrlcell, meanpert, transfer and
+# sum_of_singles; ctrlmean and experimental do not depend on it. 42 = the published draw.
+SEED="${SEED:-42}"
 ARGS=(--mode reference --panel-dir "$PANEL" --split "$SPLIT"
       --out-root "$OUT" --de-real-cache-dir "$CACHE"
-      --calibrate none --num-threads 16)
+      --calibrate none --num-threads 16 --seed "$SEED")
 if [ -n "${ARMS:-}" ]; then
     ARGS+=(--arms "$ARMS")
 fi
@@ -108,6 +113,7 @@ echo "started: $(date -Is)"
 echo "git sha: $(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
 echo "panel  : $PANEL"
 echo "arms   : ${ARMS:-all the panel can build}"
+echo "seed   : $SEED (control draw)"
 echo
 
 python scripts/eval_splithalf.py "${ARGS[@]}"

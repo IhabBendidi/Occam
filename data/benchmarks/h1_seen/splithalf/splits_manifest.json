@@ -2,25 +2,25 @@
   "base_seed": 42,
   "batch_col": "batch",
   "benchmark_id": "h1_seen",
-  "benchmark_sha256": "9f70fab7422df5b369dda3fb25fb3ea40ea6cb6a645af300a2a0267eeedeac12",
+  "benchmark_sha256": "740d9aba0f29feb63a7c9d9232aefe2667b29784768a33203536869708b8d84d",
   "builder_version": "1.0.0",
   "built": "2026-09-23",
   "cell_line": "H1",
-  "cohort_sha256": "f60e13d072524382b5c00a65e30281cd0affd511a413d3d1101d4f08a21367f9",
-  "command": "scripts/build_h1_seen_panel.py",
+  "cohort_sha256": "4bab34796e1cfb38a80da46c11e24ae6467b169648ed2fb223d2080307a51b8e",
+  "command": "scripts/build_h1_seen_panel.py --dataset h1 --from-raw data/benchmarks/h1_seen_99/h1_seen_raw.h5ad --write-raw-subset --out-dir data/benchmarks/h1_seen",
   "control_label": "non-targeting",
   "gene_axis_sha256": "d5336c77731920ad0c7c77a554ca16bff428fd3c8d906cfc0c0275419ca83f58",
-  "git_sha": "fab9f0865e37531f77046ae51bac0e5ebe4e112f",
+  "git_sha": "d184c954575160c99f05e7c9583957fbe47e26cc",
   "half_size_strata": {
-    "m>=25": 97,
-    "m>=5": 99,
-    "m_median": 395
+    "m>=25": 78,
+    "m>=5": 80,
+    "m_median": 394
   },
   "min_cells": 10,
   "n_axis_genes": 6535,
-  "n_cohort_perts": 99,
+  "n_cohort_perts": 80,
   "n_panel_controls": 38176,
-  "n_panel_rows": 126546,
+  "n_panel_rows": 105338,
   "n_splits": 5,
   "normalisation": "rowsum over 8910 H1 genes also in nadig_2024_hepg2.h5ad, then axis restriction, then log1p(x/rowsum*2000)",
   "ood_context": true,
@@ -35,32 +35,32 @@
   "splits": [
     {
       "n_ctrl_per_half": 19088,
-      "n_dropped_odd": 56,
-      "n_pert_per_half": 44157,
+      "n_dropped_odd": 44,
+      "n_pert_per_half": 33559,
       "split": 0
     },
     {
       "n_ctrl_per_half": 19088,
-      "n_dropped_odd": 56,
-      "n_pert_per_half": 44157,
+      "n_dropped_odd": 44,
+      "n_pert_per_half": 33559,
       "split": 1
     },
     {
       "n_ctrl_per_half": 19088,
-      "n_dropped_odd": 56,
-      "n_pert_per_half": 44157,
+      "n_dropped_odd": 44,
+      "n_pert_per_half": 33559,
       "split": 2
     },
     {
       "n_ctrl_per_half": 19088,
-      "n_dropped_odd": 56,
-      "n_pert_per_half": 44157,
+      "n_dropped_odd": 44,
+      "n_pert_per_half": 33559,
       "split": 3
     },
     {
       "n_ctrl_per_half": 19088,
-      "n_dropped_odd": 56,
-      "n_pert_per_half": 44157,
+      "n_dropped_odd": 44,
+      "n_pert_per_half": 33559,
       "split": 4
     }
   ],
@@ -72,7 +72,7 @@
     "weighting": "equal per perturbation"
   },
   "transfer": {
-    "cells_per_pert_median": 209.0,
+    "cells_per_pert_median": 208.5,
     "lines_per_pert": {
       "ARID3A": [
         "HEPG2",
@@ -100,11 +100,6 @@
         "RPE1"
       ],
       "C1QBP": [
-        "HEPG2",
-        "jurkat",
-        "RPE1"
-      ],
-      "CAST": [
         "HEPG2",
         "jurkat",
         "RPE1"
@@ -137,11 +132,6 @@
         "jurkat",
         "RPE1"
       ],
-      "DAXX": [
-        "HEPG2",
-        "jurkat",
-        "RPE1"
-      ],
       "DHX36": [
         "jurkat",
         "RPE1"
@@ -166,11 +156,6 @@
         "jurkat",
         "RPE1"
       ],
-      "EHMT2": [
-        "HEPG2",
-        "jurkat",
-        "RPE1"
-      ],
       "EIF3H": [
         "HEPG2",
         "jurkat",
@@ -186,16 +171,6 @@
         "jurkat",
         "RPE1"
       ],
-      "EPB41L2": [
-        "HEPG2",
-        "jurkat",
-        "RPE1"
-      ],
-      "ETV4": [
-        "HEPG2",
-        "jurkat",
-        "RPE1"
-      ],
       "EWSR1": [
         "HEPG2",
         "jurkat",
@@ -203,10 +178,6 @@
       ],
       "FDPS": [
         "HEPG2",
-        "jurkat",
-        "RPE1"
-      ],
-      "GSK3B": [
         "jurkat",
         "RPE1"
       ],
@@ -246,21 +217,12 @@
         "jurkat",
         "RPE1"
       ],
-      "KDM1A": [
-        "jurkat",
-        "RPE1"
-      ],
       "KIF20A": [
         "HEPG2",
         "jurkat",
         "RPE1"
       ],
       "LRPPRC": [
-        "HEPG2",
-        "jurkat",
-        "RPE1"
-      ],
-      "LZTR1": [
         "HEPG2",
         "jurkat",
         "RPE1"
@@ -292,11 +254,6 @@
         "RPE1"
       ],
       "MED19": [
-        "jurkat",
-        "RPE1"
-      ],
-      "MED24": [
-        "HEPG2",
         "jurkat",
         "RPE1"
       ],
@@ -357,17 +314,8 @@
         "jurkat",
         "RPE1"
       ],
-      "PHF10": [
-        "HEPG2",
-        "jurkat",
-        "RPE1"
-      ],
       "PHF12": [
         "HEPG2",
-        "jurkat",
-        "RPE1"
-      ],
-      "PIAS1": [
         "jurkat",
         "RPE1"
       ],
@@ -382,11 +330,6 @@
         "RPE1"
       ],
       "PSMG1": [
-        "HEPG2",
-        "jurkat",
-        "RPE1"
-      ],
-      "PTPN1": [
         "HEPG2",
         "jurkat",
         "RPE1"
@@ -415,11 +358,6 @@
         "RPE1"
       ],
       "SDC1": [
-        "HEPG2",
-        "jurkat",
-        "RPE1"
-      ],
-      "SEC62": [
         "HEPG2",
         "jurkat",
         "RPE1"
@@ -456,11 +394,6 @@
         "jurkat",
         "RPE1"
       ],
-      "STAG2": [
-        "HEPG2",
-        "jurkat",
-        "RPE1"
-      ],
       "STRAP": [
         "HEPG2",
         "jurkat",
@@ -472,24 +405,6 @@
         "RPE1"
       ],
       "SUPV3L1": [
-        "jurkat",
-        "RPE1"
-      ],
-      "TADA1": [
-        "jurkat",
-        "RPE1"
-      ],
-      "TAF11": [
-        "HEPG2",
-        "jurkat",
-        "RPE1"
-      ],
-      "TAF13": [
-        "jurkat",
-        "RPE1"
-      ],
-      "TAZ": [
-        "HEPG2",
         "jurkat",
         "RPE1"
       ],
@@ -509,11 +424,6 @@
         "RPE1"
       ],
       "TSFM": [
-        "jurkat",
-        "RPE1"
-      ],
-      "UBE3C": [
-        "HEPG2",
         "jurkat",
         "RPE1"
       ],

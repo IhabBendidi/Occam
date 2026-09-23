@@ -1,5 +1,9 @@
 # `rhj_fewshot` split-half paired evaluation — findings
 
+> **Chronological findings log.** Current numbers: `docs/STATUS.md`. Arms, checkpoints and
+> scores that this log mentions but that are not in STATUS were moved to `archive/` on
+> 2026-09-23 (`archive/MANIFEST.tsv` gives each one's new path); treat them as history.
+
 **This file owns every number that comes out of the split-half protocol.** Written as it is
 read, partial results labelled partial, superseded numbers kept with the correction beside
 them.
@@ -3753,3 +3757,9 @@ time limit ≤ 4 h, because `normal` is preempted (REQUEUE) by hooke-predict/vco
 Applied by hand to all pending jobs on 2026-09-23 (19 to vco, 3 Norman eval arrays to normal),
 then enforced by `scripts/slurm/qos_rebalancer.sh` (job 18365346, cpu, 4 days, polls 5 min,
 logs every move to runs/slurm/qos_rebalance_*.out).
+
+
+## Baselines at control-draw seeds 43–46 (launched 2026-09-23)
+`scripts/repro/baselines.sh` now takes `SEED` (the half-B control draw, rng = seed + 1000·split;
+moves ctrlcell / meanpert / transfer, not ctrlmean / experimental). Jobs 18365483–86 →
+`runs/rhj_splithalf/reference_s4N`. Seed 42 = the published `runs/rhj_splithalf/reference`.

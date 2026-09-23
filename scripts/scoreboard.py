@@ -84,9 +84,7 @@ def collect():
         out[key] = [(a, r, "") for a, r, _ in sorted(rows, key=lambda x: -x[2])]
     for lbl, dirn, note in [
             ("**TxPert** (single-cell controls)", "compet_txpert_single_s42", "headline"),
-            ("TxPert mean-controls", "compet_txpert_mean_s42", "A/B diagnostic"),
-            ("TxPert epoch-20", "compet_txpert_ep20_s42", "A/B diagnostic"),
-            ("~~TxPert original~~", "compet_txpert_s42", "⛔ WITHDRAWN (C28)"),
+            # withdrawn (txpert 0.3077) and A/B diagnostics moved to archive/ 2026-09-23
             ("**PerturbDiff** (genept)", "compet_perturbdiff_genept_s42", "headline"),
             ("**STATE**", "compet_state_s42", "headline"),
             ("**CellFlow**", "compet_cellflow_s42", "headline")]:

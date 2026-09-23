@@ -1,5 +1,9 @@
 # `rhj_fewshot` competitors — STATE, TxPert, CellFlow, PerturbDiff
 
+> **Chronological findings log.** Current numbers: `docs/STATUS.md`. Arms, checkpoints and
+> scores that this log mentions but that are not in STATUS were moved to `archive/` on
+> 2026-09-23 (`archive/MANIFEST.tsv` gives each one's new path); treat them as history.
+
 **This file owns every competitor number on this benchmark.** Nothing is scored yet; what
 follows is the measured groundwork, so the numbers land on something already verified.
 

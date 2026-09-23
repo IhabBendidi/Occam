@@ -367,7 +367,7 @@ mean-free term is doing approximately nothing in that configuration, as predicte
 
 ## Full table
 
-All 27 arms: [`docs/rhj_fewshot_results.md`](rhj_fewshot_results.md), regenerated with
+All 27 arms: `archive/docs/rhj_fewshot_results.md` (ARCHIVED 2026-09-23: pre-recipe grid), regenerated with
 `python scripts/collect_rhj_results.py --out docs/rhj_fewshot_results.md`.
 
 Top 8, all smooth_l1:

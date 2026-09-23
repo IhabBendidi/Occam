@@ -1,0 +1,2193 @@
+{
+  "base_seed": 42,
+  "batch_col": "batch",
+  "benchmark_id": "k562_seen",
+  "benchmark_sha256": "3baa3dc0a4cf1e0015168b69283dfd947f6893bca851ff9e03bbcb5d38b2b622",
+  "builder_version": "1.0.0",
+  "built": "2026-09-23",
+  "cell_line": "K562",
+  "cohort_sha256": "f85d8e53385b83808fa41460c3f71b907b55aa23d5f27facd60692ee0cbc19e8",
+  "command": "scripts/build_h1_seen_panel.py --dataset k562 --force",
+  "control_label": "non-targeting",
+  "gene_axis_sha256": "3fb88c294db3915e21d7c986f8c3dde3844f0d384c552c9929df66e574afeed5",
+  "git_sha": "8a25bf26a7dba5fe28f2374f7e8c3a88ee10647c",
+  "half_size_strata": {
+    "m>=25": 458,
+    "m>=5": 528,
+    "m_median": 58
+  },
+  "min_cells": 10,
+  "n_axis_genes": 6640,
+  "n_cohort_perts": 528,
+  "n_panel_controls": 10691,
+  "n_panel_rows": 80330,
+  "n_splits": 5,
+  "normalisation": "rowsum over 7598 K562 genes also in nadig_2024_hepg2.h5ad, then axis restriction, then log1p(x/rowsum*2000)",
+  "ood_context": true,
+  "pert_col_in_source": "target_gene",
+  "protocol": "splithalf/v1",
+  "seen_from": {
+    "benchmark_id": "rhj_fewshot",
+    "benchmark_sha256": "d934211e5eb1e37e28c893fb8c5ff4211d607a1d77b0103d5c2b79221d21677f",
+    "gene_axis_sha256": "ef64f2ba7ff7816ed947796066cd8a68014884c6176619d750ef79462c78d4c0",
+    "n_axis_genes": 6983
+  },
+  "splits": [
+    {
+      "n_ctrl_per_half": 5345,
+      "n_dropped_odd": 248,
+      "n_pert_per_half": 34696,
+      "split": 0
+    },
+    {
+      "n_ctrl_per_half": 5345,
+      "n_dropped_odd": 248,
+      "n_pert_per_half": 34696,
+      "split": 1
+    },
+    {
+      "n_ctrl_per_half": 5345,
+      "n_dropped_odd": 248,
+      "n_pert_per_half": 34696,
+      "split": 2
+    },
+    {
+      "n_ctrl_per_half": 5345,
+      "n_dropped_odd": 248,
+      "n_pert_per_half": 34696,
+      "split": 3
+    },
+    {
+      "n_ctrl_per_half": 5345,
+      "n_dropped_odd": 248,
+      "n_pert_per_half": 34696,
+      "split": 4
+    }
+  ],
+  "target_sum": 2000.0,
+  "train_grand_mean": {
+    "n_perts": 1657,
+    "source": "rhj_fewshot nadig_2024_hepg2.h5ad training perturbations: grand DELTA (equal weight per pert) + K562 all-control mean",
+    "total_cells": 95527,
+    "weighting": "equal per perturbation"
+  },
+  "transfer": {
+    "cells_per_pert_median": 151.5,
+    "lines_per_pert": {
+      "AARS2": [
+        "jurkat",
+        "RPE1"
+      ],
+      "ABCB7": [
+        "jurkat",
+        "RPE1"
+      ],
+      "ABCE1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "ABHD11": [
+        "jurkat",
+        "RPE1"
+      ],
+      "ACTR1B": [
+        "jurkat",
+        "RPE1"
+      ],
+      "ACTR8": [
+        "jurkat",
+        "RPE1"
+      ],
+      "AHCY": [
+        "jurkat",
+        "RPE1"
+      ],
+      "AIFM1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "AKIRIN2": [
+        "jurkat",
+        "RPE1"
+      ],
+      "ALG14": [
+        "jurkat",
+        "RPE1"
+      ],
+      "ANAPC10": [
+        "jurkat",
+        "RPE1"
+      ],
+      "ANAPC13": [
+        "jurkat",
+        "RPE1"
+      ],
+      "ANAPC5": [
+        "jurkat",
+        "RPE1"
+      ],
+      "ANKRD49": [
+        "jurkat",
+        "RPE1"
+      ],
+      "AP2S1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "ARGLU1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "ARHGAP11B": [
+        "jurkat",
+        "RPE1"
+      ],
+      "ARL4D": [
+        "jurkat",
+        "RPE1"
+      ],
+      "ARPC4": [
+        "jurkat",
+        "RPE1"
+      ],
+      "ATP6V1D": [
+        "jurkat",
+        "RPE1"
+      ],
+      "ATP6V1E1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "ATP6V1F": [
+        "jurkat",
+        "RPE1"
+      ],
+      "BAP1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "BARD1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "BCAR1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "BCLAF1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "BMS1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "BRCA2": [
+        "jurkat",
+        "RPE1"
+      ],
+      "BRIX1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "BRK1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "BUD13": [
+        "jurkat",
+        "RPE1"
+      ],
+      "BYSL": [
+        "jurkat",
+        "RPE1"
+      ],
+      "C19orf53": [
+        "jurkat",
+        "RPE1"
+      ],
+      "C1D": [
+        "jurkat",
+        "RPE1"
+      ],
+      "C6orf15": [
+        "jurkat",
+        "RPE1"
+      ],
+      "C7orf26": [
+        "jurkat",
+        "RPE1"
+      ],
+      "C9orf16": [
+        "jurkat",
+        "RPE1"
+      ],
+      "CACTIN": [
+        "jurkat",
+        "RPE1"
+      ],
+      "CASP8AP2": [
+        "jurkat",
+        "RPE1"
+      ],
+      "CBLL1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "CCDC137": [
+        "jurkat",
+        "RPE1"
+      ],
+      "CCDC144A": [
+        "jurkat",
+        "RPE1"
+      ],
+      "CCDC59": [
+        "jurkat",
+        "RPE1"
+      ],
+      "CCDC78": [
+        "jurkat",
+        "RPE1"
+      ],
+      "CCDC86": [
+        "jurkat",
+        "RPE1"
+      ],
+      "CCND1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "CCP110": [
+        "jurkat",
+        "RPE1"
+      ],
+      "CCT7": [
+        "jurkat",
+        "RPE1"
+      ],
+      "CD2BP2": [
+        "jurkat",
+        "RPE1"
+      ],
+      "CDAN1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "CDC20": [
+        "jurkat",
+        "RPE1"
+      ],
+      "CDC42": [
+        "jurkat",
+        "RPE1"
+      ],
+      "CDC6": [
+        "jurkat",
+        "RPE1"
+      ],
+      "CDK2": [
+        "jurkat",
+        "RPE1"
+      ],
+      "CDK9": [
+        "jurkat",
+        "RPE1"
+      ],
+      "CENPC": [
+        "jurkat",
+        "RPE1"
+      ],
+      "CENPN": [
+        "jurkat",
+        "RPE1"
+      ],
+      "CENPT": [
+        "jurkat",
+        "RPE1"
+      ],
+      "CEP192": [
+        "jurkat",
+        "RPE1"
+      ],
+      "CEP68": [
+        "jurkat",
+        "RPE1"
+      ],
+      "CEP97": [
+        "jurkat",
+        "RPE1"
+      ],
+      "CHCHD4": [
+        "jurkat",
+        "RPE1"
+      ],
+      "CHMP1A": [
+        "jurkat",
+        "RPE1"
+      ],
+      "CHMP3": [
+        "jurkat",
+        "RPE1"
+      ],
+      "CHMP7": [
+        "jurkat",
+        "RPE1"
+      ],
+      "CHTF8": [
+        "jurkat",
+        "RPE1"
+      ],
+      "CLASRP": [
+        "jurkat",
+        "RPE1"
+      ],
+      "CLCC1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "CLP1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "CLTC": [
+        "jurkat",
+        "RPE1"
+      ],
+      "CMTR1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "CNIH4": [
+        "jurkat",
+        "RPE1"
+      ],
+      "CNOT2": [
+        "jurkat",
+        "RPE1"
+      ],
+      "CNOT3": [
+        "jurkat",
+        "RPE1"
+      ],
+      "COG2": [
+        "jurkat",
+        "RPE1"
+      ],
+      "COG3": [
+        "jurkat",
+        "RPE1"
+      ],
+      "COG4": [
+        "jurkat",
+        "RPE1"
+      ],
+      "COG6": [
+        "jurkat",
+        "RPE1"
+      ],
+      "COPS2": [
+        "jurkat",
+        "RPE1"
+      ],
+      "COPS3": [
+        "jurkat",
+        "RPE1"
+      ],
+      "COX15": [
+        "jurkat",
+        "RPE1"
+      ],
+      "COX17": [
+        "jurkat",
+        "RPE1"
+      ],
+      "CPNE7": [
+        "jurkat",
+        "RPE1"
+      ],
+      "CPSF1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "CPSF2": [
+        "jurkat",
+        "RPE1"
+      ],
+      "CPSF3": [
+        "jurkat",
+        "RPE1"
+      ],
+      "CPSF6": [
+        "jurkat",
+        "RPE1"
+      ],
+      "CRCP": [
+        "jurkat",
+        "RPE1"
+      ],
+      "CS": [
+        "jurkat",
+        "RPE1"
+      ],
+      "CSNK1A1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "CUL1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "CUL3": [
+        "jurkat",
+        "RPE1"
+      ],
+      "CWC15": [
+        "jurkat",
+        "RPE1"
+      ],
+      "CYFIP1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "DAD1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "DBR1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "DCTN2": [
+        "jurkat",
+        "RPE1"
+      ],
+      "DCUN1D5": [
+        "jurkat",
+        "RPE1"
+      ],
+      "DDX18": [
+        "jurkat",
+        "RPE1"
+      ],
+      "DDX20": [
+        "jurkat",
+        "RPE1"
+      ],
+      "DDX24": [
+        "jurkat",
+        "RPE1"
+      ],
+      "DDX27": [
+        "jurkat",
+        "RPE1"
+      ],
+      "DDX47": [
+        "jurkat",
+        "RPE1"
+      ],
+      "DDX52": [
+        "jurkat",
+        "RPE1"
+      ],
+      "DENR": [
+        "jurkat",
+        "RPE1"
+      ],
+      "DHPS": [
+        "jurkat",
+        "RPE1"
+      ],
+      "DHX16": [
+        "jurkat",
+        "RPE1"
+      ],
+      "DIMT1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "DKC1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "DNAJA1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "DNAJC11": [
+        "jurkat",
+        "RPE1"
+      ],
+      "DNAJC17": [
+        "jurkat",
+        "RPE1"
+      ],
+      "DNLZ": [
+        "jurkat",
+        "RPE1"
+      ],
+      "DNM1L": [
+        "jurkat",
+        "RPE1"
+      ],
+      "DNM2": [
+        "jurkat",
+        "RPE1"
+      ],
+      "DOLK": [
+        "jurkat",
+        "RPE1"
+      ],
+      "DPH1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "DRG1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "DUT": [
+        "jurkat",
+        "RPE1"
+      ],
+      "E2F6": [
+        "jurkat",
+        "RPE1"
+      ],
+      "ECT2": [
+        "jurkat",
+        "RPE1"
+      ],
+      "EIF1AX": [
+        "jurkat",
+        "RPE1"
+      ],
+      "EIF2B1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "EIF2B5": [
+        "jurkat",
+        "RPE1"
+      ],
+      "EIF2S1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "EIF2S3": [
+        "jurkat",
+        "RPE1"
+      ],
+      "EIF3F": [
+        "jurkat",
+        "RPE1"
+      ],
+      "EIF3G": [
+        "jurkat",
+        "RPE1"
+      ],
+      "EMC1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "EMC4": [
+        "jurkat",
+        "RPE1"
+      ],
+      "EP400": [
+        "jurkat",
+        "RPE1"
+      ],
+      "ERAL1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "ERVW-1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "ESF1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "ESPN": [
+        "jurkat",
+        "RPE1"
+      ],
+      "EXOC7": [
+        "jurkat",
+        "RPE1"
+      ],
+      "EXOC8": [
+        "jurkat",
+        "RPE1"
+      ],
+      "EXOSC4": [
+        "jurkat",
+        "RPE1"
+      ],
+      "EXOSC5": [
+        "jurkat",
+        "RPE1"
+      ],
+      "FAM133B": [
+        "jurkat",
+        "RPE1"
+      ],
+      "FAM229A": [
+        "jurkat",
+        "RPE1"
+      ],
+      "FAM32A": [
+        "jurkat",
+        "RPE1"
+      ],
+      "FAM72D": [
+        "jurkat",
+        "RPE1"
+      ],
+      "FAU": [
+        "jurkat",
+        "RPE1"
+      ],
+      "FBLIM1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "FEN1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "FGFR1OP": [
+        "jurkat",
+        "RPE1"
+      ],
+      "FNTA": [
+        "jurkat",
+        "RPE1"
+      ],
+      "GAR1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "GET3": [
+        "jurkat",
+        "RPE1"
+      ],
+      "GFER": [
+        "jurkat",
+        "RPE1"
+      ],
+      "GINS2": [
+        "jurkat",
+        "RPE1"
+      ],
+      "GINS3": [
+        "jurkat",
+        "RPE1"
+      ],
+      "GLE1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "GMPPB": [
+        "jurkat",
+        "RPE1"
+      ],
+      "GMPS": [
+        "jurkat",
+        "RPE1"
+      ],
+      "GNPNAT1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "GPN2": [
+        "jurkat",
+        "RPE1"
+      ],
+      "GPN3": [
+        "jurkat",
+        "RPE1"
+      ],
+      "GPR61": [
+        "jurkat",
+        "RPE1"
+      ],
+      "GPS1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "GSDMA": [
+        "jurkat",
+        "RPE1"
+      ],
+      "GSPT1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "GTF2B": [
+        "jurkat",
+        "RPE1"
+      ],
+      "GTF2H2": [
+        "jurkat",
+        "RPE1"
+      ],
+      "GTF2H3": [
+        "jurkat",
+        "RPE1"
+      ],
+      "GTF2H4": [
+        "jurkat",
+        "RPE1"
+      ],
+      "GTF3C3": [
+        "jurkat",
+        "RPE1"
+      ],
+      "GTF3C6": [
+        "jurkat",
+        "RPE1"
+      ],
+      "H2AFZ": [
+        "jurkat",
+        "RPE1"
+      ],
+      "HARS": [
+        "jurkat",
+        "RPE1"
+      ],
+      "HARS2": [
+        "jurkat",
+        "RPE1"
+      ],
+      "HAUS1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "HAUS6": [
+        "jurkat",
+        "RPE1"
+      ],
+      "HAUS7": [
+        "jurkat",
+        "RPE1"
+      ],
+      "HDAC3": [
+        "jurkat",
+        "RPE1"
+      ],
+      "HEATR1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "HINFP": [
+        "jurkat",
+        "RPE1"
+      ],
+      "HIST1H2AB": [
+        "jurkat",
+        "RPE1"
+      ],
+      "HIST1H2AE": [
+        "jurkat",
+        "RPE1"
+      ],
+      "HIST1H2BC": [
+        "jurkat",
+        "RPE1"
+      ],
+      "HIST1H2BJ": [
+        "jurkat",
+        "RPE1"
+      ],
+      "HIST1H2BL": [
+        "jurkat",
+        "RPE1"
+      ],
+      "HIST2H2AA3": [
+        "jurkat",
+        "RPE1"
+      ],
+      "HSD17B10": [
+        "jurkat",
+        "RPE1"
+      ],
+      "HSP90B1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "HSPD1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "HUWE1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "IARS2": [
+        "jurkat",
+        "RPE1"
+      ],
+      "IFITM3": [
+        "jurkat",
+        "RPE1"
+      ],
+      "INO80B": [
+        "jurkat",
+        "RPE1"
+      ],
+      "INTS2": [
+        "jurkat",
+        "RPE1"
+      ],
+      "INTS3": [
+        "jurkat",
+        "RPE1"
+      ],
+      "INTS6": [
+        "jurkat",
+        "RPE1"
+      ],
+      "IPO13": [
+        "jurkat",
+        "RPE1"
+      ],
+      "ISCA2": [
+        "jurkat",
+        "RPE1"
+      ],
+      "ISG20L2": [
+        "jurkat",
+        "RPE1"
+      ],
+      "KCNA10": [
+        "jurkat",
+        "RPE1"
+      ],
+      "KIF18B": [
+        "jurkat",
+        "RPE1"
+      ],
+      "KIN": [
+        "jurkat",
+        "RPE1"
+      ],
+      "KRTAP4-2": [
+        "jurkat",
+        "RPE1"
+      ],
+      "LAMTOR3": [
+        "jurkat",
+        "RPE1"
+      ],
+      "LARS": [
+        "jurkat",
+        "RPE1"
+      ],
+      "LAS1L": [
+        "jurkat",
+        "RPE1"
+      ],
+      "LENG8": [
+        "jurkat",
+        "RPE1"
+      ],
+      "LTBP3": [
+        "jurkat",
+        "RPE1"
+      ],
+      "LUC7L3": [
+        "jurkat",
+        "RPE1"
+      ],
+      "MARS": [
+        "jurkat",
+        "RPE1"
+      ],
+      "MARS2": [
+        "jurkat",
+        "RPE1"
+      ],
+      "MASTL": [
+        "jurkat",
+        "RPE1"
+      ],
+      "MAT2A": [
+        "jurkat",
+        "RPE1"
+      ],
+      "MAU2": [
+        "jurkat",
+        "RPE1"
+      ],
+      "MCL1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "MCM2": [
+        "jurkat",
+        "RPE1"
+      ],
+      "MCM4": [
+        "jurkat",
+        "RPE1"
+      ],
+      "MDN1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "MED1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "MED10": [
+        "jurkat",
+        "RPE1"
+      ],
+      "MED12": [
+        "jurkat",
+        "RPE1"
+      ],
+      "MED14": [
+        "jurkat",
+        "RPE1"
+      ],
+      "MED17": [
+        "jurkat",
+        "RPE1"
+      ],
+      "MED19": [
+        "jurkat",
+        "RPE1"
+      ],
+      "MED21": [
+        "jurkat",
+        "RPE1"
+      ],
+      "MED26": [
+        "jurkat",
+        "RPE1"
+      ],
+      "MED29": [
+        "jurkat",
+        "RPE1"
+      ],
+      "MED7": [
+        "jurkat",
+        "RPE1"
+      ],
+      "MED8": [
+        "jurkat",
+        "RPE1"
+      ],
+      "MED9": [
+        "jurkat",
+        "RPE1"
+      ],
+      "MIPEP": [
+        "jurkat",
+        "RPE1"
+      ],
+      "MIS18BP1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "MMGT1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "MOCS3": [
+        "jurkat",
+        "RPE1"
+      ],
+      "MOK": [
+        "jurkat",
+        "RPE1"
+      ],
+      "MRPL13": [
+        "jurkat",
+        "RPE1"
+      ],
+      "MRPL2": [
+        "jurkat",
+        "RPE1"
+      ],
+      "MRPL24": [
+        "jurkat",
+        "RPE1"
+      ],
+      "MRPL3": [
+        "jurkat",
+        "RPE1"
+      ],
+      "MRPL35": [
+        "jurkat",
+        "RPE1"
+      ],
+      "MRPL39": [
+        "jurkat",
+        "RPE1"
+      ],
+      "MRPL43": [
+        "jurkat",
+        "RPE1"
+      ],
+      "MRPL9": [
+        "jurkat",
+        "RPE1"
+      ],
+      "MRPS11": [
+        "jurkat",
+        "RPE1"
+      ],
+      "MRPS14": [
+        "jurkat",
+        "RPE1"
+      ],
+      "MRPS16": [
+        "jurkat",
+        "RPE1"
+      ],
+      "MRPS22": [
+        "jurkat",
+        "RPE1"
+      ],
+      "MRPS23": [
+        "jurkat",
+        "RPE1"
+      ],
+      "MRPS28": [
+        "jurkat",
+        "RPE1"
+      ],
+      "MT2A": [
+        "jurkat",
+        "RPE1"
+      ],
+      "MVD": [
+        "jurkat",
+        "RPE1"
+      ],
+      "MVK": [
+        "jurkat",
+        "RPE1"
+      ],
+      "MYBBP1A": [
+        "jurkat",
+        "RPE1"
+      ],
+      "MYBL2": [
+        "jurkat",
+        "RPE1"
+      ],
+      "NAA15": [
+        "jurkat",
+        "RPE1"
+      ],
+      "NAA35": [
+        "jurkat",
+        "RPE1"
+      ],
+      "NANOG": [
+        "jurkat",
+        "RPE1"
+      ],
+      "NBAS": [
+        "jurkat",
+        "RPE1"
+      ],
+      "NBPF12": [
+        "jurkat",
+        "RPE1"
+      ],
+      "NBPF15": [
+        "jurkat",
+        "RPE1"
+      ],
+      "NCAPD2": [
+        "jurkat",
+        "RPE1"
+      ],
+      "NCBP1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "NDC80": [
+        "jurkat",
+        "RPE1"
+      ],
+      "NDOR1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "NDUFA6": [
+        "jurkat",
+        "RPE1"
+      ],
+      "NDUFB4": [
+        "jurkat",
+        "RPE1"
+      ],
+      "NELFA": [
+        "jurkat",
+        "RPE1"
+      ],
+      "NELFE": [
+        "jurkat",
+        "RPE1"
+      ],
+      "NFS1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "NFYB": [
+        "jurkat",
+        "RPE1"
+      ],
+      "NHLRC2": [
+        "jurkat",
+        "RPE1"
+      ],
+      "NIFK": [
+        "jurkat",
+        "RPE1"
+      ],
+      "NKAP": [
+        "jurkat",
+        "RPE1"
+      ],
+      "NLE1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "NOL11": [
+        "jurkat",
+        "RPE1"
+      ],
+      "NOL6": [
+        "jurkat",
+        "RPE1"
+      ],
+      "NOL7": [
+        "jurkat",
+        "RPE1"
+      ],
+      "NOL9": [
+        "jurkat",
+        "RPE1"
+      ],
+      "NOM1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "NOMO3": [
+        "jurkat",
+        "RPE1"
+      ],
+      "NOP2": [
+        "jurkat",
+        "RPE1"
+      ],
+      "NOS1AP": [
+        "jurkat",
+        "RPE1"
+      ],
+      "NRBP1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "NSRP1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "NSUN4": [
+        "jurkat",
+        "RPE1"
+      ],
+      "NUDC": [
+        "jurkat",
+        "RPE1"
+      ],
+      "NUDCD3": [
+        "jurkat",
+        "RPE1"
+      ],
+      "NUP133": [
+        "jurkat",
+        "RPE1"
+      ],
+      "NUP54": [
+        "jurkat",
+        "RPE1"
+      ],
+      "NUP88": [
+        "jurkat",
+        "RPE1"
+      ],
+      "NUTF2": [
+        "jurkat",
+        "RPE1"
+      ],
+      "NVL": [
+        "jurkat",
+        "RPE1"
+      ],
+      "OGT": [
+        "jurkat",
+        "RPE1"
+      ],
+      "OPA1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "OR4K1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "ORC3": [
+        "jurkat",
+        "RPE1"
+      ],
+      "ORC5": [
+        "jurkat",
+        "RPE1"
+      ],
+      "OSBP": [
+        "jurkat",
+        "RPE1"
+      ],
+      "OSTC": [
+        "jurkat",
+        "RPE1"
+      ],
+      "PAF1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "PAK1IP1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "PAM16": [
+        "jurkat",
+        "RPE1"
+      ],
+      "PAXBP1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "PC": [
+        "jurkat",
+        "RPE1"
+      ],
+      "PDCD2": [
+        "jurkat",
+        "RPE1"
+      ],
+      "PDCD5": [
+        "jurkat",
+        "RPE1"
+      ],
+      "PDCD7": [
+        "jurkat",
+        "RPE1"
+      ],
+      "PDRG1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "PELP1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "PES1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "PFDN1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "PGK1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "PGS1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "PHB": [
+        "jurkat",
+        "RPE1"
+      ],
+      "PHB2": [
+        "jurkat",
+        "RPE1"
+      ],
+      "PLK4": [
+        "jurkat",
+        "RPE1"
+      ],
+      "PMF1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "POGZ": [
+        "jurkat",
+        "RPE1"
+      ],
+      "POLA2": [
+        "jurkat",
+        "RPE1"
+      ],
+      "POLD3": [
+        "jurkat",
+        "RPE1"
+      ],
+      "POLE2": [
+        "jurkat",
+        "RPE1"
+      ],
+      "POLR1E": [
+        "jurkat",
+        "RPE1"
+      ],
+      "POLR3F": [
+        "jurkat",
+        "RPE1"
+      ],
+      "POP1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "POTEI": [
+        "jurkat",
+        "RPE1"
+      ],
+      "POU5F1B": [
+        "jurkat",
+        "RPE1"
+      ],
+      "PPIL2": [
+        "jurkat",
+        "RPE1"
+      ],
+      "PPIL4": [
+        "jurkat",
+        "RPE1"
+      ],
+      "PPP1CB": [
+        "jurkat",
+        "RPE1"
+      ],
+      "PPP1R11": [
+        "jurkat",
+        "RPE1"
+      ],
+      "PPP1R8": [
+        "jurkat",
+        "RPE1"
+      ],
+      "PPP4C": [
+        "jurkat",
+        "RPE1"
+      ],
+      "PPP6C": [
+        "jurkat",
+        "RPE1"
+      ],
+      "PPWD1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "PRC1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "PRELID3B": [
+        "jurkat",
+        "RPE1"
+      ],
+      "PRPF18": [
+        "jurkat",
+        "RPE1"
+      ],
+      "PRPF38B": [
+        "jurkat",
+        "RPE1"
+      ],
+      "PRRC2A": [
+        "jurkat",
+        "RPE1"
+      ],
+      "PSAT1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "PSME2": [
+        "jurkat",
+        "RPE1"
+      ],
+      "PTMA": [
+        "jurkat",
+        "RPE1"
+      ],
+      "PTPN23": [
+        "jurkat",
+        "RPE1"
+      ],
+      "PWP2": [
+        "jurkat",
+        "RPE1"
+      ],
+      "QRSL1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "RAB18": [
+        "jurkat",
+        "RPE1"
+      ],
+      "RAB6A": [
+        "jurkat",
+        "RPE1"
+      ],
+      "RABGGTA": [
+        "jurkat",
+        "RPE1"
+      ],
+      "RAC1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "RANGAP1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "RARS": [
+        "jurkat",
+        "RPE1"
+      ],
+      "RBM10": [
+        "jurkat",
+        "RPE1"
+      ],
+      "RBM42": [
+        "jurkat",
+        "RPE1"
+      ],
+      "RBMXL1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "RCL1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "REXO2": [
+        "jurkat",
+        "RPE1"
+      ],
+      "RFC1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "RFC2": [
+        "jurkat",
+        "RPE1"
+      ],
+      "RFT1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "RHPN1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "RMI1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "RNASEH2C": [
+        "jurkat",
+        "RPE1"
+      ],
+      "RNF20": [
+        "jurkat",
+        "RPE1"
+      ],
+      "RNF8": [
+        "jurkat",
+        "RPE1"
+      ],
+      "RNGTT": [
+        "jurkat",
+        "RPE1"
+      ],
+      "RNPC3": [
+        "jurkat",
+        "RPE1"
+      ],
+      "RPAP2": [
+        "jurkat",
+        "RPE1"
+      ],
+      "RPF2": [
+        "jurkat",
+        "RPE1"
+      ],
+      "RPL23A": [
+        "jurkat",
+        "RPE1"
+      ],
+      "RPL26": [
+        "jurkat",
+        "RPE1"
+      ],
+      "RPL26L1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "RPL28": [
+        "jurkat",
+        "RPE1"
+      ],
+      "RPL29": [
+        "jurkat",
+        "RPE1"
+      ],
+      "RPL30": [
+        "jurkat",
+        "RPE1"
+      ],
+      "RPL35": [
+        "jurkat",
+        "RPE1"
+      ],
+      "RPL37A": [
+        "jurkat",
+        "RPE1"
+      ],
+      "RPL7": [
+        "jurkat",
+        "RPE1"
+      ],
+      "RPL7L1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "RPP14": [
+        "jurkat",
+        "RPE1"
+      ],
+      "RPP21": [
+        "jurkat",
+        "RPE1"
+      ],
+      "RPS14": [
+        "jurkat",
+        "RPE1"
+      ],
+      "RPS2": [
+        "jurkat",
+        "RPE1"
+      ],
+      "RPS20": [
+        "jurkat",
+        "RPE1"
+      ],
+      "RPS21": [
+        "jurkat",
+        "RPE1"
+      ],
+      "RPS25": [
+        "jurkat",
+        "RPE1"
+      ],
+      "RPS26": [
+        "jurkat",
+        "RPE1"
+      ],
+      "RPS28": [
+        "jurkat",
+        "RPE1"
+      ],
+      "RPS5": [
+        "jurkat",
+        "RPE1"
+      ],
+      "RPS8": [
+        "jurkat",
+        "RPE1"
+      ],
+      "RRM1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "RRN3": [
+        "jurkat",
+        "RPE1"
+      ],
+      "RRP15": [
+        "jurkat",
+        "RPE1"
+      ],
+      "RSL24D1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "RUVBL2": [
+        "jurkat",
+        "RPE1"
+      ],
+      "SARS": [
+        "jurkat",
+        "RPE1"
+      ],
+      "SART3": [
+        "jurkat",
+        "RPE1"
+      ],
+      "SDE2": [
+        "jurkat",
+        "RPE1"
+      ],
+      "SDHAF2": [
+        "jurkat",
+        "RPE1"
+      ],
+      "SDHC": [
+        "jurkat",
+        "RPE1"
+      ],
+      "SEC61G": [
+        "jurkat",
+        "RPE1"
+      ],
+      "SEPSECS": [
+        "jurkat",
+        "RPE1"
+      ],
+      "SET": [
+        "jurkat",
+        "RPE1"
+      ],
+      "SF1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "SF3A3": [
+        "jurkat",
+        "RPE1"
+      ],
+      "SF3B5": [
+        "jurkat",
+        "RPE1"
+      ],
+      "SHQ1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "SKP1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "SKP2": [
+        "jurkat",
+        "RPE1"
+      ],
+      "SLC16A5": [
+        "jurkat",
+        "RPE1"
+      ],
+      "SLC9B1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "SLU7": [
+        "jurkat",
+        "RPE1"
+      ],
+      "SMAGP": [
+        "jurkat",
+        "RPE1"
+      ],
+      "SMC5": [
+        "jurkat",
+        "RPE1"
+      ],
+      "SMNDC1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "SNAPC5": [
+        "jurkat",
+        "RPE1"
+      ],
+      "SNF8": [
+        "jurkat",
+        "RPE1"
+      ],
+      "SNRNP25": [
+        "jurkat",
+        "RPE1"
+      ],
+      "SNRNP27": [
+        "jurkat",
+        "RPE1"
+      ],
+      "SNRNP48": [
+        "jurkat",
+        "RPE1"
+      ],
+      "SNRPC": [
+        "jurkat",
+        "RPE1"
+      ],
+      "SOD2": [
+        "jurkat",
+        "RPE1"
+      ],
+      "SP2": [
+        "jurkat",
+        "RPE1"
+      ],
+      "SPATA5L1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "SRFBP1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "SRP14": [
+        "jurkat",
+        "RPE1"
+      ],
+      "SRP19": [
+        "jurkat",
+        "RPE1"
+      ],
+      "SRP72": [
+        "jurkat",
+        "RPE1"
+      ],
+      "SRRM1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "SRRM2": [
+        "jurkat",
+        "RPE1"
+      ],
+      "SRSF10": [
+        "jurkat",
+        "RPE1"
+      ],
+      "SSBP1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "STIL": [
+        "jurkat",
+        "RPE1"
+      ],
+      "STRIP1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "SUGP1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "SUPT16H": [
+        "jurkat",
+        "RPE1"
+      ],
+      "SUPV3L1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "SYF2": [
+        "jurkat",
+        "RPE1"
+      ],
+      "TAF10": [
+        "jurkat",
+        "RPE1"
+      ],
+      "TAF6": [
+        "jurkat",
+        "RPE1"
+      ],
+      "TARS2": [
+        "jurkat",
+        "RPE1"
+      ],
+      "TBC1D3": [
+        "jurkat",
+        "RPE1"
+      ],
+      "TBCA": [
+        "jurkat",
+        "RPE1"
+      ],
+      "TBL3": [
+        "jurkat",
+        "RPE1"
+      ],
+      "TCP1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "TEFM": [
+        "jurkat",
+        "RPE1"
+      ],
+      "TFDP1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "TFRC": [
+        "jurkat",
+        "RPE1"
+      ],
+      "THOC1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "TICRR": [
+        "jurkat",
+        "RPE1"
+      ],
+      "TIGD1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "TIMELESS": [
+        "jurkat",
+        "RPE1"
+      ],
+      "TINF2": [
+        "jurkat",
+        "RPE1"
+      ],
+      "TM7SF2": [
+        "jurkat",
+        "RPE1"
+      ],
+      "TMEM127": [
+        "jurkat",
+        "RPE1"
+      ],
+      "TMEM199": [
+        "jurkat",
+        "RPE1"
+      ],
+      "TMEM240": [
+        "jurkat",
+        "RPE1"
+      ],
+      "TMX2": [
+        "jurkat",
+        "RPE1"
+      ],
+      "TNNT2": [
+        "jurkat",
+        "RPE1"
+      ],
+      "TOP1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "TPI1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "TPRKB": [
+        "jurkat",
+        "RPE1"
+      ],
+      "TRA2B": [
+        "jurkat",
+        "RPE1"
+      ],
+      "TRAPPC1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "TRMT112": [
+        "jurkat",
+        "RPE1"
+      ],
+      "TRMT6": [
+        "jurkat",
+        "RPE1"
+      ],
+      "TSEN2": [
+        "jurkat",
+        "RPE1"
+      ],
+      "TSFM": [
+        "jurkat",
+        "RPE1"
+      ],
+      "TTC4": [
+        "jurkat",
+        "RPE1"
+      ],
+      "TTF2": [
+        "jurkat",
+        "RPE1"
+      ],
+      "TTK": [
+        "jurkat",
+        "RPE1"
+      ],
+      "TUBA1C": [
+        "jurkat",
+        "RPE1"
+      ],
+      "TUBE1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "TUBGCP3": [
+        "jurkat",
+        "RPE1"
+      ],
+      "TULP1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "TXN": [
+        "jurkat",
+        "RPE1"
+      ],
+      "TXNL4B": [
+        "jurkat",
+        "RPE1"
+      ],
+      "U2AF1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "U2SURP": [
+        "jurkat",
+        "RPE1"
+      ],
+      "UBA2": [
+        "jurkat",
+        "RPE1"
+      ],
+      "UBAP1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "UBE2N": [
+        "jurkat",
+        "RPE1"
+      ],
+      "UBQLN4": [
+        "jurkat",
+        "RPE1"
+      ],
+      "UPF3A": [
+        "jurkat",
+        "RPE1"
+      ],
+      "UQCRB": [
+        "jurkat",
+        "RPE1"
+      ],
+      "UQCRFS1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "UQCRH": [
+        "jurkat",
+        "RPE1"
+      ],
+      "URB1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "UROD": [
+        "jurkat",
+        "RPE1"
+      ],
+      "USP10": [
+        "jurkat",
+        "RPE1"
+      ],
+      "UTP15": [
+        "jurkat",
+        "RPE1"
+      ],
+      "UTP3": [
+        "jurkat",
+        "RPE1"
+      ],
+      "UTP6": [
+        "jurkat",
+        "RPE1"
+      ],
+      "VARS2": [
+        "jurkat",
+        "RPE1"
+      ],
+      "VEZT": [
+        "jurkat",
+        "RPE1"
+      ],
+      "VPS13D": [
+        "jurkat",
+        "RPE1"
+      ],
+      "VPS18": [
+        "jurkat",
+        "RPE1"
+      ],
+      "VPS29": [
+        "jurkat",
+        "RPE1"
+      ],
+      "VPS51": [
+        "jurkat",
+        "RPE1"
+      ],
+      "VPS54": [
+        "jurkat",
+        "RPE1"
+      ],
+      "WARS": [
+        "jurkat",
+        "RPE1"
+      ],
+      "WBP1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "WDHD1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "WDR46": [
+        "jurkat",
+        "RPE1"
+      ],
+      "WDR70": [
+        "jurkat",
+        "RPE1"
+      ],
+      "WDR82": [
+        "jurkat",
+        "RPE1"
+      ],
+      "WDR92": [
+        "jurkat",
+        "RPE1"
+      ],
+      "WDTC1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "XPO5": [
+        "jurkat",
+        "RPE1"
+      ],
+      "XRN1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "YARS2": [
+        "jurkat",
+        "RPE1"
+      ],
+      "YJEFN3": [
+        "jurkat",
+        "RPE1"
+      ],
+      "YPEL5": [
+        "jurkat",
+        "RPE1"
+      ],
+      "YRDC": [
+        "jurkat",
+        "RPE1"
+      ],
+      "ZBTB17": [
+        "jurkat",
+        "RPE1"
+      ],
+      "ZC3H18": [
+        "jurkat",
+        "RPE1"
+      ],
+      "ZC3H8": [
+        "jurkat",
+        "RPE1"
+      ],
+      "ZFP69B": [
+        "jurkat",
+        "RPE1"
+      ],
+      "ZMAT2": [
+        "jurkat",
+        "RPE1"
+      ],
+      "ZMAT5": [
+        "jurkat",
+        "RPE1"
+      ],
+      "ZNF253": [
+        "jurkat",
+        "RPE1"
+      ],
+      "ZNF335": [
+        "jurkat",
+        "RPE1"
+      ],
+      "ZNF407": [
+        "jurkat",
+        "RPE1"
+      ],
+      "ZNF468": [
+        "jurkat",
+        "RPE1"
+      ],
+      "ZNF492": [
+        "jurkat",
+        "RPE1"
+      ],
+      "ZNF506": [
+        "jurkat",
+        "RPE1"
+      ],
+      "ZNF676": [
+        "jurkat",
+        "RPE1"
+      ],
+      "ZNF720": [
+        "jurkat",
+        "RPE1"
+      ],
+      "ZNHIT3": [
+        "jurkat",
+        "RPE1"
+      ],
+      "ZNHIT6": [
+        "jurkat",
+        "RPE1"
+      ],
+      "ZRSR2": [
+        "jurkat",
+        "RPE1"
+      ]
+    },
+    "rule": "RHJ lines where the perturbation was TRAINED: all 3 for rhj_split=train, Jurkat+RPE1 for val/test",
+    "weighting": "cells per (file, pert)"
+  }
+}

@@ -1,71 +1,75 @@
-# h1_seen — RHJ checkpoints on H1 hESC (seen perturbation, UNSEEN cell line)
+# h1_seen — RHJ checkpoints on H1 hESC (seen perturbation, UNSEEN assay, UNSEEN cell line)
+
+> The live panel has **80 perturbations** (since 2026-09-23). The earlier 99-perturbation panel
+> and every number measured on it are archived in `archive/docs/h1_seen_99_results.md` and must
+> not be quoted.
 
 ## Context
 
 **Standing objective.** Predict a perturbation's effect in a context where it was never
 measured, from a single control cell.
 
-**This experiment's question.** Models trained on `rhj_fewshot` (HepG2 + Jurkat + RPE1) have
-never seen H1 hESC (VCC 2025): not its perturbations, not its controls. For perturbations they
-HAVE seen in training, how much of their RHJ score survives the change of cell line?
+**This benchmark's question.** Models trained on `rhj_fewshot` (HepG2 + Jurkat + RPE1) have
+never seen H1 hESC (VCC 2025): not its perturbations, not its controls, not its assay. For
+perturbations they HAVE seen in training, how much of their RHJ score survives?
 
-**Varied:** the evaluated cell line (HepG2 on RHJ → H1 here). **Fixed:** the checkpoints (no
-training), the split-half protocol (5 splits, halves A/B from the H1 cells only, model input =
-one half-B control cell, cell-eval 0.6.0, nocal), the 4 headline metrics.
+**Read it together with `k562_seen_h1set`** (docs/k562_seen.md): the SAME 80 perturbations in
+K562, in a seen assay. The K562 → H1 gap is the assay shift; K562 → RHJ is the cell line.
+
+**Varied:** the evaluated cell line and assay. **Fixed:** the checkpoints (no training), the
+split-half protocol (5 splits, halves A/B from the H1 cells only, model input = one half-B
+control cell, cell-eval 0.6.0, nocal), the 4 headline metrics: `pearson_delta` ↑, `mae` ↓
+(error), `overlap_at_N` ↑, `discrimination_score_l1` ↑ (chance 0.5).
 
 **What each outcome means.**
 - model `pearson_delta` near or above `transfer`, well above `ctrlcell` → what the models
-  learned about a perturbation carries over to a new cell line;
+  learned about a perturbation carries over to a new cell line and assay;
 - near `ctrlcell` / `meanpert` → it does not leave the training cell lines.
 
-## Panel (built 2026-09-23, `scripts/build_h1_seen_panel.py`, job 18365133, 13 min)
+## Panel (built 2026-09-23, job 18367618)
 
 | item | value |
 |---|---|
-| source | VCC 2025 H1: `adata_{Training,Validation,Test}.h5ad` (paths + sha256 in `benchmark.json` `sources`) |
-| local copy | `data/benchmarks/h1_seen/h1_seen_raw.h5ad` — raw counts, 126,546 cells × 18,080 genes (seen perts + controls) |
-| perturbations | **99** = H1 perts eligible in rhj_fewshot. Strata by RHJ split: **70 `train`** (trained in HepG2, Jurkat, RPE1), **27 `test` + 2 `val`** (withheld from HepG2, trained only in Jurkat/RPE1) |
-| from which H1 file | 50 Training · 18 Validation · 31 Test |
-| controls | 38,176 (identical in all 3 files, read once) |
-| cells per half | median m **395** (RHJ: 22); 97/99 perts have m ≥ 25 |
-| per split | 44,157 perturbed + 19,088 control cells per half |
-| gene axis | **6,535** of the 6,983 RHJ axis genes (448 absent in H1 → zero at model input, not scored) |
+| source | VCC 2025 H1: `adata_{Training,Validation,Test}.h5ad` (paths + sha256 in `benchmark.json`) |
+| local copy (on HF) | `data/benchmarks/h1_seen/h1_seen_raw.h5ad` — raw counts, 105,338 cells × 18,080 genes = the 80 perts + 38,176 controls; sha256 `ea72830a…` |
+| perturbations | **80** = `data/benchmarks/shared/h1_k562_perts.json`: H1 perts eligible in rhj_fewshot with ≥ 10 cells in H1 AND in the K562 essential screen. 56 RHJ-`train` (trained in HepG2, Jurkat, RPE1), 22 `test` + 2 `val` (withheld from HepG2) |
+| controls | 38,176 (identical in all 3 VCC files, read once) |
+| per split | 33,559 perturbed + 19,088 control cells per half |
+| gene axis | **6,535** of the 6,983 RHJ axis genes (448 absent in H1 → 0 at input, not scored) |
 | normalisation | log1p(count / rowsum × 2000), rowsum over the 8,910 H1 genes also in the RHJ HepG2 file |
-| depth | median **53,674 UMI** (not thinned; part of the shift) |
-| `meanpert` | RHJ HepG2 training grand-mean DELTA (1,657 perts) placed on the H1 control mean |
-| `transfer` | cell-weighted mean delta of the same pert over the RHJ lines where it was TRAINED (median 209 cells) |
+| depth | median 53,674 UMI (not thinned; part of the shift) |
+| `meanpert` | RHJ HepG2 training grand-mean DELTA placed on the H1 control mean |
+| `transfer` | cell-weighted mean delta of the same pert over the RHJ lines where it was TRAINED |
 
-⚠️ m ≈ 395 cells per half means the `experimental` arm is much closer to a true ceiling than on
-RHJ (m = 22). The two panels' absolute numbers are therefore not comparable; compare arms
-WITHIN this panel.
+## Gene axis — identical for every arm
 
-## Rebuilding it (for other users)
-
-`scripts/repro/build_benchmark_h1.sh` rebuilds the whole panel from the published local copy
-`benchmarks/h1_seen/h1_seen_raw.h5ad` (HF, sha256 `3cf2642f…`) plus `benchmarks/rhj_fewshot/`
-and the three RHJ `eval/pert/` files, then compares it with the published panel.
-
-**Verified 2026-09-23 (job 18365148, 12 min):** rebuilt into a scratch dir → **MATCH** on
-axis, cohort, every cell of `X`, labels, batches, all 5 A/B splits, and the `meanpert` /
-`transfer` baselines.
-
-## Arms (launched 2026-09-23, `scripts/repro/h1_seen.sh`)
-
-| arm | what | job |
+| arm | model input | scored output |
 |---|---|---|
-| ctrlcell, ctrlmean, experimental, meanpert, transfer | reference arms | 18365137 |
-| Occam Y06 / Q02 / M06 / M03 | `--ood-context`, grid `configs/h1_seen_occam.tsv` | 18365138 |
-| TxPert (single-cell ctrl) | s42, `best-ep49.ckpt` | export 18365139 → score 18365140 |
-| STATE | s42, `best_celleval.ckpt` | 18365141 → 18365142 |
-| CellFlow | s42, `occam_s42` | 18365143 → 18365144 |
-| PerturbDiff genept | s42 | 18365145 → 18365146 |
+| Occam | the 6,535 panel genes at their encoder columns; the 448 absent genes and all non-axis columns are 0 (as in RHJ training) | 6,535 |
+| TxPert / STATE / CellFlow / PerturbDiff | 6,983-wide RHJ axis with the same 448 at 0; emission gathered back to the 6,535 | 6,535 |
+| baselines | the panel | 6,535 |
 
-**Deviations for competitors (recorded in each export manifest as `context_proxy`):** all four
-look up the cell type in their training vocabulary, and H1 is not in it. They are run with
-cell type **HEPG2** (the RHJ evaluated line). STATE and PerturbDiff also need a batch covariate;
-each cell gets a seeded uniform draw from the model's HepG2 batches (a single constant batch was
-measured to distort STATE by 0.37). Occam has no cell-line input and needs no proxy.
+Competitors with a cell-type label are given **HEPG2**; STATE / PerturbDiff also get a seeded
+per-cell draw of HepG2 batches (a constant batch distorts STATE by 0.37). Recorded in each
+export manifest as `context_proxy`. Occam has no cell-line input.
+
+## Rebuilding
+
+`OUT=/tmp/h1_check bash scripts/repro/build_benchmark_h1.sh` — checks the local copy's sha256,
+rebuilds cohort, splits and baselines, compares every quantity with the published panel.
+**Verified 2026-09-23 (job 18368097):** rebuilt from the 80-pert HF copy → **MATCH** on axis, cohort, every cell of `X`, labels, batches, all 5 A/B splits, `meanpert`, `transfer`.
+
+## Arms (launched 2026-09-23, `BENCH=h1_seen bash scripts/repro/ood_seen.sh`)
+
+| arm | job |
+|---|---|
+| baselines, control-draw seeds 42–46 | 18368098–102 |
+| Occam Y06 / Q02 / M06 / M03 | 18368103 |
+| TxPert (single-cell ctrl) | export 18368104 → score 18368105 |
+| STATE | 18368106 → 18368107 |
+| CellFlow | 18368108 → 18368109 |
+| PerturbDiff genept | 18368110 → 18368111 |
 
 ## Results
 
-⏳ Running. Filled in as each split lands, before being reported.
+⏳ Pending. Written here as each arm's 5 splits land, before being reported.

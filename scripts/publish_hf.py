@@ -86,8 +86,18 @@ ARTIFACTS = [
     # controls already selected) so a reader rebuilds it with
     # repro/build_benchmark_h1.sh without the 35 GB of VCC 2025 files.
     ("data/benchmarks/h1_seen", "benchmarks/h1_seen",
-     "H1 hESC (VCC 2025) seen-perturbation / unseen-cell-line benchmark: raw local copy, "
-     "axis, cohort, 5 split-halves, baselines"),
+     "H1 hESC (VCC 2025) seen-perturbation / unseen-assay / unseen-cell-line benchmark, "
+     "80 perts: raw local copy (80 perts + controls), axis, cohort, 5 split-halves, baselines"),
+    # k562_seen / k562_seen_h1set (2026-09-23): the same checkpoints on K562 (Replogle 2022
+    # essential) -- seen assay, unseen cell line. ONE raw local copy (RHJ test perts + the 80
+    # shared with h1_seen + controls) rebuilds both with repro/build_benchmark_k562.sh.
+    ("data/benchmarks/k562_seen", "benchmarks/k562_seen",
+     "K562 seen-perturbation / seen-assay / unseen-cell-line benchmark on the 528 RHJ test "
+     "perts, plus the raw local copy both K562 panels rebuild from"),
+    ("data/benchmarks/k562_seen_h1set", "benchmarks/k562_seen_h1set",
+     "K562 benchmark on the same 80 perts as h1_seen"),
+    ("data/benchmarks/shared", "benchmarks/shared",
+     "the frozen 80-perturbation list shared by h1_seen and k562_seen_h1set"),
     # The perturbation graph. Required to TRAIN (the adjacency-map perturbation model is
     # an MLP over each gene's adjacency row) and to BUILD either benchmark (the cohort is
     # intersected with `master_gene_set_sorted.csv`). Without it neither is reproducible.
@@ -125,7 +135,9 @@ ARTIFACTS = [
     # the two scored strata do not exist.
     # REQUIRED by repro/build_benchmark_h1.sh, which calls it with --from-raw.
     ("scripts/build_h1_seen_panel.py", "repro/build_h1_seen_panel.py",
-     "the h1_seen builder -- run by repro/build_benchmark_h1.sh"),
+     "the h1_seen / k562_seen builder -- run by repro/build_benchmark_{h1,k562}.sh"),
+    ("scripts/build_splithalf_panel.py", "repro/build_splithalf_panel.py",
+     "imported by the h1/k562 builder (axis-restricted reader of the RHJ sources)"),
     ("scripts/norman/norman_stratify_panels.py",
      "repro/norman_stratify_panels.py",
      "the additivity strata (the additive / nonadditive panels) -- run by "

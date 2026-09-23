@@ -1,5 +1,9 @@
 # Occam
 
+> **Current state — benchmarks, published checkpoints, defaults, where every number lives:
+> [`docs/STATUS.md`](docs/STATUS.md).** Anything not listed there is not current. Stale
+> checkpoints, results and benchmarks are in [`archive/`](archive/README.md) and must not be used.
+
 A masked autoencoder for single-cell transcriptomes, and a perturbation-prediction model
 built on it. The encoder uses **all genes** in the input rather than a highly-variable
 subset, corrupts them with **swap noise** rather than zeros, and jointly predicts which
@@ -77,7 +81,7 @@ hf download bendidiihab/Occam --include 'checkpoints/vcell/*' --local-dir /tmp/d
 |---|---|---|
 | `checkpoints/` | 5.35 GB | the released encoder+decoder **and** both vcell checkpoints + their cards |
 | `eval/` | 6.25 GB | evaluation data — 7 datasets incl. `norman_2019_k562.h5ad` |
-| `benchmarks/` | 0.34 GB | the frozen `rhj_fewshot` and `norman_combo` benchmarks |
+| `benchmarks/` | see HF | the frozen `rhj_fewshot`, `norman_combo`, `h1_seen`, `k562_seen`, `k562_seen_h1set` benchmarks (the last three with their raw local copies) |
 | `graphs/` | 0.40 GB | the perturbation graph — **required to train or to rebuild a benchmark** |
 | `metrics/` | 22 MB | every cell-eval metric, per arm, per split (also in git) |
 | `metrics_all/` | 38 MB | the same for all 422 eval roots |
@@ -194,12 +198,37 @@ the baselines are what make one person's number comparable to another's.
 | axis | 6,983 genes | 8,000 genes |
 | test | 611 held-out HepG2 perturbations | 111 pairs, in two effect-controlled strata |
 
+### What each benchmark tests
+
+The three `rhj_fewshot`-family benchmarks score the SAME checkpoints (trained on HepG2 +
+Jurkat + RPE1) and differ in what is new at test time:
+
+| benchmark | perturbation | assay | cell line | perturbations scored | built by |
+|---|---|---|---|---|---|
+| `rhj_fewshot` | **few-shot**: withheld from HepG2, seen in Jurkat/RPE1 | seen | seen (HepG2) | 611 | `build_benchmark_rhj.sh` |
+| `k562_seen` | seen | seen (Replogle 2022 CRISPRi screen, the RPE1 file's family) | **unseen** (K562) | 528 RHJ test perts | `build_benchmark_k562.sh` |
+| `k562_seen_h1set` | seen | seen | **unseen** (K562) | the 80 shared with `h1_seen` | `build_benchmark_k562.sh` |
+| `h1_seen` | seen | **unseen** (VCC 2025 H1, different protocol and depth) | **unseen** (H1 hESC) | 80 | `build_benchmark_h1.sh` |
+
+- `k562_seen` uses the same perturbations as the `rhj_fewshot` test set (528 of its 611), so
+  RHJ → K562 changes only the cell line.
+- `k562_seen_h1set` and `h1_seen` use the SAME 80 perturbations
+  (`data/benchmarks/shared/h1_k562_perts.json`), so K562 → H1 changes only the assay.
+  Cohort-ranked metrics (`discrimination_score_l1`, `overlap_at_N`) are only comparable
+  between panels scored on identical sets.
+- None of them trains anything. Input and scoring genes are the `rhj_fewshot` axis genes the
+  panel measures (6,640 for K562, 6,535 for H1), identical for every arm. Competitors with a
+  cell-type label are given `HEPG2`. Scored with `scripts/repro/ood_seen.sh`
+  (`--ood-context` in `scripts/eval_splithalf.py`).
+
 **You do not need to rebuild them** — downloading `benchmarks/` gives you the exact
 artifacts. Rebuild to *verify* them, or to build from a different source revision:
 
 ```bash
 OUT=/tmp/check_rhj    bash scripts/repro/build_benchmark_rhj.sh      # ~25 min, ~120 GB RAM
 OUT=/tmp/check_norman bash scripts/repro/build_benchmark_norman.sh   # ~15 min, ~60 GB RAM
+OUT=/tmp/check_h1     bash scripts/repro/build_benchmark_h1.sh       # ~10 min, from the HF H1 copy
+OUT=/tmp/check_k562   bash scripts/repro/build_benchmark_k562.sh     # ~10 min, from the HF K562 copy
 ```
 
 Each rebuilds the axis, cohort, splits, the 5 seeded split-halves and (Norman) the

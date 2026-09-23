@@ -38,7 +38,7 @@ import torch.nn.functional as F
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(REPO, "src"))
 
-# The three bases as trained on rhj_fewshot (docs/rhj_all_results.md, "THE THREE BASES").
+# The three bases as trained on rhj_fewshot (archive/docs/rhj_all_results.md, "THE THREE BASES").
 BASES = {
     "M03": {"delta_cos_weight": 0.01, "delta_mag_weight": 0.0,
             "latent_loss_type": "none", "latent_loss_weight": 0.0},

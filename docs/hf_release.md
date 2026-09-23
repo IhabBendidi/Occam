@@ -146,7 +146,9 @@ seconds.
 
 | 2026-09-22 | pass 3: both vcell checkpoints + cards + `metrics/` | sha256 of BOTH checkpoints verified before upload; re-read from the Hub |
 | 2026-09-22 | pass 4: `graphs/`, `benchmarks/rhj_fewshot/`, `metrics_all/`, `repro/` | **332 files, 21.235 GB, `private: True`** |
-| 2026-09-23 | pass 5: `benchmarks/h1_seen/` (incl. `h1_seen_raw.h5ad` 8.85 GB), `repro/` | re-read from the Hub: raw copy LFS sha256 `3cf2642f…` = local; `private: True` |
+| 2026-09-23 | pass 5: `benchmarks/h1_seen/` (99 perts, `h1_seen_raw.h5ad` 8.85 GB, sha256 `3cf2642f…`), `repro/` | SUPERSEDED by pass 6 (still in the Hub's file history) |
+| 2026-09-23 | pass 6 (SUPERSEDED by pass 7: uncompressed copy): `benchmarks/h1_seen/` = the **80-pert** panel, `h1_seen_raw.h5ad` 7.37 GB (80 perts + 38,176 controls), `benchmarks/shared/h1_k562_perts.json`, `repro/` | re-read from the Hub: raw copy LFS sha256 `ea72830a…` = local; `private: True` |
+| 2026-09-23 | pass 7: raw copies rewritten int32 + gzip-4 like the other published h5ad (content identical, rebuild MATCH verified): `h1_seen_raw.h5ad` 2.04 GB `73ea8369…`, `k562_seen_raw.h5ad` 0.68 GB `59f2ea90…`; `benchmarks/k562_seen/`, `benchmarks/k562_seen_h1set/` added; `metrics/`, `metrics_all/` regenerated from the live tree and **42 files of archived arms deleted** from the Hub | re-read from the Hub: both LFS sha256 = local; `private: True` |
 
 Re-read from the Hub after pass 4, with `files_metadata=True`:
 

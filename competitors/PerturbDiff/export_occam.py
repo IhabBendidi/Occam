@@ -89,7 +89,13 @@ for _p in (_HERE, os.path.join(_REPO, "competitors", "shared")):
         sys.path.insert(0, _p)
 
 
-def _resolve_checkpoint(seed: int, explicit: str, penc: str = "") -> str:
+def _bench_tag_of(bench_dir: str) -> str:
+    """`__<bench>` for any benchmark but rhj_fewshot (whose runs carry no tag)."""
+    name = os.path.basename(os.path.normpath(str(bench_dir or "")))
+    return "" if name in ("", "rhj_fewshot") else f"__{name}"
+
+
+def _resolve_checkpoint(seed: int, explicit: str, penc: str = "", bench_tag: str = "") -> str:
     """The checkpoint PerturbDiff itself selected on VALIDATION, never the last step.
 
     Its training leg runs `ModelCheckpoint(monitor="validation/celleval/selection_score",
@@ -122,6 +128,14 @@ def _resolve_checkpoint(seed: int, explicit: str, penc: str = "") -> str:
     # `validation/celleval/selection_score` never chose -- here step 64000 of 80000.
     runs_dir = os.path.join(_REPO, "runs", "competitors", "perturbdiff", "runs")
     markers = sorted(glob.glob(os.path.join(runs_dir, f"*_s{seed}*.best_ckpt_path")))
+    # ⚠️ The benchmark is part of the identity. A norman_combo run is named
+    # `..._s42__norman_combo`; rhj_fewshot runs carry no tag. Without this filter the Norman
+    # s42 export matched 3 markers (norman + the two rhj encodings) and refused (2026-09-23).
+    if bench_tag:
+        markers = [m for m in markers
+                   if os.path.basename(m)[:-len(".best_ckpt_path")].endswith(bench_tag)]
+    else:
+        markers = [m for m in markers if "__" not in os.path.basename(m)]
     if penc:
         markers = [m for m in markers if f"_{penc}_" in os.path.basename(m)
                    or os.path.basename(m).rstrip(".best_ckpt_path").endswith(f"_{penc}")]
@@ -227,7 +241,8 @@ def main(argv=None) -> int:
     logger = logging.getLogger(ARM)
     logging.basicConfig(level=logging.INFO, stream=sys.stdout)
 
-    ckpt = _resolve_checkpoint(args.seed, args.checkpoint, args.penc)
+    ckpt = _resolve_checkpoint(args.seed, args.checkpoint, args.penc,
+                              _bench_tag_of(args.bench_dir))
     print(f"[{ARM}] checkpoint {ckpt}")
 
     split = load_panel_split(args.panel_dir, args.split, target_sum=TRAIN_TARGET_SUM)

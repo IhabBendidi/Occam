@@ -1,7 +1,0 @@
-# h1_seen: existing rhj_fewshot Occam checkpoints scored on H1 (seen perts, unseen line).
-# Y06 = published (RHJ 0.4043); Q02 / M06 / M03 = the three 30-epoch bases.
-arm_id	kind	tag
-Y06	loss	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_e150_em3e-4_s42
-Q02	loss	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_s42
-M06	loss	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_s42
-M03	loss	smooth_l1_nbw0_nbs1.0_dcos0.01_s42

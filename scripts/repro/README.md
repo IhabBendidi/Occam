@@ -95,27 +95,32 @@ Identical on all three.
 ⚠️ Skip this entirely if you downloaded `benchmarks/rhj_fewshot/` and
 `benchmarks/norman_combo/` from the Hub — those ARE the frozen artifacts.
 
-## 0b. `h1_seen` — the RHJ checkpoints on an UNSEEN cell line (H1 hESC, VCC 2025)
+## 0b. Unseen cell line: `h1_seen`, `k562_seen`, `k562_seen_h1set`
 
-The 99 H1 perturbations that ARE in `rhj_fewshot` training, on a cell line no RHJ model
-saw (not even its controls). Same split-half protocol; no training. Details and results:
-`docs/h1_seen.md`.
+The `rhj_fewshot` checkpoints scored, without training, on perturbations they HAVE seen in a
+cell line they have not (README "What each benchmark tests"):
+
+| benchmark | assay | cell line | perturbations | rebuild from |
+|---|---|---|---|---|
+| `k562_seen` | seen | K562 | the 528 RHJ test perts | `benchmarks/k562_seen/k562_seen_raw.h5ad` |
+| `k562_seen_h1set` | seen | K562 | the 80 shared with H1 | the same K562 copy |
+| `h1_seen` | unseen (VCC 2025) | H1 hESC | the same 80 | `benchmarks/h1_seen/h1_seen_raw.h5ad` |
 
 ```bash
-# inputs from the Hub: benchmarks/h1_seen/h1_seen_raw.h5ad (the local copy, 8.8 GB),
-# benchmarks/rhj_fewshot/, eval/pert/{nadig_2024_hepg2,nadig_2024_jurkat,replogle_2022_rpe1_e}.h5ad
-OUT=/tmp/h1_check bash scripts/repro/build_benchmark_h1.sh   # ~10 min, ~120 GB RAM, no GPU
-BUILD_JOB= bash scripts/repro/h1_seen.sh                       # score Occam + baselines + competitors
+# inputs from the Hub: the raw local copies above, benchmarks/rhj_fewshot/,
+# eval/pert/{nadig_2024_hepg2,nadig_2024_jurkat,replogle_2022_rpe1_e}.h5ad
+OUT=/tmp/h1_check   bash scripts/repro/build_benchmark_h1.sh     # ~10 min, ~120 GB RAM, no GPU
+OUT=/tmp/k562_check bash scripts/repro/build_benchmark_k562.sh   # both K562 panels, ~20 min
+BENCH=k562_seen bash scripts/repro/ood_seen.sh    # baselines (5 seeds) + Occam + competitors
 ```
 
-The build starts from the published local copy (sha256 `3cf2642f…`, checked first), which
-already holds the selected cells in build order; it then normalises, freezes the cohort,
-draws the 5 splits and builds the `meanpert` / `transfer` baselines, and compares every
-quantity (axis, cohort, every cell of `X`, labels, batches, all 5 A/B splits, both
-baselines) against the published panel. Exit 3 names each difference.
+Each build checks the local copy's sha256, rebuilds the cohort, the 5 A/B splits and the
+`meanpert` / `transfer` baselines, and compares every quantity with the published panel
+(axis, cohort, every cell of `X`, labels, batches, all 5 splits, both baselines); exit 3 names
+each difference. The shared 80-perturbation list is `data/benchmarks/shared/h1_k562_perts.json`.
 
-Scoring an RHJ checkpoint here needs `--ood-context` on `scripts/eval_splithalf.py`
-(`h1_seen.sh` passes it): the panel's axis is a subset of the training axis and its
+Scoring an RHJ checkpoint on these needs `--ood-context` on `scripts/eval_splithalf.py`
+(`ood_seen.sh` passes it): the panel's axis is a subset of the training axis and its
 perturbations are seen by design, which the same-benchmark guard correctly refuses.
 
 ## 1. Train

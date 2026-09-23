@@ -28,6 +28,15 @@ faulthandler.enable()
 if hasattr(signal, "SIGUSR1"):
     faulthandler.register(signal.SIGUSR1, all_threads=True, chain=False)
 
+# ⚠️ OCCAM INFRA (2026-09-23): DataLoader workers passing tensors through /dev/shm file
+# descriptors died on "could not unlink the shared memory file /torch_..." and then hung
+# (norman_combo s44, s45 -- watchdog-killed after ~2.5 h). `file_system` sharing avoids the
+# fd-passing path. It changes only how workers hand batches over, not what is computed.
+# Opt-in via TORCH_SHARING_STRATEGY (set by scripts/slurm/_competitor_common.sh).
+if os.environ.get("TORCH_SHARING_STRATEGY"):
+    import torch.multiprocessing as _tmp
+    _tmp.set_sharing_strategy(os.environ["TORCH_SHARING_STRATEGY"])
+
 # local imports
 exc_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 sys.path.append(exc_dir)
