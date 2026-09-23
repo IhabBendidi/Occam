@@ -101,15 +101,15 @@ fi
 # is exactly how "1e-7<TAB>M03" ended up inside RETA, corrupting both the run suffix and the
 # --set value with no error. Refuse instead.
 _NF="$(printf '%s\n' "$ROW" | awk -F'\t' '{print NF}')"
-if [ "${_NF:-0}" -gt 27 ]; then
-    echo "grid row $IDX has $_NF tab-separated fields; this launcher reads at most 27. A new" >&2
+if [ "${_NF:-0}" -gt 28 ]; then
+    echo "grid row $IDX has $_NF tab-separated fields; this launcher reads at most 28. A new" >&2
     echo "column must be added to the read below, or it lands inside GVW unnoticed." >&2
     exit 1
 fi
 # The three F-disp1 columns (DCC RSW GVW) are appended AFTER `BASE`, so every 22-column grid
 # still parses unchanged and they default to 0.0 -- the no-op value all 570 runs before
 # 2026-09-21 used.
-read -r ARM LOSS NBW NBS DCW MAGW LLT LLW LCW LCT RSP RCW RDW RSM RDT VVW VCW VGA VTG REP RETA BASE DCC RSW GVW BSZ LR <<<"$ROW"
+read -r ARM LOSS NBW NBS DCW MAGW LLT LLW LCW LCT RSP RCW RDW RSM RDT VVW VCW VGA VTG REP RETA BASE DCC RSW GVW BSZ LR RSEED <<<"$ROW"
 # Column 26, OPTIONAL like 20-25, so every 25-column grid parses unchanged and gets the
 # 2048 that all 600+ runs before 2026-09-22 used.
 # ⚠️ WHY IT IS A COLUMN AND NOT A CONSTANT. batch_size was hardcoded at 2048 in the --set
@@ -123,6 +123,11 @@ BSZ="${BSZ:-2048}"
 # been varied on norman_combo, and with 11x fewer optimiser steps per run the right lr is
 # not obviously the same one. `decoder_lr` tracks it, as it did in the W grid.
 LR="${LR:-1e-3}"
+# Column 28, OPTIONAL. Lets SEED REPLICATES live in a grid instead of needing one sbatch
+# submission per seed: the seed is what re-draws the trained model, so it is the unit of
+# replication for any statistical test (scripts/seed_split_test.py), and a 5-seed design
+# is a 5-row grid rather than 5 launches. Empty = the SEED env var, then 42.
+RSEED="${RSEED:-}"
 DCC="${DCC:-0.0}"   # dcos_conc_weight      -- calibrate per-cell effect-direction alignment
 RSW="${RSW:-0.0}"   # radial_spread_weight  -- match the spread of ||pred - ctrl_mean||
 GVW="${GVW:-0.0}"   # gene_var_weight       -- match per-gene within-group variance
@@ -145,7 +150,10 @@ LLW="${LLW:-0.0}"       # latent_loss_weight (scales the MSE latent loss)
 LCW="${LCW:-0.0}"       # latent_cos_weight
 LCT="${LCT:-delta_z}"   # latent_cos_target: delta_z | z_hat -- NOT equivalent
 
-SEED="${SEED:-42}"
+# PER-ROW seed (column 28) takes precedence over the env var, matching how REP/RETA
+# already work: a grid that VARIES the seed across rows cannot express that with an env
+# var, which is global to the job.
+SEED="${RSEED:-${SEED:-42}}"
 # Optional schedule overrides. Unset = the config's own values (30 epochs, eta_min 1e-7), so
 # every earlier grid reproduces exactly.
 # Schedule overrides. PER-ROW (grid columns 20-21) takes precedence over the env vars, because
