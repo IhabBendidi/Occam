@@ -1,0 +1,44 @@
+# NORMAN SWEEP, PART 2 -- the 10 EXTREME arms the first 20 did not reach
+#
+# Part 1 (scripts/grids/norman_sweep.tsv, job 18363844) bracketed the default:
+#   epochs 120-1200 . eta_min 1e-4..1e-3 . batch 256..8192 . loss scale 0.5x/2x
+# Every one of those levers had its OPTIMUM AT OR INSIDE the tested range on rhj_fewshot,
+# which is exactly the situation F-loss3 flags as a range problem rather than a finished
+# tuning. These 10 arms push each lever PAST the part-1 edge, so an endpoint optimum in
+# part 1 can be told apart from a true one.
+#
+#   eta_min  1e-5, 1e-6, 3e-3   part 1 spans 1e-4..1e-3. The ORIGINAL default was 1e-7,
+#                               and 3e-4 only won on rhj at 150 ep -- below and above the
+#                               part-1 bracket are both untested on norman.
+#   epochs   60, 240            part 1 starts at 120. 60 halves the step budget again;
+#                               240 is the far side of rhj's flat 180.
+#   batch    128                66,600 steps -- 16x the default's 4,050, the far end of
+#                               grid B's step-count hypothesis.
+#   scale    0.25x, 4.0x        part 1 is 0.5x/2x around the scale-matched point.
+#   lr       3e-4, 3e-3         ⚠️ NEVER VARIED, on either benchmark, in this campaign.
+#                               1e-3 came from rhj's W grid where it was raised WITH the
+#                               batch size; with 11x fewer steps on norman that pairing has
+#                               no reason to hold. decoder_lr tracks it, as in the W grid.
+#
+# HOW TO READ IT. Anchors (additive / nonadditive pearson_delta): OCCAM NQ02 published
+# 0.8169 / 0.7380 . sum_of_singles 0.8824 / 0.7757 <- THE BAR . TxPert 0.8580 / 0.7139 .
+# experimental 0.9165 / 0.8377.
+#   An extreme arm winning  -> part 1's bracket was in the wrong place; re-centre and
+#                              re-sweep on that lever.
+#   part 1 winning           -> the optimum is INTERIOR and the axis is closed, which is
+#                              the result that lets us stop tuning it.
+# ⚠️ Read all four metrics. `mae` already splits this field differently from
+#    `pearson_delta` (F-comp4), so a pearson_delta-only ranking would mislead.
+#
+# COST  10 arms, ~40 GPU-h. All concurrent with part 1.
+arm	loss_type	nb_weight	nb_scale	delta_cos_weight	delta_mag_weight	latent_loss_type	latent_loss_weight	latent_cos_weight	latent_cos_target	recon_split	recon_ctrl_weight	recon_delta_weight	recon_split_mode	recon_delta_target	vicreg_var_weight	vicreg_cov_weight	vicreg_gamma	vicreg_target	epochs	eta_min	base	dcos_conc_weight	radial_spread_weight	gene_var_weight	batch_size	lr
+NE20	smooth_l1	0	1.0	0.32977	0.0400866	delta_z	0.00198826	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	150	1e-5	E_etamin1e-5	0.0	0.0	0.0	2048	1e-3
+NE21	smooth_l1	0	1.0	0.32977	0.0400866	delta_z	0.00198826	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	150	1e-6	E_etamin1e-6	0.0	0.0	0.0	2048	1e-3
+NE22	smooth_l1	0	1.0	0.32977	0.0400866	delta_z	0.00198826	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	150	3e-3	E_etamin3e-3	0.0	0.0	0.0	2048	1e-3
+NE23	smooth_l1	0	1.0	0.32977	0.0400866	delta_z	0.00198826	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	60	3e-4	E_ep60	0.0	0.0	0.0	2048	1e-3
+NE24	smooth_l1	0	1.0	0.32977	0.0400866	delta_z	0.00198826	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	240	3e-4	E_ep240	0.0	0.0	0.0	2048	1e-3
+NE25	smooth_l1	0	1.0	0.32977	0.0400866	delta_z	0.00198826	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	150	3e-4	E_bs128	0.0	0.0	0.0	128	1e-3
+NE26	smooth_l1	0	1.0	0.0824425	0.01002165	delta_z	0.000497065	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	150	3e-4	E_lossscale0.25	0.0	0.0	0.0	2048	1e-3
+NE27	smooth_l1	0	1.0	1.31908	0.1603464	delta_z	0.00795304	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	150	3e-4	E_lossscale4.0	0.0	0.0	0.0	2048	1e-3
+NE28	smooth_l1	0	1.0	0.32977	0.0400866	delta_z	0.00198826	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	150	3e-4	E_lr3e-4	0.0	0.0	0.0	2048	3e-4
+NE29	smooth_l1	0	1.0	0.32977	0.0400866	delta_z	0.00198826	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	150	3e-4	E_lr3e-3	0.0	0.0	0.0	2048	3e-3
