@@ -36,8 +36,12 @@ def test_the_default_schedule_is_150_epochs_with_eta_min_3e_4():
     for rel in CONFIGS:
         optim = _vcell(rel)["optim"]
         assert optim["epochs"] == 150, rel
-        assert optim["eta_min"] == pytest.approx(3e-4), rel
-        assert optim["batch_size"] == 2048, rel
+        if "norman" in rel:   # NB10, adopted 2026-09-23 (docs/norman_results.md F-sweep1)
+            assert optim["eta_min"] == pytest.approx(1e-3), rel
+            assert optim["batch_size"] == 256, rel
+        else:
+            assert optim["eta_min"] == pytest.approx(3e-4), rel
+            assert optim["batch_size"] == 2048, rel
         assert optim["lr"] == pytest.approx(1e-3), rel
         assert optim["decoder_lr"] == pytest.approx(1e-3), rel
         assert optim["warmup_epochs"] == 5, rel

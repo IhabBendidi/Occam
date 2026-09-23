@@ -100,11 +100,21 @@ def test_the_norman_eval_script_defaults_to_the_default_composition_mode():
 
 
 def test_the_train_scripts_pass_no_loss_or_schedule_overrides():
-    """The config IS the recipe. A --set here would mean the config is not the default."""
-    for rel in ("scripts/repro/rhj_train.sh", "scripts/repro/norman_train.sh"):
-        src = open(os.path.join(REPO, rel)).read()
-        sets = re.findall(r'--set "([^"=]+)=', src)
-        assert sets == ["seed"], f"{rel} overrides {sets}; expected only seed"
+    """The RHJ config IS the recipe. A --set there would mean the config is not the default."""
+    src = open(os.path.join(REPO, "scripts/repro/rhj_train.sh")).read()
+    sets = re.findall(r'--set "([^"=]+)=', src)
+    assert sets == ["seed"], f"rhj_train.sh overrides {sets}; expected only seed"
+
+
+def test_the_norman_train_script_pins_the_published_NQ02_schedule():
+    """2026-09-23: the Norman YAML default moved to NB10 (bs 256, eta_min 1e-3), but the
+    published HF checkpoint is NQ02. The repro script must pin NQ02's bs/eta_min and nothing
+    else, or it silently stops reproducing the published checkpoint."""
+    src = open(os.path.join(REPO, "scripts/repro/norman_train.sh")).read()
+    pins = dict(re.findall(r'--set "([^"=]+)=([^"$]+)"', src))
+    assert pins == {"stages.vcell.optim.batch_size": "2048",
+                    "stages.vcell.optim.eta_min": "3e-4"}, pins
+    assert re.findall(r'--set "([^"=]+)=', src)[-1] == "seed"
 
 
 def test_the_rebuild_scripts_verify_and_refuse_to_overwrite():

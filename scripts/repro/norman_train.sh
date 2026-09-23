@@ -18,7 +18,9 @@
 # WHAT THIS SCRIPT DOES
 #   Trains one model on norman_combo with the DEFAULT RECIPE and nothing else:
 #   Q02 loss base, 150 epochs, eta_min 3e-4, batch 2048, lr/decoder_lr 1e-3.
-#   There are no --set overrides on purpose -- configs/norman_combo.yaml ships those
+#   ⚠️ 2026-09-23: the YAML default moved to NB10 (bs 256, eta_min 1e-3). NQ02's bs 2048 and
+#   eta_min 3e-4 are therefore pinned below with --set, so this still reproduces NQ02.
+#   (Historical:) There are no --set overrides on purpose -- configs/norman_combo.yaml ships those
 #   values (docs/default_recipe.md), so this command IS the recipe. If a
 #   future edit changes them, tests/test_default_recipe.py fails.
 #
@@ -48,7 +50,7 @@ echo "=== norman_combo repro training (arm NQ02) ==="
 echo "host   : $(hostname)"
 echo "started: $(date -Is)"
 echo "git sha: $(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
-echo "config : configs/norman_combo.yaml  (no overrides -- the config IS the recipe)"
+echo "config : configs/norman_combo.yaml  (+ bs 2048 / eta_min 3e-4 pinned = NQ02)"
 echo "suffix : $SUFFIX"
 echo
 
@@ -56,6 +58,8 @@ python -m occam.train \
     --config configs/norman_combo.yaml \
     --stages vcell \
     --run-suffix "$SUFFIX" \
+    --set "stages.vcell.optim.batch_size=2048" \
+    --set "stages.vcell.optim.eta_min=3e-4" \
     ${SEED:+--set "seed=$SEED"}
 
 echo

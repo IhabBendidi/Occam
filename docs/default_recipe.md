@@ -22,8 +22,8 @@ and copying them across datasets is a bug (see "New dataset" below).
 |---|---|---|
 | loss base | **Q02** = `smooth_l1` + `delta_cos` + `delta_mag` + latent MSE on `delta_z` | best on `rhj_fewshot` (0.4043); best single cell on `norman_combo` (0.7774) |
 | epochs | **150** | +0.026 pΔ on RHJ over 30 ep — more than any loss term measured; 180 ep is flat (+0.0003) |
-| `eta_min` | **3.0e-04** | floors above 3e-4 cost at 150 ep (F-sched3) |
-| `batch_size` | **2048** | W23's winning setting |
+| `eta_min` | **3.0e-04** (RHJ) · **1.0e-03 = lr, no decay** (Norman, NB10) | RHJ: floors above 3e-4 cost at 150 ep (F-sched3). Norman: see below |
+| `batch_size` | **2048** (RHJ) · **256** (Norman, NB10) | RHJ: W23. Norman: step-starved at 2048 (27 steps/epoch), F-sweep1 |
 | `lr` / `decoder_lr` | **1.0e-03 / 1.0e-03** | W23 raised `decoder_lr` together with the batch size |
 | `warmup_epochs` | **5** | unchanged from the original recipe |
 | composition mode | **`decode_seq_mean`** | best mean rank (2.08/8), top-two on 5 of 6 arms, best single cell, best `mae` marginal |
@@ -34,6 +34,24 @@ Where it lives, so it cannot drift:
 - `VirtualCellModel.forward_composed(mode="decode_seq_mean")` — `src/occam/vcell/model.py`
 - `scripts/eval_splithalf.py --compose` default
 - `tests/test_default_recipe.py` — 5 tests pin all of the above
+
+### Norman override — NB10 (adopted 2026-09-23, user decision)
+
+`norman_combo` now defaults to **bs 256, eta_min 1e-3** (constant LR after warmup). Seed 42,
+5 splits, nocal, `decode_seq_mean`. Bar = `sum_of_singles` 0.8824 / 0.7757 pΔ. `mae` ↓.
+
+| arm | bs | eta_min | pΔ add / non | mae add / non ↓ | ovl add / non | dl1 add / non |
+|---|---|---|---|---|---|---|
+| **NB10 (default)** | 256 | 1e-3 | **0.8910 / 0.7763** | 0.0112 / 0.0137 | **0.3207 / 0.3037** | 0.8804 / 0.7564 |
+| NB09 | 256 | 3e-4 | 0.8785 / 0.7660 | 0.0114 / 0.0140 | 0.3092 / 0.2881 | 0.8928 / 0.7425 |
+| NE25 | 128 | 3e-4 | 0.9003 / 0.7940 | 0.0114 / 0.0134 | 0.3080 / 0.2942 | 0.8717 / 0.7489 |
+| NQ02 (published HF) | 2048 | 3e-4 | 0.8169 / 0.7380 | 0.0123 / 0.0146 | 0.3059 / 0.2843 | 0.9091 / 0.7708 |
+
+⚠️ NB10 was trained BEFORE validation selection composed pairs with `decode_seq_mean`, so a
+fresh run from this default may select a different epoch. The published checkpoint is still
+NQ02; `scripts/repro/norman_train.sh` pins bs 2048 / eta_min 3e-4 to reproduce it.
+Untested at bs 256: eta_min below 3e-4. At bs 2048 lower floors lost (NE20 1e-5 0.7789/0.6838,
+NE21 1e-6 0.7819/0.6829 vs 3e-4 0.8169/0.7380).
 
 ## The evidence, in one table per axis
 

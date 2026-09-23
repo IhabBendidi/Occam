@@ -3715,3 +3715,33 @@ Pinned by `tests/test_default_recipe.py`.
 defaults (30 epochs, `eta_min` 1e-7, batch 256, decoder_lr 3e-4, all three loss weights 0)
 now resolve differently and will hash to a NEW run directory instead of reusing the old one.
 The completed runs are unaffected — each keeps its own `resolved_config.yaml`.
+
+## ⏳ RB — Y06 batch-size ladder (LAUNCHED 2026-09-23, running)
+
+**Objective.** Best model on unseen perturbations in HepG2 from one control cell; headline
+`pearson_delta`, nocal, 5 splits. Anchors: meanpert 0.1324 · transfer 0.2323 ·
+experimental 0.3722 · **Y06 (bs 2048) 0.4043**.
+
+**Question.** Norman improved as batch size fell (NE25 bs 128 0.9003/0.7940 vs NQ02 bs 2048
+0.8169/0.7380). Norman gets 27 steps/epoch at bs 2048, RHJ gets 298. Does smaller batch also
+help on RHJ, where training is not step-starved?
+
+**Varied:** batch size. **Fixed:** everything else in Y06 (Q02 loss, 150 ep, eta_min 3e-4,
+lr 1e-3 not rescaled, seed 42). Grid `scripts/grids/rhj_batch.tsv` (rows byte-identical to
+the Y06 seed-replicate row except batch_size).
+
+**Outcomes.** Smaller batch beats Y06 → batch size is a general lever, not Norman step
+starvation. Flat/worse → the Norman gain was step starvation; RHJ stays at 2048.
+
+| arm | batch | steps vs Y06 | walltime | job |
+|---|---|---|---|---|
+| RB512 | 512 | 4× | 24 h | 18365066_0 |
+| RB256 | 256 | 8× | 24 h | 18365066_1 |
+| RB128 | 128 | 16× | 36 h | 18365067_2 |
+| RB064 | 64 | 32× | 48 h | 18365068_3 |
+| RB032 | 32 | 64× | 72 h | 18365069_4 |
+
+Y06 took 2h06m at bs 2048. Run dirs `runs/rhj_fewshot_RB<bs>__..._bs<bs>_e150_em3e-4_s42`.
+**Scoring is automatic:** `scripts/slurm/rhj_autoeval_daemon.sh` (job 18365082, cpu, 4 days)
+submits `rhj_splithalf_models.sbatch --array=0-4%6 CALIBRATE=none` per arm when
+`final_model.pth` appears. Results → `runs/rhj_splithalf/RB<bs>__<tag>/`.

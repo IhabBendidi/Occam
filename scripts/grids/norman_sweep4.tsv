@@ -1,0 +1,26 @@
+# NORMAN SWEEP 4 -- NB10 (bs 256) with SMALLER eta_min, under decode_seq_mean SELECTION
+#
+# OBJECTIVE. Best Occam on norman_combo pairs (additive / nonadditive panels, nocal, 5 splits,
+# decode_seq_mean). Bar: sum_of_singles pd 0.8824 / 0.7757. NB10 (new default) 0.8910 / 0.7763.
+#
+# QUESTION. At bs 256 only eta_min 3e-4 (NB09 0.8785/0.7660) and 1e-3 (NB10, = lr, no decay)
+# were tried. Does a LOWER floor (1e-4, 1e-5, 1e-6) help once the batch is small enough that
+# Norman is no longer step-starved? (At bs 2048 every lower floor lost, NE20/NE21/NA03.)
+#
+# VARIED: eta_min. FIXED: Q02 Norman weights, 150 ep, bs 256, lr 1e-3, seed 42.
+# CONTROL: NF33 = NB10 re-run. NB09/NB10 selected their checkpoint on the old `sum` val
+# metric; these arms select on decode_seq_mean. NF33 separates the selection change from
+# the eta_min change -- compare NF34-36 to NF33, not to NB10.
+#
+# OUTCOMES. A lower floor beats NF33 -> decay matters at small batch; update the default.
+#   None does -> constant LR (NB10) stays; the floor axis is closed at bs 256.
+# COST 7 arms x ~50 min (NB10 took 48 min). Walltime 3 h. NF37-39 (7e-4, 5e-4, 2e-4) added
+# 2026-09-23 to fill 1e-4..1e-3; 3e-4 at bs 256 is NB09 (old selection).
+arm	loss_type	nb_weight	nb_scale	delta_cos_weight	delta_mag_weight	latent_loss_type	latent_loss_weight	latent_cos_weight	latent_cos_target	recon_split	recon_ctrl_weight	recon_delta_weight	recon_split_mode	recon_delta_target	vicreg_var_weight	vicreg_cov_weight	vicreg_gamma	vicreg_target	epochs	eta_min	base	dcos_conc_weight	radial_spread_weight	gene_var_weight	batch_size	lr	seed
+NF33	smooth_l1	0	1.0	0.32977	0.0400866	delta_z	0.00198826	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	150	1e-3	G_bs256_em1e-3_dsmselect_CONTROL_vs_NB10	0.0	0.0	0.0	256	1e-3	42
+NF34	smooth_l1	0	1.0	0.32977	0.0400866	delta_z	0.00198826	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	150	1e-4	G_bs256_em1e-4_dsmselect	0.0	0.0	0.0	256	1e-3	42
+NF35	smooth_l1	0	1.0	0.32977	0.0400866	delta_z	0.00198826	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	150	1e-5	G_bs256_em1e-5_dsmselect	0.0	0.0	0.0	256	1e-3	42
+NF36	smooth_l1	0	1.0	0.32977	0.0400866	delta_z	0.00198826	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	150	1e-6	G_bs256_em1e-6_dsmselect	0.0	0.0	0.0	256	1e-3	42
+NF37	smooth_l1	0	1.0	0.32977	0.0400866	delta_z	0.00198826	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	150	7e-4	G_bs256_em7e-4_dsmselect	0.0	0.0	0.0	256	1e-3	42
+NF38	smooth_l1	0	1.0	0.32977	0.0400866	delta_z	0.00198826	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	150	5e-4	G_bs256_em5e-4_dsmselect	0.0	0.0	0.0	256	1e-3	42
+NF39	smooth_l1	0	1.0	0.32977	0.0400866	delta_z	0.00198826	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	150	2e-4	G_bs256_em2e-4_dsmselect	0.0	0.0	0.0	256	1e-3	42
