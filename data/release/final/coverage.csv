@@ -6,7 +6,7 @@ h1_seen,all,baseline,meanpert,,5,5,5,5,5,5
 h1_seen,all,baseline,transfer,,5,5,5,5,5,5
 h1_seen,all,competitor,cellflow,,5,5,5,5,5,5
 h1_seen,all,competitor,perturbdiff_genept,,5,5,5,5,5,5
-h1_seen,all,competitor,state,,5,0,0,5,0,2
+h1_seen,all,competitor,state,,5,5,5,5,5,5
 h1_seen,all,competitor,txpert_single,,5,5,5,5,5,5
 h1_seen,all,occam,M03,,5,0,0,0,0,1
 h1_seen,all,occam,M06,,5,0,0,0,0,1
@@ -45,6 +45,7 @@ norman_combo,additive,baseline,meanpert,,5,5,5,5,5,5
 norman_combo,additive,baseline,sum_of_singles,,5,5,5,5,5,5
 norman_combo,additive,competitor,cellflow,,5,5,5,5,5,5
 norman_combo,additive,competitor,perturbdiff,,5,5,5,5,5,5
+norman_combo,additive,competitor,state,,5,5,5,5,5,5
 norman_combo,additive,competitor,txpert,,5,5,5,5,5,5
 norman_combo,additive,occam,NA00,decode_seq_mean,5,0,0,0,0,1
 norman_combo,additive,occam,NA01,decode_seq_mean,5,0,0,0,0,1
@@ -132,6 +133,7 @@ norman_combo,additive_raw,baseline,meanpert,,5,5,5,5,5,5
 norman_combo,additive_raw,baseline,sum_of_singles,,5,5,5,5,5,5
 norman_combo,additive_raw,competitor,cellflow,,5,5,5,5,5,5
 norman_combo,additive_raw,competitor,perturbdiff,,5,5,5,5,5,5
+norman_combo,additive_raw,competitor,state,,5,5,5,5,5,5
 norman_combo,additive_raw,competitor,txpert,,5,5,5,5,5,5
 norman_combo,additive_raw,occam,NA00,decode_seq_mean,5,0,0,0,0,1
 norman_combo,additive_raw,occam,NA01,decode_seq_mean,5,0,0,0,0,1
@@ -219,6 +221,7 @@ norman_combo,all,baseline,meanpert,,5,5,5,5,5,5
 norman_combo,all,baseline,sum_of_singles,,5,5,5,5,5,5
 norman_combo,all,competitor,cellflow,,5,5,5,5,5,5
 norman_combo,all,competitor,perturbdiff,,5,5,5,5,5,5
+norman_combo,all,competitor,state,,5,5,5,5,5,5
 norman_combo,all,competitor,txpert,,5,5,5,5,5,5
 norman_combo,all,occam,NA00,decode_seq_mean,5,0,0,0,0,1
 norman_combo,all,occam,NA01,decode_seq_mean,5,0,0,0,0,1
@@ -306,6 +309,7 @@ norman_combo,middle,baseline,meanpert,,5,5,5,5,5,5
 norman_combo,middle,baseline,sum_of_singles,,5,5,5,5,5,5
 norman_combo,middle,competitor,cellflow,,5,5,5,5,5,5
 norman_combo,middle,competitor,perturbdiff,,5,5,5,5,5,5
+norman_combo,middle,competitor,state,,5,5,5,5,5,5
 norman_combo,middle,competitor,txpert,,5,5,5,5,5,5
 norman_combo,middle,occam,NA00,decode_seq_mean,5,0,0,0,0,1
 norman_combo,middle,occam,NA01,decode_seq_mean,5,0,0,0,0,1
@@ -393,6 +397,7 @@ norman_combo,middle_raw,baseline,meanpert,,5,5,5,5,5,5
 norman_combo,middle_raw,baseline,sum_of_singles,,5,5,5,5,5,5
 norman_combo,middle_raw,competitor,cellflow,,5,5,5,5,5,5
 norman_combo,middle_raw,competitor,perturbdiff,,5,5,5,5,5,5
+norman_combo,middle_raw,competitor,state,,5,5,5,5,5,5
 norman_combo,middle_raw,competitor,txpert,,5,5,5,5,5,5
 norman_combo,middle_raw,occam,NA00,decode_seq_mean,5,0,0,0,0,1
 norman_combo,middle_raw,occam,NA01,decode_seq_mean,5,0,0,0,0,1
@@ -480,6 +485,7 @@ norman_combo,nonadditive,baseline,meanpert,,5,5,5,5,5,5
 norman_combo,nonadditive,baseline,sum_of_singles,,5,5,5,5,5,5
 norman_combo,nonadditive,competitor,cellflow,,5,5,5,5,5,5
 norman_combo,nonadditive,competitor,perturbdiff,,5,5,5,5,5,5
+norman_combo,nonadditive,competitor,state,,5,5,5,5,5,5
 norman_combo,nonadditive,competitor,txpert,,5,5,5,5,5,5
 norman_combo,nonadditive,occam,NA00,decode_seq_mean,5,0,0,0,0,1
 norman_combo,nonadditive,occam,NA01,decode_seq_mean,5,0,0,0,0,1
@@ -567,6 +573,7 @@ norman_combo,nonadditive_raw,baseline,meanpert,,5,5,5,5,5,5
 norman_combo,nonadditive_raw,baseline,sum_of_singles,,5,5,5,5,5,5
 norman_combo,nonadditive_raw,competitor,cellflow,,5,5,5,5,5,5
 norman_combo,nonadditive_raw,competitor,perturbdiff,,5,5,5,5,5,5
+norman_combo,nonadditive_raw,competitor,state,,5,5,5,5,5,5
 norman_combo,nonadditive_raw,competitor,txpert,,5,5,5,5,5,5
 norman_combo,nonadditive_raw,occam,NA00,decode_seq_mean,5,0,0,0,0,1
 norman_combo,nonadditive_raw,occam,NA01,decode_seq_mean,5,0,0,0,0,1

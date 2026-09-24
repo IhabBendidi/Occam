@@ -1073,4 +1073,17 @@ Bar: sum_of_singles 0.8820 / 0.7755 (5 seeds).
 
 CellFlow selection now runs: 5 validation states scored per seed, best non-final (e.g. s42 `call04`).
 The fixed CellFlow is +0.018 / +0.025 pΔ over its defective archived numbers (0.7470 / 0.6733) and
-now nearly ties TxPert on nonadditive pΔ. STATE norman retrain still training.
+now nearly ties TxPert on nonadditive pΔ.
+
+**STATE norman_combo, fixed + retrained, 5 seeds × 5 splits (read 2026-09-23 from
+`data/release/final/scores_by_seed_split.csv`; chains 18368664–678; validation composes pairs by
+`decode_seq_mean` like the export; nocal).** Mean ± sd across seeds of the per-seed split-mean,
+additive / nonadditive:
+
+| model | pΔ ↑ additive | pΔ ↑ nonadditive | mae ↓ (error) | overlap_at_N ↑ | disc_l1 ↑ |
+|---|---|---|---|---|---|
+| **STATE (fixed, retrained)** | 0.6989 (0.0385) | 0.6316 (0.0303) | 0.0162 / 0.0187 | 0.2771 / 0.2600 | 0.9066 / 0.7500 |
+
+STATE ranks third of four competitors on pΔ (TxPert > CellFlow > STATE > PerturbDiff), below
+the sum_of_singles bar (0.8824 / 0.7757). Occam NF32 seed 42: 0.9112 / 0.7931; seeds 43–46 in
+training (18386196).

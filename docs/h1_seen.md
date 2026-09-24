@@ -99,3 +99,19 @@ are the real half-B cells that offset enters the predicted delta directly. Wheth
 itself fails to transfer or only the reconstruction does is not separated yet (the
 `delta_sum_realctrl` emission test, which adds the model's delta to the real control, is proposed,
 not run). Y06 has the best `disc_l1` (0.6032). Same conclusion as on the superseded 99-pert panel.
+
+## 2026-09-23: STATE at 5 seeds (seeds 43/44/46 scored with the library-size waiver)
+
+`h1_seen` (80 perts), 5 seeds × 5 splits, nocal; mean ± sd across seeds of the per-seed split-mean.
+STATE seeds 43/44/46 emit 8.3x the target's library size; scored as is per the user
+(`libsize_check_waived` in the export manifests).
+
+| model | pΔ ↑ | mae ↓ (error) | overlap_at_N ↑ | disc_l1 ↑ | seeds |
+|---|---|---|---|---|---|
+| Y06 (Occam) | **0.0950 (0.0026)** | **0.1397** (0.0017) | 0.3226 (0.0012) | **0.5952** (0.0101) | 4 (s43 scoring) |
+| PerturbDiff genept | 0.0879 (0.0025) | 0.1455 (0.0025) | 0.3257 (0.0015) | 0.5237 (0.0011) | 5 |
+| TxPert single-cell | 0.0868 (0.0015) | 0.1489 (0.0045) | **0.3385** (0.0069) | 0.5155 (0.0094) | 5 |
+| STATE | 0.0473 (0.0102) | 0.1996 (0.0270) | 0.3188 (0.0126) | 0.5073 (0.0044) | 5 |
+| CellFlow | 0.0445 (0.0114) | 0.1732 (0.0112) | 0.2826 (0.0089) | 0.5044 (0.0032) | 5 |
+
+STATE per seed pΔ: 0.0455 / 0.0383 / 0.0553 / 0.0602 / 0.0372 (s42–46).
