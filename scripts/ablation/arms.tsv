@@ -51,3 +51,4 @@ ABL_N_ALL	A	NEW DEFAULT with ALL knowledge sources concatenated: GO+STRING adjac
 ABL_N_L0	B	NEW DEFAULT minus delta-cos (loss = smooth_l1 only, AA03 schedule)	delta_cos_weight=0.0	0.0	-	configs/rhj_fewshot.yaml	08:00:00	ready	AA03_DC
 ABL_N_DCI	B	NEW DEFAULT with delta-cos rescaled to parity with smooth_l1 AT INIT (0.5 -> 0.01)	delta_cos_weight=0.01	0.0	-	configs/rhj_fewshot.yaml	08:00:00	ready	AA03_DC
 ABL_N_DCA	B	NEW DEFAULT with delta-cos rescaled to parity with smooth_l1 AVERAGED OVER TRAINING (0.5 -> 0.039)	delta_cos_weight=0.039	0.0	-	configs/rhj_fewshot.yaml	08:00:00	ready	AA03_DC
+ABL_N_DCO	B	NEW DEFAULT minus smooth_l1 (loss = delta-cos ONLY; recon zeroed via recon_split with ctrl/delta weights 0)	recon_split=true,recon_ctrl_weight=0.0,recon_delta_weight=0.0	0.0	-	configs/rhj_fewshot.yaml	08:00:00	ready	AA03_DC

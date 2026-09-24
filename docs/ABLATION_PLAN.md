@@ -344,3 +344,57 @@ end** (raw dcos falls 0.79 → 0.09 while smooth_l1 stays ≈0.005). Norman equi
 | `NF32DCA` | norman_combo | 0.0255 | parity averaged over training | 18511031 |
 
 References: `ABL_A_DC` (rhj, dcos 0.5) and `NF32DC` (Norman, dcos 0.32977), both at ~90–98% dcos.
+
+### PARTIAL results, read 2026-09-24 17:10 — new-default ablations (§7)
+Each arm: mean ± sd over its scored (seed, split) rows, and in brackets the mean paired difference vs
+the new default (ABL_A_DC) on the SAME pairs. 2–4 seeds per arm; STRING-only and ALL not scored yet.
+
+### rhj_fewshot
+| arm (vs new default on the same pairs) | pairs | pΔ ↑ | mae ↓ | overlap_at_N ↑ | disc_l1 ↑ |
+|---|---|---|---|---|---|
+| **new default** (AA03, smooth_l1 + delta-cos), all 25 | 25 | 0.4007 ± 0.0022 | 0.0261 ± 0.0007 | 0.0893 ± 0.0034 | 0.7613 ± 0.0033 |
+| GO only | 10 (2 seeds) | 0.3892 ± 0.0032 (-0.0110) | 0.0275 ± 0.0012 (+0.0019) | 0.0871 ± 0.0017 (-0.0032) | 0.7532 ± 0.0014 (-0.0053) |
+| learnable emb. | 15 (3 seeds) | 0.3869 ± 0.0033 (-0.0136) | 0.0287 ± 0.0023 (+0.0024) | 0.0823 ± 0.0055 (-0.0049) | 0.7515 ± 0.0022 (-0.0105) |
+| GenePT | 15 (3 seeds) | 0.3948 ± 0.0029 (-0.0062) | 0.0274 ± 0.0007 (+0.0009) | 0.0884 ± 0.0021 (-0.0002) | 0.7627 ± 0.0029 (-0.0005) |
+| ESM2 | 14 (3 seeds) | 0.3972 ± 0.0023 (-0.0041) | 0.0278 ± 0.0015 (+0.0017) | 0.0911 ± 0.0041 (+0.0008) | 0.7583 ± 0.0046 (-0.0034) |
+| smooth_l1 only (no delta-cos) | 9 (3 seeds) | 0.3572 ± 0.0041 (-0.0433) | 0.0205 ± 0.0000 (-0.0053) | 0.0799 ± 0.0027 (-0.0095) | 0.6705 ± 0.0020 (-0.0894) |
+
+### h1_seen
+| arm (vs new default on the same pairs) | pairs | pΔ ↑ | mae ↓ | overlap_at_N ↑ | disc_l1 ↑ |
+|---|---|---|---|---|---|
+| **new default** (AA03, smooth_l1 + delta-cos), all 25 | 25 | 0.1049 ± 0.0034 | 0.1418 ± 0.0010 | 0.3249 ± 0.0015 | 0.6364 ± 0.0125 |
+| GO only | 10 (2 seeds) | 0.1069 ± 0.0040 (+0.0043) | 0.1409 ± 0.0009 (-0.0005) | 0.3236 ± 0.0013 (-0.0008) | 0.6224 ± 0.0043 (-0.0042) |
+| learnable emb. | 15 (3 seeds) | 0.1095 ± 0.0083 (+0.0041) | 0.1418 ± 0.0008 (+0.0003) | 0.3250 ± 0.0025 (-0.0003) | 0.6277 ± 0.0141 (-0.0139) |
+| GenePT | 15 (3 seeds) | 0.1098 ± 0.0024 (+0.0034) | 0.1418 ± 0.0007 (-0.0002) | 0.3241 ± 0.0012 (-0.0011) | 0.6411 ± 0.0044 (-0.0019) |
+| ESM2 | 15 (3 seeds) | 0.1094 ± 0.0036 (+0.0033) | 0.1411 ± 0.0005 (-0.0014) | 0.3247 ± 0.0014 (-0.0002) | 0.6531 ± 0.0097 (+0.0167) |
+| smooth_l1 only (no delta-cos) | 17 (4 seeds) | 0.0827 ± 0.0018 (-0.0202) | 0.1379 ± 0.0005 (-0.0035) | 0.3220 ± 0.0011 (-0.0023) | 0.5603 ± 0.0060 (-0.0706) |
+
+### k562_seen
+| arm (vs new default on the same pairs) | pairs | pΔ ↑ | mae ↓ | overlap_at_N ↑ | disc_l1 ↑ |
+|---|---|---|---|---|---|
+| **new default** (AA03, smooth_l1 + delta-cos), all 25 | 25 | 0.2055 ± 0.0078 | 0.0560 ± 0.0006 | 0.0634 ± 0.0028 | 0.7504 ± 0.0058 |
+| GO only | 10 (2 seeds) | 0.2232 ± 0.0073 (+0.0227) | 0.0550 ± 0.0006 (-0.0006) | 0.0648 ± 0.0021 (+0.0032) | 0.7370 ± 0.0065 (-0.0096) |
+| learnable emb. | 15 (3 seeds) | 0.2101 ± 0.0229 (+0.0009) | 0.0562 ± 0.0008 (+0.0002) | 0.0613 ± 0.0059 (-0.0026) | 0.7463 ± 0.0033 (-0.0062) |
+| GenePT | 15 (3 seeds) | 0.2170 ± 0.0071 (+0.0081) | 0.0564 ± 0.0004 (+0.0000) | 0.0662 ± 0.0014 (+0.0016) | 0.7465 ± 0.0035 (-0.0065) |
+| ESM2 | 14 (3 seeds) | 0.2210 ± 0.0112 (+0.0164) | 0.0569 ± 0.0008 (+0.0005) | 0.0662 ± 0.0030 (+0.0021) | 0.7471 ± 0.0066 (-0.0024) |
+| smooth_l1 only (no delta-cos) | 6 (2 seeds) | 0.1318 ± 0.0049 (-0.0690) | 0.0466 ± 0.0002 (-0.0090) | 0.0411 ± 0.0005 (-0.0205) | 0.6185 ± 0.0049 (-0.1279) |
+
+### k562_seen_h1set
+| arm (vs new default on the same pairs) | pairs | pΔ ↑ | mae ↓ | overlap_at_N ↑ | disc_l1 ↑ |
+|---|---|---|---|---|---|
+| **new default** (AA03, smooth_l1 + delta-cos), all 25 | 25 | 0.1952 ± 0.0097 | 0.0549 ± 0.0006 | 0.0673 ± 0.0034 | 0.6970 ± 0.0085 |
+| GO only | 10 (2 seeds) | 0.2200 ± 0.0115 (+0.0321) | 0.0540 ± 0.0001 (-0.0005) | 0.0714 ± 0.0031 (+0.0065) | 0.6888 ± 0.0095 (-0.0005) |
+| learnable emb. | 15 (3 seeds) | 0.2031 ± 0.0237 (+0.0042) | 0.0547 ± 0.0005 (-0.0000) | 0.0680 ± 0.0058 (-0.0006) | 0.6926 ± 0.0037 (-0.0081) |
+| GenePT | 15 (3 seeds) | 0.2098 ± 0.0094 (+0.0098) | 0.0552 ± 0.0005 (-0.0000) | 0.0729 ± 0.0030 (+0.0039) | 0.6984 ± 0.0038 (-0.0037) |
+| ESM2 | 15 (3 seeds) | 0.2151 ± 0.0136 (+0.0190) | 0.0557 ± 0.0008 (+0.0004) | 0.0743 ± 0.0042 (+0.0074) | 0.7004 ± 0.0039 (+0.0063) |
+| smooth_l1 only (no delta-cos) | 20 (4 seeds) | 0.1248 ± 0.0045 (-0.0668) | 0.0462 ± 0.0002 (-0.0086) | 0.0415 ± 0.0017 (-0.0253) | 0.5956 ± 0.0068 (-0.1006) |
+
+**`ABL_N_DCO` (launched 2026-09-24, user): new default minus smooth_l1 — loss = delta-cos only.**
+smooth_l1 is zeroed through existing knobs: `recon_split=true` with `recon_ctrl_weight = recon_delta_weight = 0`
+(recon_loss = 0·L_ctrl + 0·L_delta, exactly 0, no gradient); profile cosine 0, magnitude 0, latent off;
+delta-cos weight 0.5 as in the default. Nothing then constrains the predicted effect's SIZE
+(delta-cos is scale-invariant), so expect mae to be the metric that moves. `ablate.py run_tag`
+now renders the `_rsplit…` suffix the same way the launcher does. Job in `runs/_ledger/ablation_launches.tsv`.
+Note found while setting this up: with profile cosine on (Y06/AA03, 0.5) the code blends
+`0.5·smooth_l1 + 0.5·profile_cos`, so turning profile cosine off also DOUBLED smooth_l1's weight
+in the ABL_A_DC / NOCOS arms.

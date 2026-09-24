@@ -122,7 +122,7 @@ def run_tag(r):
     than guessed, so a mismatch with the launcher cannot pass silently.
     """
     for k, off in (("latent_cos_weight", "0.0"), ("vicreg_var_weight", "0.0"),
-                   ("vicreg_cov_weight", "0.0"), ("recon_split", "false"),
+                   ("vicreg_cov_weight", "0.0"),
                    ("dcos_conc_weight", "0.0"), ("radial_spread_weight", "0.0"),
                    ("gene_var_weight", "0.0"), ("batch_size", "2048"), ("lr", "1e-3")):
         if r[k] != off:
@@ -132,6 +132,9 @@ def run_tag(r):
         t += f"_mag{r['delta_mag_weight']}"
     if not is_off(r["latent_loss_weight"]):
         t += f"_lmse{r['latent_loss_weight']}"
+    if r["recon_split"] == "true":   # same rendering and position as the launcher's SUFFIX
+        t += (f"_rsplit{r['recon_split_mode']}-{r['recon_delta_target']}-"
+              f"{r['recon_ctrl_weight']}-{r['recon_delta_weight']}")
     return t + f"_e{r['epochs']}_em{r['eta_min']}_s{r['seed']}"
 
 
