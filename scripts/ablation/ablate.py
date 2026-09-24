@@ -173,6 +173,7 @@ def cmd_launch(args):
                    EXTRA_SETS="" if arm["extra_sets"] == "-" else arm["extra_sets"])
         cmd = ["sbatch", "--parsable", f"--qos={args.qos}", f"--wckey={args.qos}",
                f"--time={arm['time']}", f"--array={','.join(map(str, idx))}",
+               *([f"--exclude={args.exclude}"] if args.exclude else []),
                "--export=ALL", LAUNCHER]
         print(f"{arm['arm']}: CONFIG={env['CONFIG']} COS_W={env['COS_W']} EXTRA_SETS={env['EXTRA_SETS'] or '-'}\n  "
               + " ".join(cmd))
@@ -290,6 +291,8 @@ def main():
             p.add_argument("--seeds", default=",".join(map(str, SEEDS)))
             p.add_argument("--qos", default="hooke-predict")
             p.add_argument("--dry-run", action="store_true")
+            p.add_argument("--exclude", default="hop39",
+                           help="nodes to avoid (default hop39, as in the launcher); e.g. hop39,hop02")
     args = ap.parse_args()
     {"grids": cmd_grids, "launch": cmd_launch, "register": cmd_register,
      "table": cmd_table, "status": cmd_status}[args.cmd](args)

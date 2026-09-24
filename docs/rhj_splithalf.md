@@ -3743,7 +3743,7 @@ starvation. Flat/worse → the Norman gain was step starvation; RHJ stays at 204
 | RB256 | 256 | 8× | 24 h | 18365066_1 |
 | RB128 | 128 | 16× | 36 h | 18365067_2 |
 | RB064 | 64 | 32× | 48 h | 18365068_3 |
-| RB032 | 32 | 64× | 72 h | 18365069_4 |
+| RB032 | 32 | 64× | 72 h | 18365069_4 — CANCELLED 2026-09-24 at epoch ~120 after 24 h (user: too slow); archived, not scored |
 
 Y06 took 2h06m at bs 2048. Run dirs `runs/rhj_fewshot_RB<bs>__..._bs<bs>_e150_em3e-4_s42`.
 **Scoring is automatic:** `scripts/slurm/rhj_autoeval_daemon.sh` (job 18365082, cpu, 4 days)
@@ -3859,3 +3859,22 @@ higher): pΔ +0.0037 ± 0.0039 (5/5) · mae +0.0003 ± 0.0005 (4/5 higher = wors
 +0.0067 ± 0.0056 (5/5) · disc_l1 +0.0083 ± 0.0065 (5/5). AA03 had never been scored on the OOD
 panels; its 15 units (h1_seen, k562_seen, k562_seen_h1set × 5 seeds) were registered and
 submitted 2026-09-24 at the user's request for the comparison (jobs 18431111–125).
+
+**Y06 vs AA03 on the OOD panels — PARTIAL, read 2026-09-24 ~04:40.** Matched (seed, split) pairs
+only (Y06 restricted to the pairs AA03 has); mean ± sd across those rows (not across seeds, since
+seeds are incomplete); paired diff = AA03 − Y06 per (seed, split), count = pairs where AA03 is higher.
+
+| panel (pairs) | model | pΔ ↑ | mae ↓ | overlap_at_N ↑ | disc_l1 ↑ |
+|---|---|---|---|---|---|
+| rhj_fewshot (25) | Y06 | 0.3957 ± 0.0066 | 0.0220 ± 0.0006 | 0.0885 ± 0.0053 | 0.7233 ± 0.0038 |
+| | AA03 | 0.3994 ± 0.0042 | 0.0222 ± 0.0007 | 0.0952 ± 0.0017 | 0.7316 ± 0.0036 |
+| | diff | +0.0037 (19/25) | +0.0003 (20/25) | +0.0067 (23/25) | +0.0083 (24/25) |
+| h1_seen (18) | Y06 | 0.0924 ± 0.0028 | 0.1395 ± 0.0014 | 0.3230 ± 0.0018 | 0.5943 ± 0.0081 |
+| | AA03 | 0.0928 ± 0.0025 | 0.1391 ± 0.0003 | 0.3235 ± 0.0013 | 0.6051 ± 0.0100 |
+| | diff | +0.0003 (13/18) | −0.0004 (10/18) | +0.0005 (10/18) | +0.0108 (15/18) |
+| k562_seen (16) | Y06 | 0.1708 ± 0.0038 | 0.0492 ± 0.0004 | 0.0474 ± 0.0014 | 0.6869 ± 0.0088 |
+| | AA03 | 0.1737 ± 0.0023 | 0.0498 ± 0.0004 | 0.0493 ± 0.0011 | 0.7009 ± 0.0082 |
+| | diff | +0.0028 (13/16) | +0.0006 (16/16) | +0.0019 (16/16) | +0.0139 (13/16) |
+| k562_seen_h1set (16) | Y06 | 0.1600 ± 0.0054 | 0.0486 ± 0.0004 | 0.0468 ± 0.0033 | 0.6481 ± 0.0058 |
+| | AA03 | 0.1649 ± 0.0057 | 0.0494 ± 0.0004 | 0.0520 ± 0.0019 | 0.6596 ± 0.0040 |
+| | diff | +0.0049 (11/16) | +0.0008 (16/16) | +0.0052 (16/16) | +0.0115 (16/16) |

@@ -213,3 +213,15 @@ Magnitude (B3) and latent MSE (Y06) buy mae (0.0231 → 0.0219/0.0220 on rhj) an
 (0.7414 → 0.7293 → 0.7233) and OOD pΔ (k562_seen_h1set 0.1750 → 0.1604/0.1609): a trade-off, not
 a free gain. Learnable (A3) and ESM2 (A5, 2 seeds) are ~0.015 pΔ below Y06 on rhj but at or
 above Y06 on the OOD panels.
+
+**2026-09-24 04:20** — `ABL_L2` seed 43 (task 18387764_1) hit its 8 h limit at epoch 2 on **hop02**,
+which ran ~200 s/iteration (normal ~0.07 s). Relaunched with `--exclude hop39,hop02` (job
+18439044; `ablate.py launch --exclude` added). hop02 is a slow-node suspect for all training.
+
+**2026-09-24 ~04:50 — PARKED (user): GenePT, ESM2, C0P, C1, C2, C3.** The model is expected to
+change before these are interpreted, so they will be retrained. All 30 trainings had finished;
+their scoring was cancelled (103 score arrays) and their 120 units removed from
+`configs/score_registry.tsv`. Status `parked` in `arms.tsv` (launch/register skip it). ESM2's 75
+already-scored splits stay on disk and in the table as PARTIAL (2 seeds on rhj) — not a result.
+**2026-09-24 — PARKED (user): GO-only, STRING-only** — scoring cancelled and 40 units removed from
+the registry; their trainings (18427497/498) were then CANCELLED too (user: to be redone with the final architecture).
