@@ -287,6 +287,23 @@ epoch well but **misranks arms** (finding F-ckpt4, held on 5 consecutive grids) 
 use a validation number to compare two configurations. `final_model.pth` is written only
 at the very end, so its presence is the completion marker.
 
+### Finetuning the encoder on your own data (label-free)
+
+Start from the **stage-2 MAE** (`checkpoints/reference/occam_small_stage2_finetune.pth`,
+HF `checkpoints/stage2/`), not the released file: only stage 2 keeps the MAE's own
+decoder and mask predictor. Its encoder is byte-identical to the released one.
+
+```bash
+python scripts/finetune/make_finetune_init.py \
+    --parent checkpoints/reference/occam_small_stage2_finetune.pth \
+    --out runs/finetune_init/occam_small_stage2_mask0.1.pth
+python scripts/finetune/densify_h5ad.py --src mine.h5ad --dst mine_dense.h5ad
+python -m occam.train --config configs/finetune_ssl.yaml --set data.train=mine_dense.h5ad
+```
+
+It is the stage-2 recipe with 5 epochs instead of 100. The first step is needed: without
+it, masking is silently off. See [docs/finetuning.md](docs/finetuning.md).
+
 ### The MAE itself
 
 #### The published MAE recipe

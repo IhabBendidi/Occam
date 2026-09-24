@@ -200,6 +200,11 @@ class OccamConfig:
         for key, value in attrs.items():
             setattr(cfg, key, value)
         cfg.enabled = True
+        # Without this, `run.wandb.enabled: false` never reached stage 2: FinetuneConfig
+        # left `use_wandb` at None, `resolve()` then inherited the PARENT checkpoint's
+        # True, and a finetune logged to the parent's wandb project under the parent's
+        # run name (seen 2026-09-24).
+        self._apply_shared(cfg)
         init_from = meta.get("init_from")
         if init_from:
             cfg.checkpoint = init_from
