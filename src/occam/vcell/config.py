@@ -58,6 +58,12 @@ class VirtualCellConfig:
     # See FrozenEmbeddingModel in adjacency_map.py for the missing-gene policy.
     pert_embedding_path: str = ""
     pert_embedding_norm: str = "zscore"  # zscore | l2 | none (over present genes)
+    # "ALL knowledge sources" arm (opt-in; [] = off, every existing config). With
+    # pert_model_type="adjacency_map" and the graph loaded as usual, each listed table is
+    # normalised with pert_embedding_norm, energy-matched to the adjacency row, and CONCATENATED
+    # to it: MLP([adj_row || table_1 || ...]). Mutually exclusive with pert_embedding_path and
+    # no_gnn. See ConcatKnowledgeModel in adjacency_map.py.
+    pert_embedding_paths: List[str] = field(default_factory=list)
 
     # --- Per-KG settings (for multi-KG loading) ---
     kg_norm_weights: Optional[List[str]] = None  # KGs that get norm_weights=True (default: ["go"])

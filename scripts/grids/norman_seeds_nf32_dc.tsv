@@ -1,0 +1,16 @@
+# NORMAN: NF32 with the loss reduced to smooth_l1 + delta-cos (user, 2026-09-24), seeds 42-46
+#
+# WHY. On rhj_fewshot the AA03 loss ablation (docs/ABLATION_PLAN.md §6) found smooth_l1 + delta-cos
+# only 5/5 better than the full loss on pΔ / overlap / disc_l1 on all OOD panels, at a 12-17% mae
+# cost. The user proposes it as the new default; this checks the same change on norman_combo first.
+# WHAT IS VARIED: delta_mag_weight 0.0400866 -> 0, latent MSE 0.00198826 -> off, profile cosine
+# 0.5 -> 0 (COS_W=0.0 at launch). Everything else = NF32 (bs 32, 150 ep, eta_min 3e-4, lr 1e-3,
+# delta_cos 0.32977, decode_seq_mean). Reference: NF32 5 seeds (additive 0.9051 / nonadditive 0.7981 pΔ).
+# LAUNCH: GRID=<this> CONFIG=configs/norman_combo.yaml COS_W=0.0 sbatch ... rhj_loss_sweep.sbatch
+# Launched 2026-09-24: training job 18506842; ledger daemon 18506843 scores it.
+arm	loss_type	nb_weight	nb_scale	delta_cos_weight	delta_mag_weight	latent_loss_type	latent_loss_weight	latent_cos_weight	latent_cos_target	recon_split	recon_ctrl_weight	recon_delta_weight	recon_split_mode	recon_delta_target	vicreg_var_weight	vicreg_cov_weight	vicreg_gamma	vicreg_target	epochs	eta_min	base	dcos_conc_weight	radial_spread_weight	gene_var_weight	batch_size	lr	seed
+S42_NF32DC	smooth_l1	0	1.0	0.32977	0	none	0.0	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	150	3e-4	dc_NF32_s42	0.0	0.0	0.0	32	1e-3	42
+S43_NF32DC	smooth_l1	0	1.0	0.32977	0	none	0.0	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	150	3e-4	dc_NF32_s43	0.0	0.0	0.0	32	1e-3	43
+S44_NF32DC	smooth_l1	0	1.0	0.32977	0	none	0.0	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	150	3e-4	dc_NF32_s44	0.0	0.0	0.0	32	1e-3	44
+S45_NF32DC	smooth_l1	0	1.0	0.32977	0	none	0.0	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	150	3e-4	dc_NF32_s45	0.0	0.0	0.0	32	1e-3	45
+S46_NF32DC	smooth_l1	0	1.0	0.32977	0	none	0.0	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	150	3e-4	dc_NF32_s46	0.0	0.0	0.0	32	1e-3	46

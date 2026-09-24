@@ -63,3 +63,8 @@ Before the CellFlow / STATE norman retrains, their DEFECTIVE outputs (runs/compe
 Every row of the matrix is now at 5 seeds × 5 splits: Y06 on rhj + 3 OOD panels, NF32 on
 norman_combo, all 4 competitors, all baselines. `data/release/final/scores_by_seed_split.csv`
 (6,041 rows). Still running, for the record only: RB064 / RB128 scoring, RB032 training.
+
+## 2026-09-24 08:15 — vco headroom (user)
+Keep ≥ 5 vco GPUs free: rebalancer restarted with `VCO_CAP=27` (job 18458833, replaces 18365346);
+36 pending vco score jobs moved to hooke-predict; 5 running score tasks requeued onto
+hooke-predict (18447661_1/_2, 18447662_0/_1, 18447663_0). No training was touched.

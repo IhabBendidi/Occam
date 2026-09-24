@@ -412,6 +412,19 @@ class VirtualCellTrainer:
             raise ValueError("pert_embedding_path requires pert_model_type=adjacency_map "
                              f"(got {config.pert_model_type!r})")
         self._pert_embedding_info = None
+        # Opt-in "ALL knowledge sources" arm: frozen tables concatenated to the adjacency row.
+        pert_emb_paths = [str(x) for x in (getattr(config, "pert_embedding_paths", None) or [])
+                          if str(x)]
+        self._pert_embedding_concat_info = None
+        if pert_emb_paths:
+            if config.pert_model_type != "adjacency_map":
+                raise ValueError("pert_embedding_paths requires pert_model_type=adjacency_map "
+                                 f"(got {config.pert_model_type!r})")
+            if pert_emb_path:
+                raise ValueError("pert_embedding_paths (concat to the adjacency row) and "
+                                 "pert_embedding_path (replace it) are mutually exclusive")
+            if config.no_gnn:
+                raise ValueError("pert_embedding_paths needs the graph; no_gnn must be false")
 
         # Load graph (single or multi-KG)
         if pert_emb_path:
@@ -473,6 +486,52 @@ class VirtualCellTrainer:
             print(f"  [pert_embedding coverage] {emb_info['n_present']}/{emb_info['n_vocab']} "
                   f"vocab genes present, {emb_info['n_missing']} missing -> shared learned "
                   f"missing vector (table has {emb_info['n_table_keys']} keys)")
+        elif pert_emb_paths:
+            from occam.vcell.adjacency_map import (ConcatKnowledgeModel,
+                                                   build_pert_embedding_matrix)
+            norm = str(getattr(config, "pert_embedding_norm", "zscore"))
+            tables, table_infos = [], []
+            for tp in pert_emb_paths:
+                m_, p_, i_ = build_pert_embedding_matrix(tp, self.pert2id, norm=norm)
+                tables.append((m_, p_))
+                table_infos.append(i_)
+            pert_model = ConcatKnowledgeModel(
+                num_genes=num_nodes,
+                edge_index=edge_index,
+                tables=tables,
+                hidden_dim=config.adj_hidden_dim,
+                out_dim=config.pert_latent_dim,
+                dropout=config.adj_dropout,
+                use_ffn=config.adj_use_ffn,
+                normalize=config.adj_normalize,
+                adj_deg=config.adj_deg,
+                self_loops=config.adj_self_loops,
+                only_reverse=config.adj_only_reverse,
+                make_undirected=config.adj_make_undirected,
+                activation=config.adj_activation,
+            )
+            del tables
+            for i_, sc in zip(table_infos, pert_model.table_scales):
+                i_["block_scale"] = float(sc)
+            self._pert_embedding_concat_info = {
+                "tables": table_infos,
+                "norm": norm,
+                "block_scaling": "energy_match_to_adjacency",
+                "adj_width": pert_model.adj_width,
+                "adj_n_present": pert_model.adj_n_present,
+                "adj_mean_sq_row_norm": pert_model.adj_energy,
+                "in_dim": pert_model.in_dim,
+            }
+            print(f"  ALL-sources concat: adj_matrix {tuple(pert_model.adj_matrix.shape)} + "
+                  f"{len(table_infos)} frozen tables -> MLP input width {pert_model.in_dim}")
+            print(f"  [pert_embedding coverage] adjacency: {pert_model.adj_n_present}/{num_nodes} "
+                  f"nodes with >=1 edge (mean sq row norm {pert_model.adj_energy:.2f}; "
+                  f"edgeless genes keep the all-zero row)")
+            for i_ in table_infos:
+                print(f"  [pert_embedding coverage] {os.path.basename(i_['path'])}: "
+                      f"{i_['n_present']}/{i_['n_vocab']} present, {i_['n_missing']} missing -> "
+                      f"per-table learned missing vector; dim={i_['dim']}, norm={i_['norm']}, "
+                      f"block scale {i_['block_scale']:.4g}, sha256 {i_['sha256'][:12]}")
         elif config.no_gnn and config.pert_model_type == "adjacency_map":
             from occam.vcell.adjacency_map import LearnableEmbeddingModel
             pert_model = LearnableEmbeddingModel(
@@ -931,6 +990,25 @@ class VirtualCellTrainer:
                 out_dim=gc_.get("out_dim", 64),
                 dropout=gc_.get("adj_dropout", 0.2),
                 use_ffn=gc_.get("adj_use_ffn", True),
+                activation=gc_.get("adj_activation", "relu"),
+            )
+        elif pert_model_type == "adjacency_map" and gc_.get("pert_embedding_concat"):
+            # ALL-sources arm: adjacency + scaled tables are buffers in gnn_state_dict; the
+            # table files are NOT re-read. Scales come from the checkpoint (they are already
+            # baked into the stored tables; passed so the shell does not recompute them).
+            from occam.vcell.adjacency_map import ConcatKnowledgeModel
+            pci = gc_["pert_embedding_concat"]
+            pert_model = ConcatKnowledgeModel.empty_like_state(
+                ckpt["gnn_state_dict"],
+                table_scales=[t["block_scale"] for t in pci["tables"]],
+                hidden_dim=gc_.get("adj_hidden_dim", 128),
+                out_dim=gc_.get("out_dim", 64),
+                dropout=gc_.get("adj_dropout", 0.2),
+                use_ffn=gc_.get("adj_use_ffn", True),
+                normalize=gc_.get("adj_normalize", "none"),
+                adj_deg=gc_.get("adj_deg", 1),
+                only_reverse=gc_.get("adj_only_reverse", True),
+                make_undirected=gc_.get("adj_make_undirected", True),
                 activation=gc_.get("adj_activation", "relu"),
             )
         elif pert_model_type == "adjacency_map" and no_gnn:
@@ -3762,6 +3840,10 @@ class VirtualCellTrainer:
                 **({"pert_embedding": dict(self._pert_embedding_info),
                     "adj_use_ffn": self.config.adj_use_ffn,
                    } if getattr(self, "_pert_embedding_info", None) else {}),
+                # ALL-sources concat arm only: per-table provenance + block scales.
+                **({"pert_embedding_concat": dict(self._pert_embedding_concat_info),
+                    "adj_use_ffn": self.config.adj_use_ffn,
+                   } if getattr(self, "_pert_embedding_concat_info", None) else {}),
             },
             "interaction_config": {
                 "interaction_type": self.config.interaction_type,
@@ -3804,6 +3886,12 @@ class VirtualCellTrainer:
                     "pert_embedding_sha256": self._pert_embedding_info["sha256"],
                     "pert_embedding_norm": self._pert_embedding_info["norm"],
                    } if getattr(self, "_pert_embedding_info", None) else {}),
+                **({"pert_embedding_paths": [t["path"] for t in
+                                             self._pert_embedding_concat_info["tables"]],
+                    "pert_embedding_sha256s": [t["sha256"] for t in
+                                               self._pert_embedding_concat_info["tables"]],
+                    "pert_embedding_norm": self._pert_embedding_concat_info["norm"],
+                   } if getattr(self, "_pert_embedding_concat_info", None) else {}),
                 "graph_type": self.config.graph_type,
                 "graph_types": self.config.graph_types,
                 "data_perts_only": self.config.data_perts_only,
@@ -3934,6 +4022,15 @@ class VirtualCellTrainer:
                         "pert_embedding_n_present": self._pert_embedding_info["n_present"],
                         "pert_embedding_n_vocab": self._pert_embedding_info["n_vocab"],
                        } if getattr(self, "_pert_embedding_info", None) else {}),
+                    **({"pert_embedding_paths": [t["path"] for t in
+                                                 self._pert_embedding_concat_info["tables"]],
+                        "pert_embedding_sha256s": [t["sha256"] for t in
+                                                   self._pert_embedding_concat_info["tables"]],
+                        "pert_embedding_n_present": [t["n_present"] for t in
+                                                     self._pert_embedding_concat_info["tables"]],
+                        "pert_embedding_norm": self._pert_embedding_concat_info["norm"],
+                        "pert_embedding_concat_in_dim": self._pert_embedding_concat_info["in_dim"],
+                       } if getattr(self, "_pert_embedding_concat_info", None) else {}),
                     # v2
                     "interaction_type": config.interaction_type,
                     "film_scale": config.film_scale,

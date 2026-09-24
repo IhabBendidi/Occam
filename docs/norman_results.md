@@ -1089,3 +1089,13 @@ the sum_of_singles bar (0.8824 / 0.7757). Occam NF32 at 5 seeds × 5 splits (202
 (0.0045)** / nonadditive **0.7981 (0.0071)**, mae 0.0114 / 0.0133, overlap_at_N 0.3012 / 0.2880,
 disc_l1 0.8794 / 0.7664 — above sum_of_singles (0.8824 / 0.7757) and every competitor on pΔ and
 mae. NF42 (seed 42, for the record): 0.9097 / 0.7971.
+
+### 2026-09-24: NF32 with smooth_l1 + delta-cos only, 5 seeds (launched)
+Question: does the rhj finding (AA03 loss ablation, `docs/ABLATION_PLAN.md` §6 — dropping
+magnitude, latent MSE and profile cosine is 5/5 better on pΔ / overlap / disc_l1 on the OOD panels,
+12–17% worse mae) hold on norman_combo? Grid `scripts/grids/norman_seeds_nf32_dc.tsv`: NF32
+(bs 32, 150 ep, eta_min 3e-4, delta_cos 0.32977, decode_seq_mean) with delta_mag 0.0400866 → 0,
+latent MSE 0.00198826 → off, profile cosine 0.5 → 0. Training job 18506842 (seeds 42–46), scored
+by the ledger (18506843). Reference: NF32 5 seeds, pΔ 0.9051 / 0.7981 (additive / nonadditive),
+mae 0.0114 / 0.0133. Reading: better pΔ / overlap / disc_l1 on additive and nonadditive with a
+mae cost = the rhj trade-off transfers; worse pΔ = Norman needs the terms.

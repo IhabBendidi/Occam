@@ -334,6 +334,9 @@ VCELL_SCHEMA: Dict[str, Dict[str, Optional[str]]] = {
         # the adjacency row. Empty = off. Ablation arms A4/A5 (docs/ABLATION_PLAN.md).
         "pert_embedding_path": "pert_embedding_path",
         "pert_embedding_norm": "pert_embedding_norm",
+        # Opt-in list of frozen tables CONCATENATED to the adjacency row ("all sources" arm).
+        # Empty = off. See ConcatKnowledgeModel.
+        "pert_embedding_paths": "pert_embedding_paths",
         "graph_type": "graph_type", "graph_cache_dir": "graph_cache_dir",
         "master_gene_set_path": "master_gene_set_path",
         "graph_types": "graph_types", "graph_edge_filter_mode": "graph_edge_filter_mode",

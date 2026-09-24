@@ -45,7 +45,12 @@ ARMS = os.path.join(REPO, "scripts/ablation/arms.tsv")
 # Base recipes an arm can start from (arms.tsv `base` column, default Y06). Each is an exact
 # seed-replicate row; only arm/base/seed are rewritten per seed.
 BASES = {"Y06": ("scripts/grids/rhj_seeds.tsv", "S43_Y06"),         # 150 ep, eta_min 3e-4
-         "AA03": ("scripts/grids/rhj_seeds_aa03.tsv", "S43_AA03")}  # 180 ep, eta_min 7e-4
+         "AA03": ("scripts/grids/rhj_seeds_aa03.tsv", "S43_AA03"),  # 180 ep, eta_min 7e-4
+         # the NEW DEFAULT (2026-09-24): AA03 + smooth_l1 + delta-cos only. Arms on it MUST set
+         # cos_w 0.0 (profile cosine is a launcher env, not a grid column).
+         "AA03_DC": ("scripts/grids/rhj_seeds_aa03_dc.tsv", "S43_AA03DC")}
+# the model name whose seed runs are the reference for arms on each base
+REF_MODEL = {"Y06": "Y06", "AA03": "AA03", "AA03_DC": "ABL_A_DC"}
 GRID_DIR = os.path.join(REPO, "scripts/grids/ablation")
 LAUNCHER = "scripts/slurm/rhj_loss_sweep.sbatch"
 LAUNCH_LOG = os.path.join(REPO, "runs/_ledger/ablation_launches.tsv")
@@ -54,7 +59,7 @@ SEEDS = (42, 43, 44, 45, 46)
 PANELS = ("rhj_fewshot", "h1_seen", "k562_seen", "k562_seen_h1set")
 HEADLINE = ("pearson_delta", "mae", "overlap_at_N", "discrimination_score_l1")
 # The five Y06 runs = the reference arm of every axis (seed 42 is the published run).
-Y06_MODELS = set(BASES)            # reference arms in the table (their own seed runs)
+Y06_MODELS = {"Y06", "AA03"}       # reference arms in the table (their own seed runs)
 
 
 def read_tsv(path):

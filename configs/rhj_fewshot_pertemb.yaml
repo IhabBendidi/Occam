@@ -1,8 +1,9 @@
 # =====================================================================
 # rhj_fewshot + the FROZEN PER-GENE EMBEDDING hook -- perturbation-representation ablation
 #
-# WHY THIS FILE EXISTS. It is configs/rhj_fewshot.yaml byte-for-byte, plus the two keys
-# `stages.vcell.graph.pert_embedding_path` / `pert_embedding_norm` (at the end of `graph:`).
+# WHY THIS FILE EXISTS. It is configs/rhj_fewshot.yaml byte-for-byte, plus the three keys
+# `stages.vcell.graph.pert_embedding_path` / `pert_embedding_norm` / `pert_embedding_paths`
+# (at the end of `graph:`).
 # `--set` may only change keys a config already declares, and adding them to rhj_fewshot.yaml
 # itself would change the stage hash of every Y06 run in flight (resume: auto would then
 # refuse to reuse them). tests/test_frozen_pert_embedding.py asserts the two files differ by
@@ -12,7 +13,9 @@
 #   A4 GenePT : pert_embedding_path=data/assets/genept_full_occam_rhj_fewshot.pkl  (full vocab;
 #               NOT genept_occam_rhj_fewshot.pkl, which covers only the 2,376 benchmark symbols)
 #   A5 ESM2   : pert_embedding_path=data/assets/esm2_t33_650M_UR50D_occam_rhj_fewshot.pkl
-# With the path empty (the default here) this config builds exactly Y06.
+#   ALL (GO+STRING row || GenePT || ESM2):
+#     pert_embedding_paths=[data/assets/genept_full_occam_rhj_fewshot.pkl,data/assets/esm2_t33_650M_UR50D_occam_rhj_fewshot.pkl]
+# With the path empty and the list [] (the defaults here) this config builds exactly Y06.
 # =====================================================================
 # =====================================================================
 # RPE1 / HepG2 / Jurkat few-shot benchmark — the reference arm.
@@ -169,6 +172,10 @@ stages:
       # "" = off (Y06). Graph is not loaded when set. See FrozenEmbeddingModel.
       pert_embedding_path: ""
       pert_embedding_norm: zscore   # zscore | l2 | none, over present genes
+      # ALL knowledge sources: tables CONCATENATED to the adjacency row -> the same MLP.
+      # [] = off (Y06). Graph IS loaded. Each table gets pert_embedding_norm, then one scalar
+      # that energy-matches it to the adjacency row. See ConcatKnowledgeModel.
+      pert_embedding_paths: []
 
     interaction:
       interaction_type: film

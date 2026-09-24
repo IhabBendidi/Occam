@@ -225,3 +225,86 @@ their scoring was cancelled (103 score arrays) and their 120 units removed from
 already-scored splits stay on disk and in the table as PARTIAL (2 seeds on rhj) — not a result.
 **2026-09-24 — PARKED (user): GO-only, STRING-only** — scoring cancelled and 40 units removed from
 the registry; their trainings (18427497/498) were then CANCELLED too (user: to be redone with the final architecture).
+
+**2026-09-24 ~08:25 — Y06 ablations STOPPED (user: AA03 is the recipe going forward).**
+`ABL_Y_DC/NOMAG/NOCOS` parked (all 15 trainings had finished; scoring cancelled, 60 units removed);
+`ABL_L2` seed 43 trained (final_model.pth exists) but its scoring was cancelled, so B2 stays at
+4 seeds. 48 score arrays cancelled. Only the AA03 loss-removal arms (axis D, base AA03) continue.
+
+## 6. AA03 loss ablation (axis D, base AA03) — COMPLETE, read 2026-09-24 13:05
+
+5 seeds × 5 splits per arm and panel, nocal. Mean ± sd across seeds of the per-seed split-mean;
+'vs AA03' = paired by seed (seeds where the arm is higher). mae is an error (lower is better).
+
+### rhj_fewshot
+| arm | pΔ ↑ | mae ↓ | overlap_at_N ↑ | disc_l1 ↑ | rows |
+|---|---|---|---|---|---|
+| **AA03** (full: smooth_l1 + profile cos + delta-cos + mag + latent MSE) | 0.3994 ± 0.0040 | 0.0222 ± 0.0008 | 0.0952 ± 0.0012 | 0.7316 ± 0.0037 | 25 |
+| − magnitude | 0.4017 ± 0.0018 | 0.0231 ± 0.0002 | 0.0957 ± 0.0020 | 0.7451 ± 0.0017 | 25 |
+| ↳ vs AA03 | +0.0023 (4/5) | +0.0008 (4/5) | +0.0005 (3/5) | +0.0135 (5/5) | |
+| − profile cosine | 0.4006 ± 0.0039 | 0.0220 ± 0.0002 | 0.0958 ± 0.0022 | 0.7338 ± 0.0059 | 25 |
+| ↳ vs AA03 | +0.0011 (3/5) | -0.0002 (2/5) | +0.0006 (2/5) | +0.0022 (3/5) | |
+| − mag − profile cos − latent (smooth_l1 + delta-cos) | 0.4007 ± 0.0008 | 0.0261 ± 0.0007 | 0.0893 ± 0.0035 | 0.7613 ± 0.0030 | 25 |
+| ↳ vs AA03 | +0.0013 (3/5) | +0.0038 (5/5) | -0.0059 (0/5) | +0.0298 (5/5) | |
+
+### h1_seen
+| arm | pΔ ↑ | mae ↓ | overlap_at_N ↑ | disc_l1 ↑ | rows |
+|---|---|---|---|---|---|
+| **AA03** (full: smooth_l1 + profile cos + delta-cos + mag + latent MSE) | 0.0948 ± 0.0039 | 0.1398 ± 0.0016 | 0.3232 ± 0.0009 | 0.6056 ± 0.0095 | 25 |
+| − magnitude | 0.0913 ± 0.0016 | 0.1391 ± 0.0004 | 0.3235 ± 0.0005 | 0.6050 ± 0.0062 | 25 |
+| ↳ vs AA03 | -0.0035 (1/5) | -0.0007 (2/5) | +0.0003 (3/5) | -0.0007 (2/5) | |
+| − profile cosine | 0.0984 ± 0.0038 | 0.1407 ± 0.0015 | 0.3231 ± 0.0002 | 0.5985 ± 0.0068 | 25 |
+| ↳ vs AA03 | +0.0036 (4/5) | +0.0009 (3/5) | -0.0001 (2/5) | -0.0072 (2/5) | |
+| − mag − profile cos − latent (smooth_l1 + delta-cos) | 0.1049 ± 0.0032 | 0.1418 ± 0.0011 | 0.3249 ± 0.0010 | 0.6364 ± 0.0134 | 25 |
+| ↳ vs AA03 | +0.0101 (5/5) | +0.0020 (5/5) | +0.0017 (5/5) | +0.0308 (5/5) | |
+
+### k562_seen
+| arm | pΔ ↑ | mae ↓ | overlap_at_N ↑ | disc_l1 ↑ | rows |
+|---|---|---|---|---|---|
+| **AA03** (full: smooth_l1 + profile cos + delta-cos + mag + latent MSE) | 0.1785 ± 0.0123 | 0.0498 ± 0.0004 | 0.0496 ± 0.0011 | 0.6957 ± 0.0108 | 25 |
+| − magnitude | 0.1850 ± 0.0037 | 0.0508 ± 0.0003 | 0.0541 ± 0.0012 | 0.7147 ± 0.0048 | 25 |
+| ↳ vs AA03 | +0.0064 (4/5) | +0.0010 (5/5) | +0.0046 (5/5) | +0.0190 (5/5) | |
+| − profile cosine | 0.1792 ± 0.0075 | 0.0493 ± 0.0004 | 0.0496 ± 0.0011 | 0.6893 ± 0.0121 | 25 |
+| ↳ vs AA03 | +0.0007 (3/5) | -0.0006 (1/5) | +0.0001 (3/5) | -0.0064 (1/5) | |
+| − mag − profile cos − latent (smooth_l1 + delta-cos) | 0.2055 ± 0.0085 | 0.0560 ± 0.0007 | 0.0634 ± 0.0029 | 0.7504 ± 0.0061 | 25 |
+| ↳ vs AA03 | +0.0269 (5/5) | +0.0062 (5/5) | +0.0138 (5/5) | +0.0547 (5/5) | |
+
+### k562_seen_h1set
+| arm | pΔ ↑ | mae ↓ | overlap_at_N ↑ | disc_l1 ↑ | rows |
+|---|---|---|---|---|---|
+| **AA03** (full: smooth_l1 + profile cos + delta-cos + mag + latent MSE) | 0.1715 ± 0.0143 | 0.0493 ± 0.0004 | 0.0519 ± 0.0008 | 0.6576 ± 0.0059 | 25 |
+| − magnitude | 0.1758 ± 0.0052 | 0.0502 ± 0.0003 | 0.0589 ± 0.0027 | 0.6665 ± 0.0031 | 25 |
+| ↳ vs AA03 | +0.0043 (4/5) | +0.0009 (4/5) | +0.0069 (5/5) | +0.0089 (5/5) | |
+| − profile cosine | 0.1740 ± 0.0106 | 0.0487 ± 0.0007 | 0.0528 ± 0.0023 | 0.6611 ± 0.0042 | 25 |
+| ↳ vs AA03 | +0.0025 (3/5) | -0.0006 (1/5) | +0.0009 (3/5) | +0.0035 (2/5) | |
+| − mag − profile cos − latent (smooth_l1 + delta-cos) | 0.1952 ± 0.0096 | 0.0549 ± 0.0006 | 0.0673 ± 0.0028 | 0.6970 ± 0.0089 | 25 |
+| ↳ vs AA03 | +0.0237 (5/5) | +0.0057 (5/5) | +0.0154 (5/5) | +0.0394 (5/5) | |
+
+**Reading.** Removing all three secondary terms (smooth_l1 + delta-cos only) is 5/5 better than
+AA03 on pΔ, overlap_at_N and disc_l1 on all three OOD panels (k562_seen pΔ +0.027, disc_l1
++0.055; h1_seen pΔ +0.010) and on rhj disc_l1 (+0.030), at a 5/5 mae cost (+12–17% relative:
+rhj 0.0222 → 0.0261, k562_seen 0.0498 → 0.0560) and −0.006 rhj overlap_at_N. Removing magnitude
+alone gives a smaller version of the same trade (better K562 overlap/disc, +0.001 mae; H1 pΔ
+−0.0035). Removing profile cosine alone is within seed noise everywhere. The terms buy mae; they
+cost ranking/discrimination and OOD transfer.
+
+## 7. Ablations on the NEW DEFAULT (AA03 + smooth_l1 + delta-cos), launched 2026-09-24
+
+Base `AA03_DC` in `ablate.py` (grid `scripts/grids/rhj_seeds_aa03_dc.tsv`, COS_W 0.0); reference =
+the `ABL_A_DC` 5-seed runs (§6). Each arm = new default with ONE change, seeds 42–46, scored on
+rhj + h1_seen + k562_seen + k562_seen_h1set. New arm ids (`ABL_N_*`) so nothing mixes with the
+parked Y06-based arms.
+
+| arm | axis | change | job |
+|---|---|---|---|
+| `ABL_N_GO` | A | graph prior = GO only | 18508696 |
+| `ABL_N_STR` | A | graph prior = STRING only | 18508697 |
+| `ABL_N_LRN` | A | learnable embedding per gene, no prior | 18508698 |
+| `ABL_N_GPT` | A | frozen GenePT (full-vocab table) | 18508699 |
+| `ABL_N_ESM` | A | frozen ESM2 | 18508700 |
+| `ABL_N_ALL` | A | ALL sources concatenated: GO+STRING adjacency row ‖ GenePT ‖ ESM2 (`ConcatKnowledgeModel`; input 22,568 = 18,216 + 3,072 + 1,280; each table z-scored then scaled so its mean squared row norm = the adjacency's, 46.0; +561k params) | 18509294 |
+| `ABL_N_L0` | B | minus delta-cos (smooth_l1 only) | 18508721 |
+
+Reading: an arm below ABL_A_DC by more than ~2 seed-sd on a panel means the default's
+representation (or delta-cos, for L0) carries performance there; ALL above the default means the
+sources are complementary.

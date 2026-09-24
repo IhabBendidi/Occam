@@ -334,3 +334,161 @@ class FrozenEmbeddingModel(nn.Module):
 
     def forward(self, edge_index=None, edge_weight=None):
         return self.map_to_latent(self.node_features())
+
+
+# ---------------------------------------------------------------------------
+# ALL knowledge sources concatenated: [adjacency row || table_1 || table_2 ...] -> the SAME MLP
+# ---------------------------------------------------------------------------
+#
+# WHY THIS EXISTS. Ablation arm "all sources": does giving the adjacency-map MLP the GO+STRING
+# row AND the frozen GenePT / ESM2 vectors beat any single source? Everything but the input
+# width of the first Linear is identical to SimpleAdjacencyMapModel (same adj_* knobs, same
+# adjacency construction, same MLP shape).
+#
+# PER-SOURCE SCALING (so no source dominates the first layer by scale alone):
+#   * The adjacency block is left EXACTLY as SimpleAdjacencyMapModel builds it. Under the
+#     rhj_fewshot settings (adj_normalize=none, only_reverse=True) that is a binary 0/1 row,
+#     so its squared row norm is the node degree (mean ~ a few dozen), whatever the width.
+#   * Each table is first normalised per dimension exactly as FrozenEmbeddingModel does
+#     (`pert_embedding_norm`, default zscore -> squared row norm ~= D: 3,072 for GenePT, 1,280
+#     for ESM2), then multiplied by ONE scalar so its mean squared row norm over present genes
+#     EQUALS the adjacency block's mean squared row norm over nodes with degree > 0.
+#   Rationale: the first-layer pre-activation is sum_b W_b x_b; with a fan-in init its variance
+#   contribution from block b is proportional to ||x_b||^2. Energy matching therefore gives
+#   each source an equal share at init. Without it a z-scored GenePT block would carry ~100x
+#   the energy of the adjacency row and the arm would be "GenePT + a little graph".
+#   The adjacency is the reference and is not rescaled, so the graph part of the input is
+#   bit-identical to the default model's.
+#
+# MISSING GENES: per table, the FrozenEmbeddingModel policy -- zero row + one learned
+#   zero-initialised missing vector PER TABLE (in the scaled space). The adjacency block keeps
+#   its default behaviour (a gene with no edges has an all-zero row; no extra vector).
+#
+# The first Linear is applied block-wise (sum of F.linear over weight column slices), which is
+# mathematically identical to Linear(cat(blocks)) and keeps the state-dict layout of a plain
+# concat Linear, but never materialises the [N, N + sum D] concatenation (~1.7 GB at 18,216
+# nodes) or saves it for backward.
+
+
+def _row_sq_norms(mat: torch.Tensor, chunk: int = 2048) -> torch.Tensor:
+    """Squared L2 norm of every row, in float64, chunked (no full-size temporaries)."""
+    out = torch.empty(mat.shape[0], dtype=torch.float64)
+    for i in range(0, mat.shape[0], chunk):
+        out[i:i + chunk] = mat[i:i + chunk].double().pow(2).sum(dim=1).cpu()
+    return out
+
+
+def _block_energy(mat: torch.Tensor, rows: torch.Tensor) -> float:
+    """Mean squared L2 row norm over the selected rows."""
+    if int(rows.sum()) == 0:
+        return 0.0
+    return float(_row_sq_norms(mat)[rows.cpu()].mean())
+
+
+class ConcatKnowledgeModel(SimpleAdjacencyMapModel):
+    """[adjacency row || frozen table_1 || ... ] -> the SimpleAdjacencyMapModel MLP.
+
+    ``tables`` is a list of ``(matrix [num_genes, D_k], present [num_genes])`` already aligned to
+    the perturbation vocabulary (``build_pert_embedding_matrix``). ``table_scales`` (reload path
+    only) bypasses the energy matching and uses the given scalars; normally leave it None.
+
+    Trainable: ``map_to_latent`` (first Linear has width ``adj_width + sum D_k``) and one
+    ``missing_embeddings[k]`` vector per table. Adjacency and tables are buffers (no grad).
+    """
+
+    def __init__(self, num_genes: int, edge_index: torch.Tensor, tables, hidden_dim: int = 128,
+                 out_dim: int = 64, dropout: float = 0.2, use_ffn: bool = True,
+                 normalize: str = "none", adj_deg: int = 1, self_loops: bool = False,
+                 only_reverse: bool = True, make_undirected: bool = True,
+                 activation: str = "relu", table_scales=None):
+        if not tables:
+            raise ValueError("ConcatKnowledgeModel needs at least one table")
+        super().__init__(num_genes=num_genes, edge_index=edge_index, hidden_dim=hidden_dim,
+                         out_dim=out_dim, dropout=dropout, use_ffn=use_ffn, normalize=normalize,
+                         adj_deg=adj_deg, self_loops=self_loops, poly_sum=False,
+                         only_reverse=only_reverse, make_undirected=make_undirected,
+                         add_column=False, activation=activation)
+        self.use_ffn = bool(use_ffn)
+        self.adj_width = int(self.adj_matrix.size(1))
+        adj_sq = _row_sq_norms(self.adj_matrix)
+        adj_present = adj_sq > 0
+        self.adj_n_present = int(adj_present.sum())
+        self.adj_energy = float(adj_sq[adj_present].mean()) if self.adj_n_present else 0.0
+        self.n_tables = len(tables)
+        self.table_dims = []
+        self.table_scales = []
+        self.missing_embeddings = nn.ParameterList()
+        for k, (mat, present) in enumerate(tables):
+            if mat.dim() != 2 or mat.shape[0] != self.adj_matrix.shape[0]:
+                raise ValueError(f"table {k}: shape {tuple(mat.shape)} does not match "
+                                 f"{self.adj_matrix.shape[0]} adjacency nodes")
+            if present.shape != (mat.shape[0],):
+                raise ValueError(f"table {k}: present mask must have shape [num_genes]")
+            mat = mat.detach().float().clone()
+            present = present.detach().bool().clone()
+            if table_scales is not None:
+                scale = float(table_scales[k])
+            else:
+                e_tab = _block_energy(mat, present)
+                scale = (self.adj_energy / e_tab) ** 0.5 if (e_tab > 0 and self.adj_energy > 0) \
+                    else 1.0
+            mat = mat * scale
+            self.register_buffer(f"emb_table_{k}", mat)
+            self.register_buffer(f"emb_present_{k}", present)
+            self.missing_embeddings.append(nn.Parameter(torch.zeros(mat.shape[1])))
+            self.table_dims.append(int(mat.shape[1]))
+            self.table_scales.append(scale)
+        self.in_dim = self.adj_width + sum(self.table_dims)
+
+        # Same construction as SimpleAdjacencyMapModel, wider first layer.
+        if use_ffn:
+            self.map_to_latent = nn.Sequential(
+                nn.Linear(self.in_dim, hidden_dim),
+                _make_activation(activation),
+                nn.Dropout(dropout),
+                nn.Linear(hidden_dim, out_dim),
+            )
+        else:
+            self.map_to_latent = nn.Linear(self.in_dim, out_dim)
+
+    @classmethod
+    def empty_like_state(cls, state_dict: dict, table_scales, **kwargs) -> "ConcatKnowledgeModel":
+        """Shell with the buffer shapes of a saved state dict (reload path; no files read)."""
+        adj = state_dict["adj_matrix"]
+        k, tables = 0, []
+        while f"emb_table_{k}" in state_dict:
+            t = state_dict[f"emb_table_{k}"]
+            tables.append((torch.zeros_like(t, dtype=torch.float32),
+                           torch.zeros(t.shape[0], dtype=torch.bool)))
+            k += 1
+        return cls(num_genes=adj.shape[0], edge_index=torch.zeros(2, 0, dtype=torch.long),
+                   tables=tables, table_scales=table_scales, **kwargs)
+
+    def node_feature_blocks(self):
+        blocks = [self.adj_matrix]
+        for k in range(self.n_tables):
+            tbl = getattr(self, f"emb_table_{k}")
+            miss = (~getattr(self, f"emb_present_{k}")).unsqueeze(1).to(tbl.dtype)
+            blocks.append(tbl + miss * self.missing_embeddings[k].unsqueeze(0))
+        return blocks
+
+    def node_features(self) -> torch.Tensor:
+        """The concatenated input (materialised; for tests / inspection only)."""
+        return torch.cat(self.node_feature_blocks(), dim=1)
+
+    def forward(self, edge_index=None, edge_weight=None):
+        first = self.map_to_latent[0] if self.use_ffn else self.map_to_latent
+        w = first.weight
+        h, off = None, 0
+        for b in self.node_feature_blocks():
+            width = b.shape[1]
+            # bias rides on the first block, so under autocast it is added in the same dtype
+            # as nn.Linear would add it
+            part = nn.functional.linear(b, w[:, off:off + width],
+                                        first.bias if h is None else None)
+            h = part if h is None else h + part
+            off += width
+        if self.use_ffn:
+            for layer in list(self.map_to_latent)[1:]:
+                h = layer(h)
+        return h
