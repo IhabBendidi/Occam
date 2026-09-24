@@ -44,6 +44,14 @@ class PerturbationBatch:
     # is what lets `delta_cos_weight` / `delta_mag_weight` run on the non-stream_v2 path
     # (they are SILENTLY ZERO without it -- the F-loss1 shape).
     group_ids: Optional[torch.Tensor] = None
+    # COMPACT batches (VirtualCellStreamingDataset fast path). When `compact_cols` is set,
+    # perturbed_expression -- and control_expression if `ctrl_compact` -- hold only these
+    # encoder columns; the trainer scatters them into a zero (B, num_encoder_genes) tensor
+    # ON THE GPU. `gene_masks` is then None and the mask is `mask_table[mask_ids]`.
+    compact_cols: Optional[torch.Tensor] = None
+    ctrl_compact: bool = False
+    mask_ids: Optional[torch.Tensor] = None
+    mask_table: Optional[torch.Tensor] = None
 
 
 # ---------------------------------------------------------------------------
@@ -1072,6 +1080,9 @@ class VirtualCellStreamingDataset(IterableDataset):
         batch_match: bool = False,
         interleave: str = "roundrobin",
         row_group_index: Optional[Dict[Tuple[str, str, str], int]] = None,
+        fast: bool = False,
+        prefetch: int = 4,
+        cache_max_gb: float = 48.0,
     ):
         # NON-stream_v2 options (encoder ablation, 2026-09-23). StreamingDatasetV2 subclasses
         # this class but passes neither, so both stay at their no-op values there and its
@@ -1085,6 +1096,11 @@ class VirtualCellStreamingDataset(IterableDataset):
             raise ValueError(f"interleave must be 'roundrobin' or 'proportional', got {interleave!r}")
         self._v1_interleave = interleave
         self._v1_row_group_index = row_group_index
+        # fast: compact rows + GPU densify + background-thread prefetch (see _produce_fast).
+        # Off by default; StreamingDatasetV2 never passes it and overrides __iter__ anyway.
+        self.fast = bool(fast)
+        self.prefetch = int(prefetch)
+        self.cache_max_gb = float(cache_max_gb)
         if n_controls != 1:
             raise ValueError(
                 f"VirtualCellStreamingDataset is single-cell only: n_controls must be 1, "
@@ -1200,6 +1216,11 @@ class VirtualCellStreamingDataset(IterableDataset):
         self._assert_every_streamed_line_is_pairable()
 
         self._epoch = 0
+        if self.fast:
+            _why = self.fast_supported()
+            if _why is not None:
+                raise ValueError(f"fast v1 loader does not support {_why}; use fast=False")
+            self._fast_init()
         self._total_pert_cells = self._count_pert_cells()
         if self._total_pert_cells == 0:
             raise ValueError(
@@ -1387,6 +1408,9 @@ class VirtualCellStreamingDataset(IterableDataset):
         self._epoch = epoch
 
     def __iter__(self):
+        if getattr(self, "fast", False):
+            yield from self._iter_fast()
+            return
         rng = np.random.default_rng(self.seed + self._epoch)
 
         # "exact" feeds the cell's own RAW expression as the control input, while a
@@ -1676,6 +1700,318 @@ class VirtualCellStreamingDataset(IterableDataset):
                     group_ids=(torch.from_numpy(np.ascontiguousarray(group_arr[b_start:b_end]))
                                if self._v1_row_group_index is not None else None),
                 )
+
+    # ------------------------------------------------------------------ fast path (v1)
+    # `fast=True` (the non-stream_v2 training loader, 2026-09-23). Same rows, same
+    # predicates, same batches-per-group semantics as `__iter__` above, but:
+    #   * eligibility is precomputed per file as boolean arrays (no per-row Python loop);
+    #   * rows are kept COMPACT -- only the encoder columns any active file maps to (6,983
+    #     on rhj_fewshot, vs 44,728) -- and densified ON THE GPU by the trainer;
+    #   * controls are one fancy-index gather per cell line into a compact pool;
+    #   * a background THREAD (HDF5 is not fork-safe) prepares batches ahead of the GPU.
+    # ⚠️ The random stream differs from `__iter__` (controls are drawn per cell line in
+    # sorted order, then one permutation per buffer group), so the exact pairing and batch
+    # composition differ from the slow path. Chunk order (incl. proportional interleave)
+    # and every eligibility rule are identical; deterministic given (seed, epoch).
+    def fast_supported(self) -> Optional[str]:
+        """None if the fast path can serve this configuration, else the reason."""
+        if self.batch_match:
+            return "batch_match"
+        if self._n_extra:
+            return "extra_samples (H1 identity rows)"
+        if self.n_controls != 1:
+            return "n_controls != 1"
+        return None
+
+    def _fast_init(self) -> None:
+        G = self.num_encoder_genes
+        used = np.zeros(G, dtype=bool)
+        for fm in self.active_metas:
+            used[np.asarray(fm.dst_indices, dtype=np.int64)] = True
+        self._fcols = np.flatnonzero(used).astype(np.int64)          # canonical compact axis
+        pos = np.full(G, -1, dtype=np.int64)
+        pos[self._fcols] = np.arange(len(self._fcols))
+        U = len(self._fcols)
+        train_cl = set(self.train_cell_lines) if self.train_cell_lines else None
+        split = set(self.split_pert_names)
+        self._fcidx, self._fpert_ok, self._fctrl_ok = {}, {}, {}
+        self._fuid, self._fres, self._funiq = {}, {}, {}
+        for mi, fm in enumerate(self.active_metas):
+            # compact column k of this file <- raw column cidx[k]; n_vars = zero column.
+            # Assigned in dst order so a duplicated dst resolves exactly like
+            # `out[:, dst] = raw[:, src]` (last write wins).
+            cidx = np.full(U, fm.n_vars, dtype=np.int64)
+            cidx[pos[np.asarray(fm.dst_indices, dtype=np.int64)]] = np.asarray(fm.src_indices, dtype=np.int64)
+            self._fcidx[mi] = cidx
+            is_c = np.asarray(fm.is_control, dtype=bool)
+            cls = np.asarray(fm.obs_cell_lines, dtype=str)
+            names = np.asarray(fm.pert_gene_names, dtype=str)
+            ok = np.ones(fm.n_obs, dtype=bool) if train_cl is None else np.isin(cls, list(train_cl))
+            self._fctrl_ok[mi] = (is_c & ok) if self.include_controls_as_training \
+                else np.zeros(fm.n_obs, dtype=bool)
+            p = ok & ~is_c
+            if fm.controls_only:
+                p[:] = False
+            if fm.excluded_pert_lines:
+                p &= ~np.isin(cls, list(fm.excluded_pert_lines))
+            uniq, inv = np.unique(names, return_inverse=True)
+            res = [resolve_pert_indices(n, self.pert2id) if n in split else None for n in uniq]
+            good = np.array([r is not None for r in res], dtype=bool)
+            p &= good[inv]
+            if fm.excluded_perts:
+                p &= ~np.isin(names, list(fm.excluded_perts))
+            if self.min_cells_per_pert > 0:
+                p &= self._row_ok[mi]
+            self._fpert_ok[mi] = p
+            self._fuid[mi] = inv.astype(np.int64)
+            self._fres[mi] = res
+            self._funiq[mi] = uniq
+        self._fmask_table = torch.stack([fm.gene_mask.bool() for fm in self.active_metas], 0)
+        self._fpool_cache: Dict[int, np.ndarray] = {}
+        # raw column -> compact position (-1 = unused), consistent with cidx (last write wins)
+        self._fcolmap, self._fcls = {}, {}
+        for mi, fm in enumerate(self.active_metas):
+            cm_ = np.full(fm.n_vars + 1, -1, dtype=np.int64)
+            ci_ = self._fcidx[mi]
+            ok_ = ci_ < fm.n_vars
+            cm_[ci_[ok_]] = np.flatnonzero(ok_)
+            self._fcolmap[mi] = cm_[:fm.n_vars]
+            self._fcls[mi] = np.asarray(fm.obs_cell_lines, dtype=str)
+        # RAM cache of the statically-eligible compact rows (filled lazily in epoch 1).
+        n_static = {mi: int((self._fpert_ok[mi] | self._fctrl_ok[mi]).sum())
+                    for mi in range(len(self.active_metas))}
+        gb = sum(n_static.values()) * U * 4 / 2**30
+        self._fcache = None
+        self._fcache_done: set = set()
+        if gb <= self.cache_max_gb:
+            self._fcache = {}
+            for mi in range(len(self.active_metas)):
+                crow = np.full(self.active_metas[mi].n_obs, -1, dtype=np.int64)
+                s_ = np.flatnonzero(self._fpert_ok[mi] | self._fctrl_ok[mi])
+                crow[s_] = np.arange(len(s_))
+                self._fcache[mi] = (np.empty((len(s_), U), dtype=np.float32), crow)
+        print(f"  [stream_v1 fast] compact axis {U:,} of {G:,} genes; RAM cache "
+              f"{'ON' if self._fcache is not None else 'OFF'} ({gb:.1f} GB, limit "
+              f"{self.cache_max_gb:g} GB); prefetch {self.prefetch} batches")
+
+    def _compact_pool(self, pool: torch.Tensor) -> np.ndarray:
+        key = id(pool)
+        if key not in self._fpool_cache:
+            a = pool.numpy() if isinstance(pool, torch.Tensor) else np.asarray(pool)
+            self._fpool_cache[key] = (np.ascontiguousarray(a[:, self._fcols])
+                                      if a.shape[1] == self.num_encoder_genes else a)
+        return self._fpool_cache[key]
+
+    def _read_compact(self, fm, mi, c_start, c_end, keep_local) -> np.ndarray:
+        """(len(keep_local), U) log1p rows -- the same arithmetic as _load_expression_chunk
+        (row sums over the FULL file panel, then x / rowsum * target_sum, then log1p),
+        restricted to the compact columns. CSR is scattered straight into the compact
+        output, never through a dense (rows, n_vars) buffer."""
+        n_rows = c_end - c_start
+        keep_local = np.asarray(keep_local, dtype=np.int64)
+        U = len(self._fcols)
+        out = np.zeros((len(keep_local), U), dtype=np.float32)
+        colmap = self._fcolmap[mi]
+        with h5py.File(fm.path, "r") as f:
+            X = f["X"]
+            if isinstance(X, h5py.Group) and "indptr" in X:
+                ip = _unwrap_indptr(np.asarray(X["indptr"][c_start:c_end + 1], dtype=np.int64))
+                s0, e0 = int(ip[0]), int(ip[-1])
+                if e0 > s0:
+                    cols = np.asarray(X["indices"][s0:e0])
+                    vals = np.asarray(X["data"][s0:e0], dtype=np.float32)
+                    if len(cols) != e0 - s0 or len(vals) != e0 - s0:
+                        raise RuntimeError(f"CSR short read in {fm.path} rows [{c_start}:{c_end}]")
+                    lens = np.diff(ip)
+                    rowpos = np.full(n_rows, -1, dtype=np.int64)
+                    rowpos[keep_local] = np.arange(len(keep_local))
+                    r_of = np.repeat(rowpos, lens)
+                    k = colmap[cols]
+                    sel = (r_of >= 0) & (k >= 0)
+                    if not _SKIP_NORMALIZE:
+                        # float32 row sums, accumulated like ndarray.sum over the dense row
+                        rs_all = np.add.reduceat(vals, (ip[:-1] - s0)[lens > 0]) if (lens > 0).any() \
+                            else np.zeros(0, dtype=np.float32)
+                        rs = np.zeros(n_rows, dtype=np.float32)
+                        rs[lens > 0] = rs_all
+                        rs = np.where(rs > 0, rs, np.float32(1.0))
+                        v = vals[sel] / rs[np.repeat(np.arange(n_rows), lens)[sel]] * np.float32(self.target_sum)
+                    else:
+                        v = vals[sel]
+                    out[r_of[sel], k[sel]] = v
+            else:
+                raw = X[c_start:c_end].astype(np.float32, copy=False)[keep_local]
+                cidx = self._fcidx[mi]
+                sub = (np.concatenate([raw, np.zeros((raw.shape[0], 1), dtype=np.float32)], 1)[:, cidx]
+                       if (cidx == fm.n_vars).any() else raw[:, cidx])
+                if not _SKIP_NORMALIZE:
+                    rs = raw.sum(axis=1, keepdims=True)
+                    rs = np.where(rs > 0, rs, 1.0)
+                    sub = sub / rs * self.target_sum
+                out[:] = sub
+        if not _SKIP_LOG1P:
+            np.log1p(out, out=out)
+        return out
+
+    def _fast_rows(self, ci: int, wanted: np.ndarray):
+        """(array, row indices into it) for chunk `ci`'s `wanted` local rows. With the RAM
+        cache, a chunk's statically-eligible rows are decompressed ONCE (first epoch) and
+        every later epoch is a memory gather; gzip decompression is the dominant cost
+        (~0.4 s / 4096 rows, serialised by h5py's global lock)."""
+        mi, c0, c1 = self._chunks[ci]
+        fm = self.active_metas[mi]
+        if self._fcache is None:
+            return self._read_compact(fm, mi, c0, c1, wanted), np.arange(len(wanted))
+        arr, crow = self._fcache[mi]
+        if ci not in self._fcache_done:
+            s = np.flatnonzero(self._fpert_ok[mi][c0:c1] | self._fctrl_ok[mi][c0:c1])
+            if s.size:
+                arr[crow[c0 + s]] = self._read_compact(fm, mi, c0, c1, s)
+            self._fcache_done.add(ci)
+        return arr, crow[c0 + wanted]
+
+    def _produce_fast(self):
+        rng = np.random.default_rng(self.seed + self._epoch)
+        use_emb = self.control_matcher.has_embeddings
+        if self.control_identity_mode == "exact" and self.include_controls_as_training and use_emb:
+            raise ValueError("control_identity_mode='exact' is incompatible with precomputed "
+                             "control embeddings (see __iter__).")
+        chunk_order = self._ordered_chunks(rng)
+        cap: Dict[int, np.ndarray] = {}
+        if self.max_cells_per_pert > 0:
+            for mi, fm in enumerate(self.active_metas):
+                rows = np.where(~np.asarray(fm.is_control, dtype=bool))[0]
+                m = np.zeros(fm.n_obs, dtype=bool)
+                if len(rows):
+                    m[rows[self._pert_cap_mask(fm, rows, self._epoch)]] = True
+                cap[mi] = m
+        cols_t = torch.from_numpy(self._fcols)
+        U = len(self._fcols)
+        exact = self.control_identity_mode == "exact"
+        for buf_start in range(0, len(chunk_order), self.buffer_chunks):
+            segs, uid_l, mi_l, row_l, ctrl_l, cl_l, grp_l = [], [], [], [], [], [], []
+            for ci in chunk_order[buf_start:buf_start + self.buffer_chunks]:
+                mi, c0, c1 = self._chunks[ci]
+                fm = self.active_metas[mi]
+                pk = self._fpert_ok[mi][c0:c1]
+                if mi in cap:
+                    pk = pk & cap[mi][c0:c1]
+                ck = self._fctrl_ok[mi][c0:c1]
+                wanted = np.flatnonzero(pk | ck)
+                if wanted.size == 0:
+                    continue
+                segs.append(self._fast_rows(ci, wanted))
+                g = c0 + wanted
+                uid_l.append(self._fuid[mi][g]); mi_l.append(np.full(len(g), mi, dtype=np.int64))
+                row_l.append(g.astype(np.int64)); ctrl_l.append(ck[wanted])
+                cl_l.append(self._fcls[mi][g])
+                grp_l.append(self._v1_group_of[mi][g] if mi in self._v1_group_of
+                             else np.full(len(g), -1, dtype=np.int64))
+            if not segs:
+                continue
+            uid = np.concatenate(uid_l); mis = np.concatenate(mi_l)
+            rows = np.concatenate(row_l); isc = np.concatenate(ctrl_l)
+            cls = np.concatenate(cl_l); grp = np.concatenate(grp_l)
+            n = len(uid)
+            ident = isc & exact
+            # control draws: per cell line, sorted order (deterministic rng consumption)
+            draws = []
+            ctrl_dim = U
+            for cl in np.unique(cls):
+                sel = np.flatnonzero((cls == cl) & ~ident)
+                if sel.size == 0:
+                    continue
+                pool = self._compact_pool(self.control_matcher.pool_for(str(cl), use_embeddings=use_emb))
+                if self.fixed_pairs:
+                    idx = _stable_ctrl_index(mis[sel].astype(np.uint64), rows[sel].astype(np.uint64),
+                                             pool.shape[0], self.seed)
+                else:
+                    idx = rng.choice(pool.shape[0], size=sel.size, replace=True)
+                draws.append((sel, pool, np.asarray(idx, dtype=np.int64)))
+                ctrl_dim = pool.shape[1]
+            perm = rng.permutation(n) if self.shuffle else np.arange(n)
+            newpos = np.empty(n, dtype=np.int64)
+            newpos[perm] = np.arange(n)
+            # ONE gather per source, written straight into its shuffled position
+            T = np.empty((n, U), dtype=np.float32)
+            o = 0
+            for arr, idx in segs:
+                T[newpos[o:o + len(idx)]] = arr[idx]
+                o += len(idx)
+            C = np.empty((n, ctrl_dim), dtype=np.float32)
+            for sel, pool, idx in draws:
+                C[newpos[sel]] = pool[idx]
+            if ident.any():
+                p_id = newpos[ident]
+                C[p_id] = T[p_id]
+            uid = uid[perm]; mis = mis[perm]; isc = isc[perm]; cls = cls[perm]; grp = grp[perm]
+            ctrl_compact = ctrl_dim == U
+            for b0 in range(0, n, self.batch_size):
+                b1 = min(b0 + self.batch_size, n)
+                if b1 - b0 < 2:
+                    continue
+                pidx, names = [], []
+                for u, m, c in zip(uid[b0:b1], mis[b0:b1], isc[b0:b1]):
+                    if c:
+                        pidx.append([-1]); names.append("non-targeting")
+                    else:
+                        pidx.append(self._fres[m][u]); names.append(str(self._funiq[m][u]))
+                yield PerturbationBatch(
+                    control_expression=torch.from_numpy(C[b0:b1]),
+                    perturbed_expression=torch.from_numpy(T[b0:b1]),
+                    pert_indices=pidx,
+                    pert_names=names,
+                    cell_types=cls[b0:b1].tolist(),
+                    gene_masks=None,
+                    group_ids=(torch.from_numpy(np.ascontiguousarray(grp[b0:b1]))
+                               if self._v1_row_group_index is not None else None),
+                    compact_cols=cols_t,
+                    ctrl_compact=ctrl_compact,
+                    mask_ids=torch.from_numpy(np.ascontiguousarray(mis[b0:b1])),
+                    mask_table=self._fmask_table,
+                )
+
+    def _iter_fast(self):
+        """Run `_produce_fast` in a background thread, `prefetch` batches ahead."""
+        import queue
+        import threading
+        q: "queue.Queue" = queue.Queue(maxsize=max(1, int(self.prefetch)))
+        stop = threading.Event()
+        _END = object()
+
+        def work():
+            try:
+                for b in self._produce_fast():
+                    while not stop.is_set():
+                        try:
+                            q.put(b, timeout=0.5)
+                            break
+                        except queue.Full:
+                            continue
+                    if stop.is_set():
+                        return
+                q.put(_END)
+            except BaseException as e:  # noqa: BLE001 -- re-raised in the consumer
+                q.put(e)
+
+        t = threading.Thread(target=work, name="v1-fast-loader", daemon=True)
+        t.start()
+        try:
+            while True:
+                b = q.get()
+                if b is _END:
+                    return
+                if isinstance(b, BaseException):
+                    raise b
+                yield b
+        finally:
+            stop.set()
+            try:
+                while True:
+                    q.get_nowait()
+            except queue.Empty:
+                pass
+            t.join(timeout=5)
 
 
 # ---------------------------------------------------------------------------

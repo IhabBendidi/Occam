@@ -2209,7 +2209,28 @@ class VirtualCellTrainer:
         )
 
         for batch in pbar:
-            if isinstance(batch, PerturbationBatch):
+            if isinstance(batch, PerturbationBatch) and getattr(batch, "compact_cols", None) is not None:
+                # Fast non-stream loader: compact rows, densified here on the GPU (zeros
+                # outside the compact axis -- exactly what the CPU alignment produced).
+                _cols = batch.compact_cols.to(self.device, non_blocking=True)
+                _G = int(batch.mask_table.shape[1])
+                _t = batch.perturbed_expression.to(self.device, non_blocking=True)
+                target = torch.zeros(_t.shape[0], _G, device=self.device, dtype=_t.dtype)
+                target[:, _cols] = _t
+                _c = batch.control_expression.to(self.device, non_blocking=True)
+                if batch.ctrl_compact:
+                    ctrl = torch.zeros(_c.shape[0], _G, device=self.device, dtype=_c.dtype)
+                    ctrl[:, _cols] = _c
+                else:
+                    ctrl = _c                      # precomputed control embeddings
+                pert_idx = batch.pert_indices
+                gene_mask = batch.mask_table.to(self.device, non_blocking=True)[
+                    batch.mask_ids.to(self.device, non_blocking=True)]
+                _gids = getattr(batch, "group_ids", None)
+                self._last_group_id = (None if _gids is None
+                                       else _gids.to(self.device, non_blocking=True))
+                del _t, _c
+            elif isinstance(batch, PerturbationBatch):
                 ctrl = batch.control_expression.to(self.device, non_blocking=True)
                 target = batch.perturbed_expression.to(self.device, non_blocking=True)
                 pert_idx = batch.pert_indices
@@ -4438,11 +4459,17 @@ class VirtualCellTrainer:
                     batch_match=getattr(config, "stream_batch_match", False),
                     interleave=getattr(config, "stream_interleave", "roundrobin"),
                     row_group_index=_v1_group_index,
+                    # Compact rows + GPU densify + background-thread prefetch. Same rows,
+                    # predicates and chunk order as the slow loader; a different random
+                    # stream for control draws / within-group shuffles. Only the H1-extras
+                    # and batch_match configurations fall back to the slow loader.
+                    fast=(_extra is None and not getattr(config, "stream_batch_match", False)),
                 )
                 train_loader = DataLoader(
                     train_dataset, batch_size=None, num_workers=0
                 )
-                print(f"  [stream_v1] interleave={getattr(config, 'stream_interleave', 'roundrobin')} "
+                print(f"  [stream_v1] fast={train_dataset.fast} "
+                      f"interleave={getattr(config, 'stream_interleave', 'roundrobin')} "
                       f"group_means={'on' if _v1_group_index is not None else 'off'} "
                       f"freeze_encoder={config.freeze_encoder} "
                       f"random_encoder={getattr(config, 'random_encoder', False)}")

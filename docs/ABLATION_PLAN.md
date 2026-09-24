@@ -1,6 +1,6 @@
 # Occam ablation grid (rhj_fewshot, Y06 base, 5 seeds)
 
-**Status 2026-09-23:** all 13 arms × 5 seeds launched (65 trainings): A1–A3 + B0–B3 18387759–765; A5 18388251; A4 18388318; C0P/C1/C2/C3 18388346–349.
+**Status 2026-09-23:** all 13 arms × 5 seeds launched (65 trainings): A1–A3 + B0–B3 18387759–765; A5 18388251; A4 18388318; C0P/C1/C2/C3 18392311 / 18392313 / 18392314 / 18392315 (first launch 18388346–349 cancelled while pending, for the loader speed-up).
 No ablation results yet.
 
 ## 1. Objective and question
@@ -59,15 +59,18 @@ against Y06, so that the loader change is not counted as an encoder effect.
 
 | arm | encoder | status |
 |---|---|---|
-| `ABL_C0P` | pretrained, frozen (Y06's encoder, non-stream loader) | launched, 18388346 |
-| `ABL_C1` | pretrained, fine-tuned, encoder_lr 1e-5 (codebase default) | launched, 18388347 |
-| `ABL_C2` | random init, trained from scratch, encoder_lr 1e-3 (= rest of the network) | launched, 18388348 |
-| `ABL_C3` | random init, frozen | launched, 18388349 |
+| `ABL_C0P` | pretrained, frozen (Y06's encoder, non-stream loader) | launched, 18392311 |
+| `ABL_C1` | pretrained, fine-tuned, encoder_lr 1e-5 (codebase default) | launched, 18392313 |
+| `ABL_C2` | random init, trained from scratch, encoder_lr 1e-3 (= rest of the network) | launched, 18392314 |
+| `ABL_C3` | random init, frozen | launched, 18392315 |
 
 Config `configs/rhj_fewshot_encoder.yaml` (= `rhj_fewshot.yaml` + the `encoder_lr` /
-`random_encoder` keys; re-sync if the base changes). Walltime 3 days: the non-stream loader
-runs at 531–1,600 samples/s vs ~11,000 for stream_v2 (18–50 h per 150-epoch run) and the vcell
-stage has no mid-run resume.
+`random_encoder` keys; re-sync if the base changes). Walltime 12 h. The non-stream loader was sped up before launch: 531–1,600 → ~31,000 samples/s
+(loader alone, CPU; epoch 1 ~3,500 while it fills a 17 GB RAM cache of the 6,983 used genes;
+background-thread prefetch, one gather per buffer group, GPU densify). Rows read match the old
+loader exactly (max diff 0.0); same 580,212 eligible cells / 608,686 samples per epoch; same
+chunk order and proportional interleave. Changed: the control-draw / within-group shuffle random
+stream. Expected ~2.5–4 h per 150-epoch arm (estimate; the vcell stage has no mid-run resume).
 
 Non-stream path fixes made before launch (stream_v2 untouched; stream batches do not reach the
 edited branch):
