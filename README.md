@@ -86,11 +86,11 @@ hf download bendidiihab/Occam --include 'checkpoints/vcell/*' --local-dir /tmp/d
 | `metrics/` | 22 MB | every cell-eval metric, per arm, per split (also in git) |
 | `metrics_all/` | 38 MB | the same for all 422 eval roots |
 | `repro/` | — | the scripts in `scripts/repro/`, for convenience |
-| `diverserna/` | 8.83 GB | retraining the MAE from scratch only |
 
 Destinations: `checkpoints/*` → `checkpoints/release/` · `eval/pert|scib` →
 `data/eval/pert|scib/` · `benchmarks/*` → `data/benchmarks/*` · `graphs/*` →
-`data/graphs/` · `diverserna/*` → `data/diverserna/`.
+`data/graphs/`. (The DiverseRNA pretraining corpus was removed from the Hub on 2026-09-24;
+it is local only, `data/diverserna/`.)
 
 **The repo is private and must stay private.** Neither dataset's licensing is resolved:
 the pretraining corpus has 7 of 9 constituent blocks unattributed and the two identified

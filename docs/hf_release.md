@@ -201,3 +201,12 @@ on both checkpoints.
 published for convenience, not as a primary artifact. The primary records are the
 `metrics.json` and `results.csv` files inside each run directory, which are not published
 (they are ~1.8 TB with their `.h5ad` intermediates).
+
+## 2026-09-24: DiverseRNA removed from the Hub (user request)
+
+`diverserna/` (27 files, 8.83 GB: 20 Parquet shards, `genes.parquet`, cards, `sources/`) deleted
+from `bendidiihab/Occam` in one commit, **df21826d47bf17cb1137877031c3d5d42bb3613f**. Verified by
+re-listing: 495 files remain, 0 match `diverserna`. `scripts/publish_hf.py` no longer stages it.
+The corpus stays local at `data/diverserna/`. History then SQUASHED (user request): 23 commits → 1,
+**3e001faa05667ea738fe71b0a0a536e6a070828b**, so DiverseRNA is in no revision. Only branch `main`,
+no tags. Earlier commit hashes quoted in this doc (e.g. df21826d) no longer exist on the Hub.

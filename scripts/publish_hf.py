@@ -8,7 +8,6 @@ Layout created in the repo:
 
     checkpoints/    the released unified encoder+decoder, and its model card
     eval/           the evaluation bundle (6 datasets) and its card
-    diverserna/     the sharded pretraining corpus and its card
 
 ⚠️ PRIVATE ONLY. The repo is created with `private=True` and this script refuses
 to run against a public repo. That is not a formality: neither dataset has had
@@ -103,7 +102,7 @@ ARTIFACTS = [
     # intersected with `master_gene_set_sorted.csv`). Without it neither is reproducible.
     ("data/graphs", "graphs",
      "GO + STRING edge tables and the 18,216-gene master set the pert model indexes"),
-    ("data/diverserna", "diverserna", "pretraining corpus shards"),
+    # DiverseRNA removed from the Hub 2026-09-24 at the user's request (commit df21826d); do not re-add.
     # The two trained vcell checkpoints and their cards. These are DELIVERABLES, unlike
     # the stage-1/stage-2 MAE files: they are the models the reported numbers come from,
     # and each is self-contained (encoder + decoder + perturbation model + FiLM +

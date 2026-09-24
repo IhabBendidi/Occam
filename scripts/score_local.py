@@ -13,6 +13,9 @@ A split is scored locally only if its metrics.json is missing and its task is no
 finishes, that held task is cancelled. Splits already running on the cluster are left alone.
 On exit (or Ctrl-C) any task still held is RELEASED back to the queue.
 
+⚠️ --max-splits (default 8) caps what is taken and held. Added 2026-09-24 after an uncapped run
+held 390 cluster tasks for one GPU (~34 h of work) and blocked the queue.
+
 Only `occam` units (rhj_fewshot + OOD panels) are supported.
 
 USAGE
@@ -64,6 +67,9 @@ def main() -> int:
     ap.add_argument("--arm-regex", required=True)
     ap.add_argument("--bench", default=None, help="restrict to one benchmark")
     ap.add_argument("--parallel", type=int, default=2)
+    ap.add_argument("--max-splits", type=int, default=8,
+                    help="take at most this many splits (and hold only their cluster tasks). One "
+                         "GPU scores ~6 splits/h; holding more just blocks the cluster")
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
 
@@ -86,6 +92,11 @@ def main() -> int:
             if task and q.get(task) == "PENDING":
                 held.append(task)
             todo.append((u, k, task))
+    if len(todo) > args.max_splits:
+        print(f"{len(todo)} candidate splits; taking the first {args.max_splits} (--max-splits), "
+              f"the rest stay with the cluster")
+        todo = todo[:args.max_splits]
+    held = [t for _, _, t in todo if t in set(held)]
     print(f"{len(todo)} splits to score locally ({len(held)} pending cluster tasks to hold)")
     if args.dry_run:
         for u, k, task in todo:
