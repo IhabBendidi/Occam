@@ -14,7 +14,7 @@
 #
 # WHY THIS EXISTS
 # ---------------
-# The released decoder (configs/occam_small.yaml, stage 3) uses a
+# The previously released decoder (configs/occam_small.yaml, stage 3) uses a
 # `rectified_sigmoid` head with a smooth-L1 loss. That head is exactly 0 for
 # every non-positive pre-activation, and its gradient there is exactly 0 too,
 # so genes that are rarely detected get pinned and never recover. Measured on

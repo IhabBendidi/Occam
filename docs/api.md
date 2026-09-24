@@ -117,6 +117,41 @@ and that space is defined by the **checkpoint**, never by the file you are holdi
 Normalising afterwards would divide by a sum taken over zero-filled columns — a silent
 factor on every value.
 
+**The exact pipeline, in order** (measured 2026-09-23 on the released checkpoint):
+
+1. Read `.X` as **raw counts**. Pick the gene column: the vocabulary is 44,728 ids, of
+   which 44,560 are Ensembl `ENSG…` (the checkpoint calls the column `gene_symbol`, but
+   it holds Ensembl ids).
+2. Keep the input genes that are in the vocabulary. Drop the rest.
+3. Library size = the row sum over the **kept** genes.
+4. `x / library × 2000` (the checkpoint's `target_sum`, not 1e4), then `log1p`.
+5. Put the values into the vocabulary's column order. Vocabulary genes missing from the
+   input are **0**.
+6. `encoder(x)` → the latent: 512-d for `small` (`|z|` about 55), 768-d for `base`
+   (`|z|` about 35). No dropout at eval, and no normalisation of the output. The last
+   layer is LayerNorm → Mish, so values are ≥ −0.309.
+
+The benchmark suite (`benchmark_runner`, compact mode) and the vcell data path instead
+take the library size over **all** file genes (step 3 before step 2). On the eval files
+the kept genes hold ≥ 99.8% of counts, so the two agree: embedding cosine is 1.000000 on
+`pbmc_12k` and `nadig_2024_hepg2`, and ≥ 0.99998 on `pancreas_scib`, where the kept genes
+hold 97%.
+
+⚠️ A bare array passed to `encode()` / `prepare()` is still normalised and log1p'd. It
+must be **raw counts** already in vocabulary order. Passing preprocessed values
+transforms them twice.
+
+Silent errors, measured as the cosine of each cell's embedding against the correct one
+on `pbmc_12k`. Both look healthy, which is why they are dangerous:
+
+| mistake | median cosine | min cosine |
+|---|---|---|
+| input already log1p-normalised | 0.9883 | 0.9707 |
+| `target_sum` 1e4 instead of 2000 | 0.9955 | 0.9838 |
+
+Cosine near 0.99 is **not** "nearly right" here: the embeddings share a large common
+component, so cosine is compressed near 1.
+
 Escape hatches, both deliberate:
 
 - `max_zero_fill=0` allows an arbitrarily narrow panel. A 2,000-HVG file against a
