@@ -1,0 +1,10 @@
+# NORMAN: NF32 with smooth_l1 + delta-cos, delta-cos rescaled to parity with smooth_l1 averaged over training (user, 2026-09-24)
+# delta_cos 0.32977 -> 0.0255 (= rhj parity weight x 0.6595, the norman_loss_scale.py ratio). Everything else = NF32DC
+# (norman_seeds_nf32_dc.tsv): mag 0, latent off, profile cosine 0 (COS_W=0.0). Measurement: docs/ABLATION_PLAN.md.
+arm	loss_type	nb_weight	nb_scale	delta_cos_weight	delta_mag_weight	latent_loss_type	latent_loss_weight	latent_cos_weight	latent_cos_target	recon_split	recon_ctrl_weight	recon_delta_weight	recon_split_mode	recon_delta_target	vicreg_var_weight	vicreg_cov_weight	vicreg_gamma	vicreg_target	epochs	eta_min	base	dcos_conc_weight	radial_spread_weight	gene_var_weight	batch_size	lr	seed
+S42_NF32DCA	smooth_l1	0	1.0	0.0255	0	none	0.0	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	150	3e-4	dca_dc_NF32_s42	0.0	0.0	0.0	32	1e-3	42
+S43_NF32DCA	smooth_l1	0	1.0	0.0255	0	none	0.0	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	150	3e-4	dca_dc_NF32_s43	0.0	0.0	0.0	32	1e-3	43
+S44_NF32DCA	smooth_l1	0	1.0	0.0255	0	none	0.0	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	150	3e-4	dca_dc_NF32_s44	0.0	0.0	0.0	32	1e-3	44
+S45_NF32DCA	smooth_l1	0	1.0	0.0255	0	none	0.0	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	150	3e-4	dca_dc_NF32_s45	0.0	0.0	0.0	32	1e-3	45
+S46_NF32DCA	smooth_l1	0	1.0	0.0255	0	none	0.0	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	150	3e-4	dca_dc_NF32_s46	0.0	0.0	0.0	32	1e-3	46
+# Launched 2026-09-24: job 18511031

@@ -308,3 +308,39 @@ parked Y06-based arms.
 Reading: an arm below ABL_A_DC by more than ~2 seed-sd on a panel means the default's
 representation (or delta-cos, for L0) carries performance there; ALL above the default means the
 sources are complementary.
+
+**2026-09-24 13:55 — run check.** 35 trainings running (Norman NF32-DC epoch ~41/150; ABL_N_* epoch
+14–17/180, ≈75 s/epoch → ~3.7 h per run), no errors, no NaN, no OOM; ABL_N_ALL (18509294) pending
+on QOSGrpGRES. Pre-existing issue found: **wandb has not logged for any orchestrated vcell run**
+(`wandb init failed: local variable 'timestamp' referenced before assignment`,
+`src/occam/vcell/pipeline.py:4088` — `timestamp` is only defined when no run_dir is passed, and
+the orchestrator always passes one). Caught, so training and scoring are unaffected; metrics are
+in the logs and eval roots. Not fixed (would start sending runs to wandb) — pending user decision.
+
+### Loss-term balance in the new default (measured 2026-09-24)
+Per-term losses are not logged (wandb broken, see above), so the delta-cos term is read as the
+total-loss difference between `ABL_A_DC` (smooth_l1 + 0.5·dcos) and `ABL_N_L0` (smooth_l1 only),
+same AA03 schedule, seeds 42–46 (assumes smooth_l1 is similar in both runs).
+
+| epoch | smooth_l1 | 0.5 × dcos | dcos share of the loss |
+|---|---|---|---|
+| 1 | 0.0062 | 0.394 | 98% |
+| 10 | 0.0049 | 0.126 | 96% |
+| 50 | 0.0048 | 0.059 | 92% |
+| 180 | 0.0048 | 0.040–0.045 | 89–90% |
+
+delta-cos dominates (≈90–98%). The dcos weight giving a 50/50 split: **≈0.008–0.01 at init**
+(= the M03 base's "dcos at parity" point, 0.01), **0.039 averaged over training**, **≈0.05 at the
+end** (raw dcos falls 0.79 → 0.09 while smooth_l1 stays ≈0.005). Norman equivalents scale by
+0.32977/0.5 = 0.6595 (`scripts/norman/norman_loss_scale.py` rule): 0.0066 / 0.0255 / 0.033.
+
+**Launched 2026-09-24 (user: both balance points), 5 seeds each:**
+
+| arm | benchmark | delta-cos weight | balance point | job |
+|---|---|---|---|---|
+| `ABL_N_DCI` | rhj_fewshot (+ H1/K562 scoring) | 0.01 | parity at init | 18511028 |
+| `ABL_N_DCA` | rhj_fewshot (+ H1/K562 scoring) | 0.039 | parity averaged over training | 18511029 |
+| `NF32DCI` | norman_combo | 0.0066 | parity at init | 18511030 |
+| `NF32DCA` | norman_combo | 0.0255 | parity averaged over training | 18511031 |
+
+References: `ABL_A_DC` (rhj, dcos 0.5) and `NF32DC` (Norman, dcos 0.32977), both at ~90–98% dcos.

@@ -1099,3 +1099,32 @@ latent MSE 0.00198826 → off, profile cosine 0.5 → 0. Training job 18506842 (
 by the ledger (18506843). Reference: NF32 5 seeds, pΔ 0.9051 / 0.7981 (additive / nonadditive),
 mae 0.0114 / 0.0133. Reading: better pΔ / overlap / disc_l1 on additive and nonadditive with a
 mae cost = the rhj trade-off transfers; worse pΔ = Norman needs the terms.
+
+**Result (read 2026-09-24 16:10), 5 seeds × 5 splits, decode_seq_mean, nocal.** Mean ± sd across seeds; DC − NF32 paired by seed (seeds where DC is higher).
+
+### norman_combo · additive
+| model | pΔ ↑ | mae ↓ | overlap_at_N ↑ | disc_l1 ↑ | rows |
+|---|---|---|---|---|---|
+| NF32 (full loss) | 0.9051 ± 0.0045 | 0.0114 ± 0.0003 | 0.3012 ± 0.0108 | 0.8794 ± 0.0219 | 25 |
+| NF32 + smooth_l1 + delta-cos only | 0.8821 ± 0.0028 | 0.0117 ± 0.0005 | 0.3097 ± 0.0055 | 0.9544 ± 0.0078 | 25 |
+| ↳ DC − NF32 | -0.0230 (0/5) | +0.0003 (3/5) | +0.0084 (4/5) | +0.0750 (5/5) | |
+
+### norman_combo · nonadditive
+| model | pΔ ↑ | mae ↓ | overlap_at_N ↑ | disc_l1 ↑ | rows |
+|---|---|---|---|---|---|
+| NF32 (full loss) | 0.7981 ± 0.0071 | 0.0133 ± 0.0001 | 0.2880 ± 0.0054 | 0.7664 ± 0.0061 | 25 |
+| NF32 + smooth_l1 + delta-cos only | 0.7935 ± 0.0028 | 0.0141 ± 0.0005 | 0.2935 ± 0.0056 | 0.8326 ± 0.0174 | 25 |
+| ↳ DC − NF32 | -0.0046 (1/5) | +0.0008 (5/5) | +0.0055 (4/5) | +0.0662 (5/5) | |
+
+### norman_combo · all
+| model | pΔ ↑ | mae ↓ | overlap_at_N ↑ | disc_l1 ↑ | rows |
+|---|---|---|---|---|---|
+| NF32 (full loss) | 0.8575 ± 0.0038 | 0.0126 ± 0.0002 | 0.2975 ± 0.0074 | 0.7968 ± 0.0119 | 25 |
+| NF32 + smooth_l1 + delta-cos only | 0.8429 ± 0.0015 | 0.0130 ± 0.0004 | 0.3057 ± 0.0062 | 0.8919 ± 0.0205 | 25 |
+| ↳ DC − NF32 | -0.0147 (0/5) | +0.0004 (4/5) | +0.0083 (4/5) | +0.0952 (5/5) | |
+
+Reading: on Norman the trade is different from rhj. disc_l1 rises sharply (+0.075 additive,
++0.066 nonadditive, 5/5) and overlap_at_N a little (+0.006–0.008), but **pΔ falls 5/5 on additive
+(−0.023, 0.9051 → 0.8821 — now level with sum_of_singles 0.8824 instead of above it)** and 4/5 on
+nonadditive (−0.005; still above sum_of_singles 0.7757); mae +0.0003 / +0.0008. On rhj the same
+change was pΔ-neutral in-distribution and pΔ-positive on the OOD panels.

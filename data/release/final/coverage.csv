@@ -69,6 +69,7 @@ k562_seen_h1set,all,occam,ABL_L1,,5,5,5,5,5,5
 k562_seen_h1set,all,occam,ABL_L2,,5,5,5,5,5,5
 k562_seen_h1set,all,occam,ABL_L3,,5,5,5,5,5,5
 k562_seen_h1set,all,occam,ABL_LRN,,5,5,5,5,5,5
+k562_seen_h1set,all,occam,ABL_N_GO,,3,3,0,0,0,0
 k562_seen_h1set,all,occam,ABL_Y_DC,,5,5,5,5,0,4
 k562_seen_h1set,all,occam,M03,,5,0,0,0,0,1
 k562_seen_h1set,all,occam,M06,,5,0,0,0,0,1
@@ -116,6 +117,7 @@ norman_combo,additive,occam,NE29,decode_seq_mean,5,0,0,0,0,1
 norman_combo,additive,occam,NF30,decode_seq_mean,5,0,0,0,0,1
 norman_combo,additive,occam,NF31,decode_seq_mean,5,0,0,0,0,1
 norman_combo,additive,occam,NF32,decode_seq_mean,5,5,5,5,5,5
+norman_combo,additive,occam,NF32DC,decode_seq_mean,5,5,5,5,5,5
 norman_combo,additive,occam,NF33,decode_seq_mean,5,0,0,0,0,1
 norman_combo,additive,occam,NF34,decode_seq_mean,5,0,0,0,0,1
 norman_combo,additive,occam,NF35,decode_seq_mean,5,0,0,0,0,1
@@ -205,6 +207,7 @@ norman_combo,additive_raw,occam,NE29,decode_seq_mean,5,0,0,0,0,1
 norman_combo,additive_raw,occam,NF30,decode_seq_mean,5,0,0,0,0,1
 norman_combo,additive_raw,occam,NF31,decode_seq_mean,5,0,0,0,0,1
 norman_combo,additive_raw,occam,NF32,decode_seq_mean,5,5,5,5,5,5
+norman_combo,additive_raw,occam,NF32DC,decode_seq_mean,5,5,5,5,5,5
 norman_combo,additive_raw,occam,NF33,decode_seq_mean,5,0,0,0,0,1
 norman_combo,additive_raw,occam,NF34,decode_seq_mean,5,0,0,0,0,1
 norman_combo,additive_raw,occam,NF35,decode_seq_mean,5,0,0,0,0,1
@@ -294,6 +297,7 @@ norman_combo,all,occam,NE29,decode_seq_mean,5,0,0,0,0,1
 norman_combo,all,occam,NF30,decode_seq_mean,5,0,0,0,0,1
 norman_combo,all,occam,NF31,decode_seq_mean,5,0,0,0,0,1
 norman_combo,all,occam,NF32,decode_seq_mean,5,5,5,5,5,5
+norman_combo,all,occam,NF32DC,decode_seq_mean,5,5,5,5,5,5
 norman_combo,all,occam,NF33,decode_seq_mean,5,0,0,0,0,1
 norman_combo,all,occam,NF34,decode_seq_mean,5,0,0,0,0,1
 norman_combo,all,occam,NF35,decode_seq_mean,5,0,0,0,0,1
@@ -383,6 +387,7 @@ norman_combo,middle,occam,NE29,decode_seq_mean,5,0,0,0,0,1
 norman_combo,middle,occam,NF30,decode_seq_mean,5,0,0,0,0,1
 norman_combo,middle,occam,NF31,decode_seq_mean,5,0,0,0,0,1
 norman_combo,middle,occam,NF32,decode_seq_mean,5,5,5,5,5,5
+norman_combo,middle,occam,NF32DC,decode_seq_mean,5,5,5,5,5,5
 norman_combo,middle,occam,NF33,decode_seq_mean,5,0,0,0,0,1
 norman_combo,middle,occam,NF34,decode_seq_mean,5,0,0,0,0,1
 norman_combo,middle,occam,NF35,decode_seq_mean,5,0,0,0,0,1
@@ -472,6 +477,7 @@ norman_combo,middle_raw,occam,NE29,decode_seq_mean,5,0,0,0,0,1
 norman_combo,middle_raw,occam,NF30,decode_seq_mean,5,0,0,0,0,1
 norman_combo,middle_raw,occam,NF31,decode_seq_mean,5,0,0,0,0,1
 norman_combo,middle_raw,occam,NF32,decode_seq_mean,5,5,5,5,5,5
+norman_combo,middle_raw,occam,NF32DC,decode_seq_mean,5,5,5,5,5,5
 norman_combo,middle_raw,occam,NF33,decode_seq_mean,5,0,0,0,0,1
 norman_combo,middle_raw,occam,NF34,decode_seq_mean,5,0,0,0,0,1
 norman_combo,middle_raw,occam,NF35,decode_seq_mean,5,0,0,0,0,1
@@ -561,6 +567,7 @@ norman_combo,nonadditive,occam,NE29,decode_seq_mean,5,0,0,0,0,1
 norman_combo,nonadditive,occam,NF30,decode_seq_mean,5,0,0,0,0,1
 norman_combo,nonadditive,occam,NF31,decode_seq_mean,5,0,0,0,0,1
 norman_combo,nonadditive,occam,NF32,decode_seq_mean,5,5,5,5,5,5
+norman_combo,nonadditive,occam,NF32DC,decode_seq_mean,5,5,5,5,5,5
 norman_combo,nonadditive,occam,NF33,decode_seq_mean,5,0,0,0,0,1
 norman_combo,nonadditive,occam,NF34,decode_seq_mean,5,0,0,0,0,1
 norman_combo,nonadditive,occam,NF35,decode_seq_mean,5,0,0,0,0,1
@@ -650,6 +657,7 @@ norman_combo,nonadditive_raw,occam,NE29,decode_seq_mean,5,0,0,0,0,1
 norman_combo,nonadditive_raw,occam,NF30,decode_seq_mean,5,0,0,0,0,1
 norman_combo,nonadditive_raw,occam,NF31,decode_seq_mean,5,0,0,0,0,1
 norman_combo,nonadditive_raw,occam,NF32,decode_seq_mean,5,5,5,5,5,5
+norman_combo,nonadditive_raw,occam,NF32DC,decode_seq_mean,5,5,5,5,5,5
 norman_combo,nonadditive_raw,occam,NF33,decode_seq_mean,5,0,0,0,0,1
 norman_combo,nonadditive_raw,occam,NF34,decode_seq_mean,5,0,0,0,0,1
 norman_combo,nonadditive_raw,occam,NF35,decode_seq_mean,5,0,0,0,0,1

@@ -65,6 +65,7 @@ norman_combo, all 4 competitors, all baselines. `data/release/final/scores_by_se
 (6,041 rows). Still running, for the record only: RB064 / RB128 scoring, RB032 training.
 
 ## 2026-09-24 08:15 — vco headroom (user)
+(Superseded 2026-09-24 ~16:45: user asked for no headroom; rebalancer restarted with VCO_CAP=32, job 18511040.)
 Keep ≥ 5 vco GPUs free: rebalancer restarted with `VCO_CAP=27` (job 18458833, replaces 18365346);
 36 pending vco score jobs moved to hooke-predict; 5 running score tasks requeued onto
 hooke-predict (18447661_1/_2, 18447662_0/_1, 18447663_0). No training was touched.
