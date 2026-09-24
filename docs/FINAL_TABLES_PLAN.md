@@ -58,3 +58,8 @@ Before the CellFlow / STATE norman retrains, their DEFECTIVE outputs (runs/compe
 - Done at 5 seeds × 5 splits: every baseline on every panel; CellFlow, PerturbDiff, TxPert on
   rhj + all OOD panels; STATE on rhj + both K562 panels; CellFlow (fixed), PerturbDiff, TxPert on
   norman. Y06 at seeds 42/44/45/46 everywhere.
+
+## Update 2026-09-24 ~02:50 — Occam headline rows complete
+Every row of the matrix is now at 5 seeds × 5 splits: Y06 on rhj + 3 OOD panels, NF32 on
+norman_combo, all 4 competitors, all baselines. `data/release/final/scores_by_seed_split.csv`
+(6,041 rows). Still running, for the record only: RB064 / RB128 scoring, RB032 training.

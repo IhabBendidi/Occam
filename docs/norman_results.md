@@ -1085,5 +1085,7 @@ additive / nonadditive:
 | **STATE (fixed, retrained)** | 0.6989 (0.0385) | 0.6316 (0.0303) | 0.0162 / 0.0187 | 0.2771 / 0.2600 | 0.9066 / 0.7500 |
 
 STATE ranks third of four competitors on pΔ (TxPert > CellFlow > STATE > PerturbDiff), below
-the sum_of_singles bar (0.8824 / 0.7757). Occam NF32 seed 42: 0.9112 / 0.7931; seeds 43–46 in
-training (18386196).
+the sum_of_singles bar (0.8824 / 0.7757). Occam NF32 at 5 seeds × 5 splits (2026-09-24; seeds 43–46 job 18386196): pΔ additive **0.9051
+(0.0045)** / nonadditive **0.7981 (0.0071)**, mae 0.0114 / 0.0133, overlap_at_N 0.3012 / 0.2880,
+disc_l1 0.8794 / 0.7664 — above sum_of_singles (0.8824 / 0.7757) and every competitor on pΔ and
+mae. NF42 (seed 42, for the record): 0.9097 / 0.7971.

@@ -3839,3 +3839,23 @@ determinism contract): NF42 18385636, S43_Y06 18385637.
 Y06 stays the official rhj run. AA03 (Q02 base, 180 ep, eta_min 7e-4; 0.4044 at seed 42, a tie
 with Y06) at seeds 43–46 to see its seed behaviour: `scripts/grids/rhj_seeds_aa03.tsv`, job
 18386809; scored on rhj_fewshot by the ledger.
+
+### 2026-09-24: Y06 and AA03 complete at 5 seeds × 5 splits (F-seed-Y06, F-seed-AA03)
+
+rhj_fewshot, nocal, from `data/release/final/scores_by_seed_split.csv`. Per-seed split-mean pΔ:
+
+| arm | s42 | s43 | s44 | s45 | s46 | mean (sd) pΔ ↑ | mae ↓ | overlap_at_N ↑ | disc_l1 ↑ |
+|---|---|---|---|---|---|---|---|---|---|
+| Y06 (published: 150 ep, eta_min 3e-4) | 0.4043 | 0.3976 | 0.3980 | 0.3929 | 0.3859 | **0.3957 (0.0068)** | 0.0220 | 0.0885 | 0.7233 |
+| AA03 (180 ep, eta_min 7e-4) | 0.4044 | 0.4028 | 0.3985 | 0.3961 | 0.3954 | **0.3994 (0.0040)** | 0.0222 | 0.0952 | 0.7316 |
+
+AA03 − Y06 = +0.0037 pΔ, paired by seed 5/5 ≥ 0 (differences +0.0001 / +0.0052 / +0.0005 /
++0.0032 / +0.0095); overlap_at_N +0.0067, disc_l1 +0.0083, mae +0.0002 (worse). Y06 stays the
+official run (user, 2026-09-23). Y06 OOD at 5 seeds: h1_seen 0.0939 (0.0032), k562_seen 0.1713
+(0.0039), k562_seen_h1set 0.1609 (0.0034).
+
+Paired AA03 − Y06 over seeds 42–46 (mean ± sd of the per-seed difference; seeds where AA03 is
+higher): pΔ +0.0037 ± 0.0039 (5/5) · mae +0.0003 ± 0.0005 (4/5 higher = worse) · overlap_at_N
++0.0067 ± 0.0056 (5/5) · disc_l1 +0.0083 ± 0.0065 (5/5). AA03 had never been scored on the OOD
+panels; its 15 units (h1_seen, k562_seen, k562_seen_h1set × 5 seeds) were registered and
+submitted 2026-09-24 at the user's request for the comparison (jobs 18431111–125).

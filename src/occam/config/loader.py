@@ -489,4 +489,12 @@ def _coerce(text: str, current: Any) -> Any:
     if current is None:
         import yaml
         return yaml.safe_load(text)
+    if isinstance(current, (list, dict)):
+        # e.g. graph_types=[go]: without this the list became the STRING "[go]" and failed
+        # far downstream ("Unknown graph type: [") -- ablation jobs 18387759/760.
+        import yaml
+        val = yaml.safe_load(text)
+        if not isinstance(val, type(current)):
+            raise ConfigError(f"expected a {type(current).__name__}, got {text!r}")
+        return val
     return text
