@@ -271,8 +271,20 @@ loaded and was predicting (1,012 / 7,178 batches, no errors) when stopped on the
 smooth_l1 + delta-cos, GO+STRING adjacency (`ABL_A_DC`, 2.23 GB each); `all_sources` = the same
 with GO+STRING adjacency ‖ GenePT ‖ ESM2 (`ABL_N_ALL`, 2.55 GB each; tables stored in the
 checkpoint, reloads without the files). Upload log `runs/slurm/hf_occam_seeds_upload.log`.
-Norman (user: GO+STRING = NF32DCA only; all-sources = both weights):
-`checkpoints/occam_seeds/norman_combo/gostring/seed_<N>/` = NF32DCA (NF32 recipe, smooth_l1 +
-delta-cos 0.0255, GO+STRING); `.../all_sources_dcos0.32977/` = NF32ALL; `.../all_sources_dcos0.0255/`
-= NF32ALLA (both ALL-sources concatenated). Same two files per folder. Log
+Norman (user: both delta-cos weights for both representations), NF32 recipe + smooth_l1 +
+delta-cos: `checkpoints/occam_seeds/norman_combo/gostring_dcos0.0255/` = NF32DCA,
+`gostring_dcos0.32977/` = NF32DC, `all_sources_dcos0.0255/` = NF32ALLA, `all_sources_dcos0.32977/`
+= NF32ALL, each `seed_<42..46>/`. Same two files per folder. rhj upload verified: 20 files, 0
+problems, repo private. Log
 `runs/slurm/hf_occam_norman_upload.log` (waits for all 15 trainings, then uploads and verifies).
+⚠️ **Norman upload stopped at 12/20 seeds (2026-09-25):** `403 Forbidden: Private repository storage
+limit reached, please upgrade your plan`. On the Hub (size-checked): gostring_dcos0.0255 s42–46,
+gostring_dcos0.32977 s42–46, all_sources_dcos0.32977 s42–43. Missing: all_sources_dcos0.32977
+s44–46, all_sources_dcos0.0255 s42–46 (8 × 2.55 GB ≈ 20 GB). Private repo total now 70.8 GB.
+**Resolution (user):** all 20 Norman Occam checkpoints go to the PUBLIC repo
+`bendidiihab/Occam-competitor-checkpoints`, temporarily named **razor**:
+`razor/norman_combo/{gostring_dcos0.0255, gostring_dcos0.32977, all_sources_dcos0.0255,
+all_sources_dcos0.32977}/seed_<42..46>/checkpoint.pth` (= NF32DCA, NF32DC, NF32ALLA, NF32ALL
+`best_model.pth`). `resolved_config.yaml` NOT shipped there (it names Occam throughout); note the
+`.pth` still embeds its training config, whose paths contain "occam". The 12 seeds already in the
+private repo stay. Log `runs/slurm/hf_razor_norman_upload.log`.
