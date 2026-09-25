@@ -188,3 +188,6 @@ data/release/metrics_all/
 # the move log, docs and scripts are tracked; archived runs and data stay local.
 archive/runs/
 archive/data/
+
+# staged copy of per-split cell-eval outputs for the Hub (scripts/stage_eval_outputs.py)
+data/release/eval_outputs/

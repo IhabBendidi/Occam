@@ -221,3 +221,21 @@ equal the local files. Download: `hf download bendidiihab/Occam --include 'asset
 /tmp/dl && mkdir -p data/assets && mv /tmp/dl/assets/* data/assets/`. The loader now refuses a
 table whose sha256 differs from its sidecar, and a missing table's error prints that command.
 `scripts/publish_hf.py` stages `data/assets`.
+
+## 2026-09-25: audit — competitor / baseline results on the Hub are INCOMPLETE and STALE
+
+| what | local (current) | on the Hub |
+|---|---|---|
+| every cell-eval metric per split (`metrics_all/metrics_long.csv`) | 244,733 rows, 5 benchmarks | 97,677 rows, **rhj + norman only** (no h1_seen / k562_seen / k562_seen_h1set) |
+| one row per (benchmark, panel, model, seed, split) (`data/release/final/`) | yes | **absent** |
+| per-split cell-eval outputs (`metrics.json`, `results.csv`, `agg_results.csv`) | 600 splits (100 competitor + 20 baseline roots) , ~0.12 GB | per-perturbation CSVs for 35 roots (norman/rhj, mostly seed 42) |
+| `pred_de.csv` per split | ~249 GB | absent |
+| prediction + target `.h5ad` per split | ~1.6 TB | absent |
+
+**Fixed the same day (user: scores + cell-eval CSVs).** Uploaded, each folder mirrored (stale Hub
+files removed): `metrics_all/` (commit 017983ac; 244,733 rows, all 5 benchmarks — re-read from the
+Hub), `metrics/` (375df697), `final/` (24b721dc; 8,063 rows: 6 competitor arms, 6 baselines, all
+Occam arms, per seed and split), `ablation/` (7035488a; 23 arms, per seed and split + summary),
+`eval_outputs/` (90378285; 125 roots — 100 competitor + 25 baseline — × 5 splits × 5 benchmarks,
+2,875 files, 142 MB: metrics.json + results.csv + agg_results.csv; staged by
+`scripts/stage_eval_outputs.py`). `pred_de.csv` and `.h5ad` NOT pushed (user decision).

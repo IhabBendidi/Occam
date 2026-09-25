@@ -89,7 +89,10 @@ hf download bendidiihab/Occam --include 'checkpoints/vcell/*' --local-dir /tmp/d
 | `graphs/` | 0.40 GB | the perturbation graph — **required to train or to rebuild a benchmark** |
 | `assets/` | 0.39 GB | per-gene GenePT + ESM2 tables — **required by the ALL-sources default** and the embedding arms (`data/assets/README.md`) |
 | `metrics/` | 22 MB | every cell-eval metric, per arm, per split (also in git) |
-| `metrics_all/` | 38 MB | the same for all 422 eval roots |
+| `metrics_all/` | 174 MB | the same for every eval root, all 5 benchmarks |
+| `final/` | 4 MB | **one row per (benchmark, panel, model, seed, split)**, every metric — the tables' source |
+| `ablation/` | 1 MB | the Occam ablation arms, per seed and split, + a mean ± sd summary |
+| `eval_outputs/` | 141 MB | per-split cell-eval outputs (`metrics.json`, `results.csv`, `agg_results.csv`) of every competitor and baseline |
 | `repro/` | — | the scripts in `scripts/repro/`, for convenience |
 
 Destinations: `checkpoints/*` → `checkpoints/release/` · `eval/pert|scib` →

@@ -127,6 +127,14 @@ ARTIFACTS = [
     ("data/release/metrics", "metrics",
      "PUBLISHED scope: all 35 cell-eval metrics for our published arms, every baseline "
      "and every competitor, per split and panel. Also tracked in git."),
+    # One row per (benchmark, panel, model, seed, split) -- the paper tables' source -- and the
+    # ablation tables, each in its own section (scripts/final_table.py, ablate.py table).
+    ("data/release/final", "final", "every model/competitor/baseline, per seed and split"),
+    ("data/release/ablation", "ablation", "Occam ablation arms, per seed and split + summary"),
+    # Per-split cell-eval outputs of every competitor and baseline (metrics.json, results.csv,
+    # agg_results.csv). Stage first: python scripts/stage_eval_outputs.py
+    ("data/release/eval_outputs", "eval_outputs",
+     "competitor + baseline cell-eval outputs per split (no pred_de.csv / .h5ad)"),
     ("data/release/metrics_all", "metrics_all",
      "FULL scope: the same, for all 422 eval roots -- the whole rhj_fewshot sweep and "
      "every norman base. Not in git."),
