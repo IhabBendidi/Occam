@@ -288,3 +288,10 @@ all_sources_dcos0.32977}/seed_<42..46>/checkpoint.pth` (= NF32DCA, NF32DC, NF32A
 `best_model.pth`). `resolved_config.yaml` NOT shipped there (it names Occam throughout); note the
 `.pth` still embeds its training config, whose paths contain "occam". The 12 seeds already in the
 private repo stay. Log `runs/slurm/hf_razor_norman_upload.log`.
+Then (user) the 12 Norman seeds were DELETED from the private repo (commit 051ca998, 24 files;
+0 Norman files left, 20 rhj seed files untouched). Norman Occam checkpoints now live only under
+`razor/` in the public repo (and locally). Deleted LFS files may still count toward the private
+quota until the history is squashed.
+History of the private repo squashed again (user): 31 commits → 1, **34e118af**; branch main only,
+no tags. Re-checked after the squash: rhj `gostring` and `all_sources` 5/5 seeds each present
+(checkpoint size matches local + resolved_config.yaml); 0 Norman files; repo still private.
