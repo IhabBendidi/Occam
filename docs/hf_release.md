@@ -210,3 +210,14 @@ re-listing: 495 files remain, 0 match `diverserna`. `scripts/publish_hf.py` no l
 The corpus stays local at `data/diverserna/`. History then SQUASHED (user request): 23 commits → 1,
 **3e001faa05667ea738fe71b0a0a536e6a070828b**, so DiverseRNA is in no revision. Only branch `main`,
 no tags. Earlier commit hashes quoted in this doc (e.g. df21826d) no longer exist on the Hub.
+
+## 2026-09-25: per-gene embedding tables added under `assets/`
+
+Commit **3aa085acea47f0b881aafc0cd30e335b09e34973** uploads `data/assets/` → `assets/` (386 MB): the
+Occam GenePT full-vocabulary table (3072-d, 17,843 genes) and ESM2 table (1280-d, 18,149 genes)
+read by the ALL-sources default and the embedding arms, the two PerturbDiff GenePT tables, each
+`.pkl.json` sidecar, and `assets/README.md`. Re-listed from the Hub: all four `.pkl` LFS sha256
+equal the local files. Download: `hf download bendidiihab/Occam --include 'assets/*' --local-dir
+/tmp/dl && mkdir -p data/assets && mv /tmp/dl/assets/* data/assets/`. The loader now refuses a
+table whose sha256 differs from its sidecar, and a missing table's error prints that command.
+`scripts/publish_hf.py` stages `data/assets`.

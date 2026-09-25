@@ -102,6 +102,11 @@ ARTIFACTS = [
     # intersected with `master_gene_set_sorted.csv`). Without it neither is reproducible.
     ("data/graphs", "graphs",
      "GO + STRING edge tables and the 18,216-gene master set the pert model indexes"),
+    # The per-gene embedding tables (GenePT full vocab, ESM2, and the PerturbDiff GenePT tables)
+    # the ALL-sources default and the embedding arms read from data/assets/. Each .pkl has a
+    # .pkl.json sidecar whose sha256 the loader checks. See data/assets/README.md.
+    ("data/assets", "assets",
+     "per-gene GenePT / ESM2 embedding tables + sidecars; destination data/assets/"),
     # DiverseRNA removed from the Hub 2026-09-24 at the user's request (commit df21826d); do not re-add.
     # The two trained vcell checkpoints and their cards. These are DELIVERABLES, unlike
     # the stage-1/stage-2 MAE files: they are the models the reported numbers come from,

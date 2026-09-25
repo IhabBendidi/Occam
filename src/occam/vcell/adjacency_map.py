@@ -239,7 +239,11 @@ def build_pert_embedding_matrix(path: str, pert2id: dict, norm: str = "zscore"):
         if os.path.exists(cand):
             path = cand
     if not os.path.exists(path):
-        raise FileNotFoundError(f"pert_embedding_path not found: {path}")
+        raise FileNotFoundError(
+            f"pert_embedding_path not found: {path}\n"
+            f"The per-gene tables are on the Hub under assets/ (see data/assets/README.md):\n"
+            f"  hf download bendidiihab/Occam --include 'assets/*' --local-dir /tmp/dl && "
+            f"mkdir -p data/assets && mv /tmp/dl/assets/* data/assets/")
     if norm not in PERT_EMBEDDING_NORMS:
         raise ValueError(f"pert_embedding_norm={norm!r}; expected one of {PERT_EMBEDDING_NORMS}")
     table = read_gene_embedding_table(path)
@@ -265,9 +269,21 @@ def build_pert_embedding_matrix(path: str, pert2id: dict, norm: str = "zscore"):
         nrm = np.linalg.norm(mat[present], axis=1, keepdims=True)
         nrm[nrm < 1e-12] = 1.0
         mat[present] = mat[present] / nrm
+    sha = _file_sha256(path)
+    # A downloaded / rebuilt table must be the one the sidecar describes: a silently different
+    # table changes the arm. Sidecars without a top-level sha256 (older competitor tables) skip.
+    _side = path + ".json"
+    if os.path.exists(_side):
+        import json
+        with open(_side) as fh:
+            _want = json.load(fh).get("sha256")
+        if _want and _want != sha:
+            raise ValueError(f"{path}: sha256 {sha[:12]}... does not match its sidecar "
+                             f"{_side} ({_want[:12]}...). Re-download (data/assets/README.md) "
+                             f"or rebuild the table.")
     info = {
         "path": os.path.abspath(path),
-        "sha256": _file_sha256(path),
+        "sha256": sha,
         "dim": int(dim),
         "norm": norm,
         "n_table_keys": len(table),

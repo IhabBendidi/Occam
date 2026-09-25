@@ -73,6 +73,10 @@ hf auth login                      # a read token for the private repo
 hf download bendidiihab/Occam --include 'checkpoints/*.pth' 'checkpoints/*.json' \
     'checkpoints/*.md' --local-dir /tmp/dl && mv /tmp/dl/checkpoints/* checkpoints/release/
 
+# the per-gene GenePT + ESM2 tables the ALL-sources perturbation model reads (0.39 GB)
+hf download bendidiihab/Occam --include 'assets/*' --local-dir /tmp/dl && \
+    mkdir -p data/assets && mv /tmp/dl/assets/* data/assets/
+
 # the two perturbation-prediction checkpoints (2.23 GB each)
 hf download bendidiihab/Occam --include 'checkpoints/vcell/*' --local-dir /tmp/dl
 ```
@@ -83,13 +87,14 @@ hf download bendidiihab/Occam --include 'checkpoints/vcell/*' --local-dir /tmp/d
 | `eval/` | 6.25 GB | evaluation data — 7 datasets incl. `norman_2019_k562.h5ad` |
 | `benchmarks/` | see HF | the frozen `rhj_fewshot`, `norman_combo`, `h1_seen`, `k562_seen`, `k562_seen_h1set` benchmarks (the last three with their raw local copies) |
 | `graphs/` | 0.40 GB | the perturbation graph — **required to train or to rebuild a benchmark** |
+| `assets/` | 0.39 GB | per-gene GenePT + ESM2 tables — **required by the ALL-sources default** and the embedding arms (`data/assets/README.md`) |
 | `metrics/` | 22 MB | every cell-eval metric, per arm, per split (also in git) |
 | `metrics_all/` | 38 MB | the same for all 422 eval roots |
 | `repro/` | — | the scripts in `scripts/repro/`, for convenience |
 
 Destinations: `checkpoints/*` → `checkpoints/release/` · `eval/pert|scib` →
 `data/eval/pert|scib/` · `benchmarks/*` → `data/benchmarks/*` · `graphs/*` →
-`data/graphs/`. (The DiverseRNA pretraining corpus was removed from the Hub on 2026-09-24;
+`data/graphs/` · `assets/*` → `data/assets/`. (The DiverseRNA pretraining corpus was removed from the Hub on 2026-09-24;
 it is local only, `data/diverserna/`.)
 
 **The repo is private and must stay private.** Neither dataset's licensing is resolved:
