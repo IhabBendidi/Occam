@@ -100,11 +100,11 @@ Destinations: `checkpoints/*` → `checkpoints/release/` · `eval/pert|scib` →
 `data/graphs/` · `assets/*` → `data/assets/`. (The DiverseRNA pretraining corpus was removed from the Hub on 2026-09-24;
 it is local only, `data/diverserna/`.)
 
-**The repo is private and must stay private.** Neither dataset's licensing is resolved:
-the pretraining corpus has 7 of 9 constituent blocks unattributed and the two identified
-(GTEx, TCGA) carry redistribution conditions, and none of the evaluation datasets has a
-recorded licence. `scripts/check_upload_gate.py` gates *public* release and currently
-refuses, which is the correct state. See [docs/hf_release.md](docs/hf_release.md).
+**Visibility.** `bendidiihab/Occam` is currently private. There is no rule against public
+release (removed by the user, 2026-09-25): the trained competitor checkpoints are published in a
+separate PUBLIC repo (see "Competitor checkpoints" in [docs/hf_release.md](docs/hf_release.md)).
+Licensing facts worth knowing before making more public: the evaluation datasets have no recorded
+licence, and `scripts/check_upload_gate.py` reports on that (it is informational, not a rule).
 
 ---
 

@@ -191,3 +191,4 @@ archive/data/
 
 # staged copy of per-split cell-eval outputs for the Hub (scripts/stage_eval_outputs.py)
 data/release/eval_outputs/
+data/release/competitor_ckpts/

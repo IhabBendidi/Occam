@@ -239,3 +239,19 @@ Occam arms, per seed and split), `ablation/` (7035488a; 23 arms, per seed and sp
 `eval_outputs/` (90378285; 125 roots — 100 competitor + 25 baseline — × 5 splits × 5 benchmarks,
 2,875 files, 142 MB: metrics.json + results.csv + agg_results.csv; staged by
 `scripts/stage_eval_outputs.py`). `pred_de.csv` and `.h5ad` NOT pushed (user decision).
+
+## Competitor checkpoints — PUBLIC repo `bendidiihab/Occam-competitor-checkpoints` (2026-09-25)
+
+User decision: public, checkpoints only (no README, no cards). Layout
+`<competitor>/<benchmark>/seed_<N>/` for txpert, state, perturbdiff, cellflow × rhj_fewshot,
+norman_combo × seeds 42–46 (40 folders; h1_seen / k562_seen / k562_seen_h1set reuse the
+rhj_fewshot checkpoints). Each folder = the validation-selected checkpoint that produced our
+scores (path read from the export manifest) + the files its loader reads (TxPert config; STATE
+config + one-hot maps + var dims + data module; PerturbDiff sampling config + manifest + GenePT
+table; CellFlow whole run dir: CellFlow.pkl, pca/, genes.txt, config.yaml, run_meta.json — the
+pickle embeds the training AnnData, published on the user's instruction). STATE's upstream
+licences (code CC BY-NC-SA 4.0; weights Arc State Model Non-Commercial License + Acceptable Use
+Policy; `competitors/STATE/licenses/`) sit at the top of `state/`. Built by
+`scripts/stage_competitor_ckpts.py --include-cellflow` (136.2 GB); archived / defective runs are
+excluded by construction. TxPert uploaded and checked (102.9 MB rhj s42 on the Hub); the rest
+in progress, verified file by file (size + sha256) — log `runs/slurm/hf_competitor_ckpts_upload.log`.
