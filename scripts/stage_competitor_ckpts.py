@@ -99,7 +99,12 @@ def main() -> int:
             for src, name in files_for(comp, bench, m):
                 if not os.path.exists(src):
                     raise FileNotFoundError(f"{comp}/{bench}/seed_{s}: missing {src}")
-                os.symlink(src, os.path.join(d, name))
+                if os.path.isdir(src):   # the Hub uploader follows FILE links, not DIR links
+                    os.makedirs(os.path.join(d, name))
+                    for fn in sorted(os.listdir(src)):
+                        os.symlink(os.path.join(src, fn), os.path.join(d, name, fn))
+                else:
+                    os.symlink(src, os.path.join(d, name))
                 if os.path.isfile(src):
                     total += os.path.getsize(src)
                 else:

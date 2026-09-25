@@ -255,3 +255,24 @@ Policy; `competitors/STATE/licenses/`) sit at the top of `state/`. Built by
 `scripts/stage_competitor_ckpts.py --include-cellflow` (136.2 GB); archived / defective runs are
 excluded by construction. TxPert uploaded and checked (102.9 MB rhj s42 on the Hub); the rest
 in progress, verified file by file (size + sha256) — log `runs/slurm/hf_competitor_ckpts_upload.log`.
+
+**Public repo completed + reload tested (2026-09-25).** First pass left CellFlow's `pca/` out in all
+10 folders (the stager symlinked the directory; the uploader follows file links only) — uploaded
+directly (commit 87635635, 30/30 files size+sha256 verified); the stager now links files inside
+directories. Final: 204 files, every staged file matches the Hub. Reload test: downloaded
+`txpert/rhj_fewshot/seed_42/` from the public repo and ran `competitors/TxPert/export_occam.py
+--checkpoint <downloaded>/checkpoint.ckpt --seed 42 --split 0` (gspp env, rhj_fewshot panel) — it
+loaded and was predicting (1,012 / 7,178 batches, no errors) when stopped on the user's instruction.
+
+## Occam 5-seed checkpoints — PRIVATE `bendidiihab/Occam`, `checkpoints/occam_seeds/` (2026-09-25)
+
+`checkpoints/occam_seeds/rhj_fewshot/{gostring,all_sources}/seed_<42..46>/` = `best_model.pth`
+(the checkpoint the split-half scorer uses) + `resolved_config.yaml`. `gostring` = AA03 schedule +
+smooth_l1 + delta-cos, GO+STRING adjacency (`ABL_A_DC`, 2.23 GB each); `all_sources` = the same
+with GO+STRING adjacency ‖ GenePT ‖ ESM2 (`ABL_N_ALL`, 2.55 GB each; tables stored in the
+checkpoint, reloads without the files). Upload log `runs/slurm/hf_occam_seeds_upload.log`.
+Norman (user: GO+STRING = NF32DCA only; all-sources = both weights):
+`checkpoints/occam_seeds/norman_combo/gostring/seed_<N>/` = NF32DCA (NF32 recipe, smooth_l1 +
+delta-cos 0.0255, GO+STRING); `.../all_sources_dcos0.32977/` = NF32ALL; `.../all_sources_dcos0.0255/`
+= NF32ALLA (both ALL-sources concatenated). Same two files per folder. Log
+`runs/slurm/hf_occam_norman_upload.log` (waits for all 15 trainings, then uploads and verifies).
