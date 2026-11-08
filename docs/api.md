@@ -60,7 +60,7 @@ encoder's axis would be wrong.
 ### `OccamVirtualCell`
 
 ```python
-vc = load_virtual_cell("checkpoints/vcell/norman_combo_NQ02/best_model.pth")
+vc = load_virtual_cell("checkpoints/vcell/norman_combo_NF32ALLA/best_model.pth")
 vc.perturbations          # 18,216 labels it knows
 vc.compose_modes          # the 12 composition modes
 vc.resolve("CBL+CNN1")    # [id_CBL, id_CNN1], or None

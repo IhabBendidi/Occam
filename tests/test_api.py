@@ -214,8 +214,10 @@ def test_the_readme_is_a_step_by_step_guide():
                  "## 4. Rebuild the benchmarks", "## 5. Train", "## 6. Evaluate",
                  "## 7. The results"):
         assert step in readme, f"missing section: {step}"
-    # The anchors, without which a score is unreadable.
-    for anchor in ("0.1324", "0.2323", "0.3722", "0.4043", "0.8824", "0.7757"):
+    # Current official five-seed results and sum-of-singles reference.
+    assert "`ctrlmean`" in readme and "`ctrlcell`" in readme
+    assert "official_comparisons/official_tables.md" in readme
+    for anchor in ("0.3999", "0.8955", "0.8013", "0.8822", "0.7749"):
         assert anchor in readme, f"README quotes no anchor {anchor}"
     # Installing the scoring environment is a separate step people miss.
     assert "cell-eval==0.6.0" in readme

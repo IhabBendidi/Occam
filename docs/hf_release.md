@@ -1,5 +1,16 @@
 # The HuggingFace release — what is published, where, and why it is private
 
+**Norman release update (2026-10-06).** NF32ALLA seeds 42–46 are the only official Norman
+virtual-cell checkpoints in the private repo under
+`checkpoints/vcell/norman_combo_NF32ALLA/seed_<seed>/best_model.pth`; the root
+`best_model.pth` is a convenience alias for seed 42. The previous NQ02 checkpoint is under
+`ablations/occam/norman_combo/NQ02/seed_42/`. The 15 other Norman seed checkpoints once
+stored as `razor/` in the public competitor repo are filed under
+`ablations/occam/norman_combo/<NF32 variant>/seed_<42..46>/best_model.pth`; this keeps
+their original Occam names. The complete new scores and coverage are in
+`final/norman_allsource/`. Earlier upload-history paragraphs below describe the
+original placement at the time and are retained as provenance.
+
 ## Objective
 
 Occam's paper needs three artifacts to be fetchable by one person on one machine with no
@@ -24,7 +35,8 @@ checkpoints/occam_small_encoder_decoder.pth    the pretrained encoder + decoder
 checkpoints/MANIFEST.json                      checksums, param counts, verified recipe
 checkpoints/MODEL_CARD.md
 checkpoints/vcell/rhj_fewshot_Y06/            the rhj_fewshot main checkpoint + CARD.md
-checkpoints/vcell/norman_combo_NQ02/          the norman_combo main checkpoint + CARD.md
+checkpoints/vcell/norman_combo_NF32ALLA/      five official Norman checkpoints + CARD.md
+ablations/occam/norman_combo/                 previous Norman Occam checkpoints
 benchmarks/norman_combo/                       axis, cohort, 5 splits, baselines
 benchmarks/h1_seen/                            H1 (VCC 2025) local copy h1_seen_raw.h5ad + panel
 metrics/metrics_long.csv  metrics/*.csv        EVERY cell-eval metric, per arm, per split
@@ -71,16 +83,17 @@ Making this public is a licensing decision with a named human approver, not an e
 
 ## Checkpoints: one is published, two are not
 
-### The two trained vcell checkpoints ARE published (added 2026-09-22)
+### The two current vcell checkpoints are published
 
 | checkpoint | size | sha256 (first 16) | result |
 |---|---|---|---|
 | `checkpoints/vcell/rhj_fewshot_Y06/best_model.pth` | 2.23 GB | `fe93eeac08d345f3` | `pearson_delta` **0.4043** on 611 held-out HepG2 perturbations (bar: `transfer` 0.2323) |
-| `checkpoints/vcell/norman_combo_NQ02/best_model.pth` | 2.23 GB | `91aed55e3db04afb` | **0.8169** additive / **0.7380** non-additive on double perturbations (bar: `sum_of_singles` 0.8824 / 0.7757) |
+| `checkpoints/vcell/norman_combo_NF32ALLA/seed_<42..46>/best_model.pth` | 5 × 2.55 GB | per-seed hashes in CARD.md | Five-seed Pearson delta **0.8955 ± 0.0032** additive / **0.8013 ± 0.0044** nonadditive (bar: `sum_of_singles` 0.8822 / 0.7749) |
 
-Both are **self-contained**: encoder (frozen, 94.2 M) + decoder (128.5 M) + perturbation
-model (334.2 M) + FiLM (0.33 M) = **557,191,681 parameters**, plus `gene_names` (44,728,
-ordered), `pert2id` (18,216), `target_sum` and the benchmark's own sha256. Nothing needs the
+Both are **self-contained**: each includes the frozen encoder, decoder, perturbation model,
+FiLM, ordered `gene_names`, `pert2id`, `target_sum`, and the benchmark identity. NF32ALLA's
+concatenated-source perturbation model is larger than the earlier adjacency-only NQ02 model.
+Nothing needs the
 absolute `training_config["encoder_checkpoint"]` path they record.
 
 ⚠️ `publish_hf.py` **verifies both sha256 values before uploading anything** and refuses
@@ -184,7 +197,7 @@ verified without the source.
 | artifact | size | why |
 |---|---|---|
 | `checkpoints/vcell/rhj_fewshot_Y06/` | 2.23 GB | the `rhj_fewshot` main checkpoint + card |
-| `checkpoints/vcell/norman_combo_NQ02/` | 2.23 GB | the `norman_combo` main checkpoint + card |
+| `checkpoints/vcell/norman_combo_NF32ALLA/` | 5 × 2.55 GB | all five official `norman_combo` seed checkpoints + card |
 | `metrics/` | 28 MB | **all 35** cell-eval metrics x 422 eval roots x 5 splits x panel, plus per-perturbation rows for the published and reference arms |
 | `repro/` | 40 KB | train / eval / predict, four commands per benchmark |
 

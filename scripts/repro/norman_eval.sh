@@ -20,10 +20,11 @@
 #   0.6.0, --calibrate none (nocal). One array task per split.
 #
 # WHAT EACH OUTCOME MEANS
-#   Reproduced: additive pearson_delta 0.8169 +- 0.0009, nonadditive 0.7380 +- 0.0018, under compose=decode_seq_mean
+#   Five-seed reference: additive pearson_delta 0.8955 +- 0.0032,
+#   nonadditive 0.8013 +- 0.0044, under compose=decode_seq_mean.
 #   At or below meanpert: the arm learned nothing usable on this panel.
 #
-# ANCHORS: meanpert 0.4634/0.4016 . sum_of_singles 0.8824/0.7757 <- THE BAR . experimental 0.9165/0.8377
+# ANCHORS: meanpert 0.4631/0.4023 . sum_of_singles 0.8822/0.7749 <- THE BAR . experimental 0.9165/0.8377
 #   All four headline metrics matter, and `mae` is an ERROR -- LOWER is better.
 #   `disc_l1` chance is 0.5. Do NOT rank on `overlap_at_N` alone: a zero-signal
 #   predictor beats a real model on it (the emission-floor artifact).
@@ -57,7 +58,7 @@ export OCCAM_CELLEVAL_ATTEMPTS="${OCCAM_CELLEVAL_ATTEMPTS:-3}"
 
 SPLIT="${SLURM_ARRAY_TASK_ID:-0}"
 PANEL="${PANEL:-data/benchmarks/norman_combo/splithalf}"
-CKPT="${1:-runs/norman_combo_NQ02__smooth_l1_nbw0_nbs1.0_dcos0.32977_mag0.0400866_lmse0.00198826_e150_em3e-4_s42/vcell/checkpoints/best_model.pth}"
+CKPT="${1:-checkpoints/vcell/norman_combo_NF32ALLA/best_model.pth}"
 MODE="${MODE:-model}"
 OUT="${OUT:-runs/norman_combo/repro_eval}"
 CACHE="${CACHE:-runs/norman_combo/_de_real_shared}"

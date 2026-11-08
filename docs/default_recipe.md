@@ -1,4 +1,15 @@
-# The Occam vcell DEFAULT RECIPE (adopted 2026-09-22)
+# Historical Q02/NB10 recipe and current Norman override
+
+**Current RHJ/H1/K562 reference (2026-10-06): `ABL_N_ALL`.** It uses the AA03
+schedule, concatenated GO+STRING/GenePT/ESM2 sources, and
+`smooth_l1 + 0.5 * delta_cos` (see `scripts/grids/ablation/ABL_N_ALL.tsv`).
+
+**Current Norman default (2026-10-06): NF32ALLA.** Train with
+`configs/norman_combo_official.yaml`: concatenated GO+STRING, GenePT, and ESM2 inputs;
+`smooth_l1 + 0.0255 * delta_cos`; batch 32, 150 epochs, eta_min 3e-4; and
+`decode_seq_mean`. The released seed-42 checkpoint and five-seed evaluation are in
+`checkpoints/cards/norman_combo_NF32ALLA_CARD.md`. The Q02/NB10 material below records the
+earlier recipe for historical comparison and must not be used as the Norman default.
 
 ## What this is and why it exists
 
@@ -37,7 +48,7 @@ Where it lives, so it cannot drift:
 
 ### Norman override — NB10 (adopted 2026-09-23, user decision)
 
-`norman_combo` now defaults to **bs 256, eta_min 1e-3** (constant LR after warmup). Seed 42,
+In the historical NB10 recipe, `norman_combo` used **bs 256, eta_min 1e-3** (constant LR after warmup). Seed 42,
 5 splits, nocal, `decode_seq_mean`. Bar = `sum_of_singles` 0.8824 / 0.7757 pΔ. `mae` ↓.
 
 | arm | bs | eta_min | pΔ add / non | mae add / non ↓ | ovl add / non | dl1 add / non |
@@ -45,11 +56,11 @@ Where it lives, so it cannot drift:
 | **NB10 (default)** | 256 | 1e-3 | **0.8910 / 0.7763** | 0.0112 / 0.0137 | **0.3207 / 0.3037** | 0.8804 / 0.7564 |
 | NB09 | 256 | 3e-4 | 0.8785 / 0.7660 | 0.0114 / 0.0140 | 0.3092 / 0.2881 | 0.8928 / 0.7425 |
 | NE25 | 128 | 3e-4 | 0.9003 / 0.7940 | 0.0114 / 0.0134 | 0.3080 / 0.2942 | 0.8717 / 0.7489 |
-| NQ02 (published HF) | 2048 | 3e-4 | 0.8169 / 0.7380 | 0.0123 / 0.0146 | 0.3059 / 0.2843 | 0.9091 / 0.7708 |
+| NQ02 (historical HF ablation) | 2048 | 3e-4 | 0.8169 / 0.7380 | 0.0123 / 0.0146 | 0.3059 / 0.2843 | 0.9091 / 0.7708 |
 
 ⚠️ NB10 was trained BEFORE validation selection composed pairs with `decode_seq_mean`, so a
-fresh run from this default may select a different epoch. The published checkpoint is still
-NQ02; `scripts/repro/norman_train.sh` pins bs 2048 / eta_min 3e-4 to reproduce it.
+fresh run from that historical config may select a different epoch. NQ02 is now an ablation;
+`scripts/repro/norman_train.sh` reproduces NF32ALLA.
 Untested at bs 256: eta_min below 3e-4. At bs 2048 lower floors lost (NE20 1e-5 0.7789/0.6838,
 NE21 1e-6 0.7819/0.6829 vs 3e-4 0.8169/0.7380).
 

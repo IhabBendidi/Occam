@@ -1,0 +1,15 @@
+benchmark,panel,model_kind,model,variant,42,43,44,45,46,complete_seeds
+norman_combo,additive,occam,NF32ALL,decode_seq_mean,5,5,5,5,5,5
+norman_combo,additive,occam,NF32ALLA,decode_seq_mean,5,5,5,5,5,5
+norman_combo,additive_raw,occam,NF32ALL,decode_seq_mean,5,5,5,5,5,5
+norman_combo,additive_raw,occam,NF32ALLA,decode_seq_mean,5,5,5,5,5,5
+norman_combo,all,occam,NF32ALL,decode_seq_mean,5,5,5,5,5,5
+norman_combo,all,occam,NF32ALLA,decode_seq_mean,5,5,5,5,5,5
+norman_combo,middle,occam,NF32ALL,decode_seq_mean,5,5,5,5,5,5
+norman_combo,middle,occam,NF32ALLA,decode_seq_mean,5,5,5,5,5,5
+norman_combo,middle_raw,occam,NF32ALL,decode_seq_mean,5,5,5,5,5,5
+norman_combo,middle_raw,occam,NF32ALLA,decode_seq_mean,5,5,5,5,5,5
+norman_combo,nonadditive,occam,NF32ALL,decode_seq_mean,5,5,5,5,5,5
+norman_combo,nonadditive,occam,NF32ALLA,decode_seq_mean,5,5,5,5,5,5
+norman_combo,nonadditive_raw,occam,NF32ALL,decode_seq_mean,5,5,5,5,5,5
+norman_combo,nonadditive_raw,occam,NF32ALLA,decode_seq_mean,5,5,5,5,5,5

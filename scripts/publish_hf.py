@@ -46,15 +46,24 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # after a re-run and publish it under the published arm's name.
 RHJ_CKPT = ("runs/rhj_fewshot_Y06__smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_"
             "lmse0.0044_e150_em3e-4_s42/vcell/checkpoints/best_model.pth")
-NORMAN_CKPT = ("runs/norman_combo_NQ02__smooth_l1_nbw0_nbs1.0_dcos0.32977_mag0.0400866_"
-               "lmse0.00198826_e150_em3e-4_s42/vcell/checkpoints/best_model.pth")
+NORMAN_CKPT = ("checkpoints/local_artifacts/occam_variants/norman_combo/"
+               "NF32ALLA/seed_42/best_model.pth")
+NORMAN_SEED_CKPTS = {
+    seed: ("checkpoints/local_artifacts/occam_variants/norman_combo/"
+           f"NF32ALLA/seed_{seed}/best_model.pth")
+    for seed in range(42, 47)
+}
 
 # sha256 of each, asserted before upload: these are 2.2 GB files selected by a path that
 # a re-run can overwrite, and publishing the wrong weights under a published number is
 # not recoverable once someone has downloaded it.
 CKPT_SHA256 = {
     RHJ_CKPT: "fe93eeac08d345f3ec53a411879d6331985b4ef9df2b5c856cfc8f2b50fce219",
-    NORMAN_CKPT: "91aed55e3db04afb49e225e6d49193c14f5bdf72b74b3815111c7da8cff26d4a",
+    NORMAN_CKPT: "2c73b717bb5391cd4d1dec4f76fc22fbd680a147a124442db354ff8c87597af8",
+    NORMAN_SEED_CKPTS[43]: "e18fff6e6c676f9daad9b7ba0828e747b39e929b77e791b0ce2e5429bb25022d",
+    NORMAN_SEED_CKPTS[44]: "c181809206fa1e1b06c9f5837696e6a11363e71fbf726e3da6c85953c353660a",
+    NORMAN_SEED_CKPTS[45]: "f54ab574a80f725171fe6935ae5a889da27ed2a845327fa30551f8f8a268c0fd",
+    NORMAN_SEED_CKPTS[46]: "b37bb66244378ea32709e3f7424c05af1b397e804762ca0e81483a42fcba0720",
 }
 
 # (local path, path in the repo, description). Directories are staged whole.
@@ -117,10 +126,14 @@ ARTIFACTS = [
      "rhj_fewshot main checkpoint, arm Y06 (pearson_delta 0.4043)"),
     ("checkpoints/cards/rhj_fewshot_Y06_CARD.md",
      "checkpoints/vcell/rhj_fewshot_Y06/CARD.md", "its model card"),
-    (NORMAN_CKPT, "checkpoints/vcell/norman_combo_NQ02/best_model.pth",
-     "norman_combo main checkpoint, arm NQ02 (0.8169 additive / 0.7380 nonadditive)"),
-    ("checkpoints/cards/norman_combo_NQ02_CARD.md",
-     "checkpoints/vcell/norman_combo_NQ02/CARD.md", "its model card"),
+    (NORMAN_CKPT, "checkpoints/vcell/norman_combo_NF32ALLA/best_model.pth",
+     "norman_combo seed-42 convenience path, arm NF32ALLA"),
+    *[(NORMAN_SEED_CKPTS[seed],
+       f"checkpoints/vcell/norman_combo_NF32ALLA/seed_{seed}/best_model.pth",
+       f"norman_combo official NF32ALLA seed {seed} checkpoint")
+      for seed in range(42, 47)],
+    ("checkpoints/cards/norman_combo_NF32ALLA_CARD.md",
+     "checkpoints/vcell/norman_combo_NF32ALLA/CARD.md", "its model card"),
     # Every cell-eval metric, every arm, every split -- so a reader can re-derive any
     # reported number instead of trusting a four-metric mean. Regenerate with
     # `python scripts/export_split_metrics.py --out data/release/metrics`.
@@ -130,6 +143,8 @@ ARTIFACTS = [
     # One row per (benchmark, panel, model, seed, split) -- the paper tables' source -- and the
     # ablation tables, each in its own section (scripts/final_table.py, ablate.py table).
     ("data/release/final", "final", "every model/competitor/baseline, per seed and split"),
+    ("data/release/norman_allsource", "final/norman_allsource",
+     "NF32ALL and NF32ALLA Norman five-seed scores and coverage"),
     ("data/release/ablation", "ablation", "Occam ablation arms, per seed and split + summary"),
     # Per-split cell-eval outputs of every competitor and baseline (metrics.json, results.csv,
     # agg_results.csv). Stage first: python scripts/stage_eval_outputs.py

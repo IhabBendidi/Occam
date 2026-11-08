@@ -1,4 +1,7 @@
-# Occam vcell — `norman_combo` main checkpoint (arm **NQ02**)
+# Occam vcell — historical `norman_combo` ablation checkpoint (arm **NQ02**)
+
+**Historical record.** NF32ALLA is the current official Norman checkpoint. NQ02 is retained
+under ablations for reproducibility; the scores below describe its original seed-42 run.
 
 ## What this model does
 
@@ -7,8 +10,8 @@ predicts the effect of a **PAIR** of genes where both were seen individually and
 was. Input is a **single control cell**. This is the composition task — the direct test of
 Occam's own operator.
 
-This is the **main checkpoint for the `norman_combo` benchmark**. Its configuration is Occam's
-default recipe (`docs/default_recipe.md`), scale-matched to this corpus.
+This was the original main checkpoint for the `norman_combo` benchmark. Its configuration was
+the earlier Q02 recipe, scale-matched to this corpus.
 
 ## Identity
 
@@ -103,9 +106,10 @@ two configs ever carry identical weights.
 
 ## Reproduce
 
-`configs/norman_combo.yaml` as shipped resolves to exactly this arm. Scripts:
-`scripts/repro/norman_train.sh`, `scripts/repro/norman_eval.sh`,
-`scripts/repro/norman_infer.py`.
+For the historical NQ02 training schedule, use `configs/norman_combo.yaml` with
+`stages.vcell.optim.batch_size=2048` and `stages.vcell.optim.eta_min=3e-4` overrides.
+`scripts/repro/norman_eval.sh` accepts this checkpoint as an explicit argument; its default
+now evaluates NF32ALLA.
 
 ## Limitations
 

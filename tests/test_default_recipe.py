@@ -1,4 +1,4 @@
-"""The adopted default recipe is pinned here, so it cannot drift silently.
+"""The historical Q02 recipe and the official Norman NF32ALLA recipe are pinned here.
 
 WHY THIS FILE EXISTS. On 2026-09-22 the user adopted one default for every vcell
 benchmark: the **Q02 loss base at 150 epochs with eta_min 3e-4**, and
@@ -71,6 +71,26 @@ def test_the_loss_weights_are_NOT_shared_between_datasets():
     assert a["delta_cos_weight"] != b["delta_cos_weight"]
     assert a["delta_mag_weight"] != b["delta_mag_weight"]
     assert a["latent_loss_weight"] != b["latent_loss_weight"]
+
+
+def test_official_norman_recipe_is_nf32alla():
+    cfg = _vcell("configs/norman_combo_official.yaml")
+    optim, loss, graph = cfg["optim"], cfg["loss"], cfg["graph"]
+    assert optim["batch_size"] == 32
+    assert optim["epochs"] == 150
+    assert optim["eta_min"] == pytest.approx(3e-4)
+    assert cfg["data"]["panel_compose"] == "decode_seq_mean"
+    assert loss["loss_type"] == "smooth_l1"
+    assert loss["nb_weight"] == 0
+    assert loss["delta_cos_weight"] == pytest.approx(0.0255)
+    assert loss["cosine_loss_weight"] == 0
+    assert loss["delta_mag_weight"] == 0
+    assert loss["latent_loss_weight"] == 0
+    assert loss["latent_loss_type"] == "none"
+    assert graph["pert_embedding_paths"] == [
+        "data/assets/genept_full_occam_rhj_fewshot.pkl",
+        "data/assets/esm2_t33_650M_UR50D_occam_rhj_fewshot.pkl",
+    ]
 
 
 def test_forward_composed_defaults_to_decode_seq_mean():

@@ -40,12 +40,16 @@ def test_both_vcell_checkpoints_are_published_with_a_recorded_digest():
     m = _publish_module()
     remotes = {a[1]: a[0] for a in m.ARTIFACTS}
     for remote in ("checkpoints/vcell/rhj_fewshot_Y06/best_model.pth",
-                   "checkpoints/vcell/norman_combo_NQ02/best_model.pth"):
+                   "checkpoints/vcell/norman_combo_NF32ALLA/best_model.pth"):
         assert remote in remotes, f"{remote} is not in ARTIFACTS"
         local = remotes[remote]
         assert local in m.CKPT_SHA256, f"{local} has no recorded sha256"
         assert re.fullmatch(r"[0-9a-f]{64}", m.CKPT_SHA256[local]), \
             f"{local}: sha256 is not 64 hex chars"
+    for seed in range(42, 47):
+        remote = f"checkpoints/vcell/norman_combo_NF32ALLA/seed_{seed}/best_model.pth"
+        assert remote in remotes, remote
+        assert remotes[remote] in m.CKPT_SHA256, remote
     # Every digest must belong to an artifact actually being published, or the gate
     # silently never runs on it.
     for local in m.CKPT_SHA256:
@@ -56,7 +60,7 @@ def test_both_vcell_checkpoints_are_published_with_a_recorded_digest():
 def test_each_published_checkpoint_ships_its_card():
     m = _publish_module()
     remotes = {a[1] for a in m.ARTIFACTS}
-    for arm in ("rhj_fewshot_Y06", "norman_combo_NQ02"):
+    for arm in ("rhj_fewshot_Y06", "norman_combo_NF32ALLA"):
         assert f"checkpoints/vcell/{arm}/CARD.md" in remotes, arm
         card = os.path.join(REPO, "checkpoints/cards", f"{arm}_CARD.md")
         assert os.path.isfile(card), card
@@ -106,14 +110,12 @@ def test_the_train_scripts_pass_no_loss_or_schedule_overrides():
     assert sets == ["seed"], f"rhj_train.sh overrides {sets}; expected only seed"
 
 
-def test_the_norman_train_script_pins_the_published_NQ02_schedule():
-    """2026-09-23: the Norman YAML default moved to NB10 (bs 256, eta_min 1e-3), but the
-    published HF checkpoint is NQ02. The repro script must pin NQ02's bs/eta_min and nothing
-    else, or it silently stops reproducing the published checkpoint."""
+def test_the_norman_train_script_uses_the_official_nf32alla_recipe():
+    """The reproduction script must use the exact NF32ALLA config without overrides."""
     src = open(os.path.join(REPO, "scripts/repro/norman_train.sh")).read()
     pins = dict(re.findall(r'--set "([^"=]+)=([^"$]+)"', src))
-    assert pins == {"stages.vcell.optim.batch_size": "2048",
-                    "stages.vcell.optim.eta_min": "3e-4"}, pins
+    assert pins == {}, pins
+    assert '--config configs/norman_combo_official.yaml' in src
     assert re.findall(r'--set "([^"=]+)=', src)[-1] == "seed"
 
 

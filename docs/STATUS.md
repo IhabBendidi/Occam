@@ -1,7 +1,16 @@
 # STATUS — what is current. Read this first.
 
-Last updated 2026-09-23. If something is not listed here, it is not current. Stale material
+Last updated 2026-11-08. If something is not listed here, it is not current. Stale material
 lives only in `archive/` (see `archive/README.md`) and must not be quoted or built on.
+
+## Official Occam virtual-cell architecture (current)
+
+For RHJ, H1, and K562, the official Occam reference is **`ABL_N_ALL`**: AA03 schedule,
+concatenated GO+STRING, GenePT, and ESM2 sources, and `smooth_l1 + 0.5 * delta-cos`.
+The 0.5 delta-cos weight is not loss-balanced. The older adjacency-only `ABL_A_DC`
+is a representation ablation. For Norman, the official setup is **`NF32ALLA`**:
+concatenated sources, NF32 schedule, `smooth_l1 + 0.0255 * delta-cos`, and
+`decode_seq_mean`.
 
 ## Benchmarks (all frozen; `data/benchmarks/<name>/`, on HF under `benchmarks/<name>/`)
 
@@ -22,16 +31,33 @@ metrics `pearson_delta` ↑, `mae` ↓ (error), `overlap_at_N` ↑, `discriminat
 | checkpoint | benchmark | result | card |
 |---|---|---|---|
 | `rhj_fewshot_Y06` | rhj_fewshot | `pearson_delta` **0.4043** (anchors: meanpert 0.1324 · transfer 0.2323 · experimental 0.3722) | `checkpoints/cards/rhj_fewshot_Y06_CARD.md` |
-| `norman_combo_NQ02` | norman_combo | 0.8169 / 0.7380 additive / nonadditive (bar: sum_of_singles 0.8824 / 0.7757) | `checkpoints/cards/norman_combo_NQ02_CARD.md` |
+| `norman_combo_NF32ALLA` (seeds 42–46) | norman_combo | 5-seed Pearson delta 0.8955 ± 0.0032 / 0.8013 ± 0.0044 additive / nonadditive; bars: sum_of_singles 0.8822 / 0.7749 | `checkpoints/cards/norman_combo_NF32ALLA_CARD.md` |
 
-## Defaults (configs)
+## Current recipes and historical configs
 
 | | recipe | doc |
 |---|---|---|
-| `configs/rhj_fewshot.yaml` | Q02 loss base, 150 ep, eta_min 3e-4, bs 2048, lr 1e-3 (= Y06) | `default_recipe.md` |
-| `configs/norman_combo.yaml` | Q02 Norman weights, 150 ep, **bs 256, eta_min 1e-3** (= NB10, adopted 2026-09-23), `decode_seq_mean` | `default_recipe.md` |
+| `scripts/grids/ablation/ABL_N_ALL.tsv` with `configs/rhj_fewshot_pertemb.yaml` | **ABL_N_ALL**: concatenated sources, smooth_l1 + 0.5 delta-cos, AA03 schedule | `ABLATION_PLAN.md` |
+| `configs/rhj_fewshot.yaml` | historical Y06 Q02 reproduction config | `default_recipe.md` |
+| `configs/norman_combo_official.yaml` | **NF32ALLA**: GO+STRING + GenePT + ESM2, smooth_l1 + 0.0255 delta-cos, 150 ep, bs 32, eta_min 3e-4, `decode_seq_mean` | `default_recipe.md` |
 
-## Final tables (in progress, 2026-09-23)
+`configs/norman_combo.yaml` and `configs/norman_combo_pertemb.yaml` remain for historical
+reproduction. NQ02, NF32, NF32DC, NF32DCA, and NF32ALL are Norman ablations, not official
+checkpoints. The current RHJ/H1/K562 all-source arm is `ABL_N_ALL`; `ABL_A_DC` remains
+an adjacency-only ablation.
+
+## Current five-seed comparisons
+
+`data/release/official_comparisons/official_tables.md` is the current comparison
+entrypoint: all five benchmarks, all four headline metrics, competitors, and
+`ctrlmean`/`ctrlcell` anchors. Its 11 panel tables contain 110 rows, each with
+five seeds × five splits. Rebuild with `python scripts/official_score_tables.py`.
+It combines the frozen `data/release/final/` scores with the Norman NF32ALLA
+supplement in `data/release/norman_allsource/`; check both coverage ledgers.
+The frozen final source has not been overwritten with a merged release.
+See `docs/release_audit.md` for the remote audit and verification limits.
+
+## Final table campaign (historical progress, 2026-09-23)
 
 5 seeds × 5 splits for every model and baseline: `docs/FINAL_TABLES_PLAN.md`; completeness by
 `scripts/score_ledger.py`; the table itself `data/release/final/scores_by_seed_split.csv`
@@ -47,7 +73,8 @@ rhj + 3 OOD panels: `docs/ABLATION_PLAN.md`; driver `scripts/ablation/ablate.py`
 
 | topic | doc |
 |---|---|
-| rhj_fewshot: live arms, baselines, competitors, one table | `rhj_scoreboard.md` |
+| current official arms, competitors and anchors (5 seeds × 5 splits) | `data/release/official_comparisons/official_tables.md` |
+| rhj_fewshot: historical arms, baselines, competitors | `rhj_scoreboard.md` |
 | rhj_fewshot: findings log (chronological; corrections inline) | `rhj_splithalf.md` |
 | rhj_fewshot: baselines | `rhj_baseline_results.md` |
 | rhj_fewshot: competitors (headline TxPert single-cell 0.3463, PerturbDiff genept 0.2449, STATE 0.2362, CellFlow 0.2154) and their deviations | `rhj_competitors_results.md`, `rhj_competitors.md` |
@@ -55,7 +82,7 @@ rhj + 3 OOD panels: `docs/ABLATION_PLAN.md`; driver `scripts/ablation/ablate.py`
 | h1_seen / k562_seen | `h1_seen.md`, `k562_seen.md` |
 | every cell-eval metric, per split | `data/release/metrics/` (published arms), `data/release/metrics_all/` (all live arms) — `python scripts/export_split_metrics.py` |
 
-## Live experiment families (training runs in `runs/`)
+## Experiment families (historical status recorded 2026-09-23)
 
 | family | what | status |
 |---|---|---|

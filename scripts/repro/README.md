@@ -4,15 +4,18 @@
 
 Four numbered commands per benchmark: **train → evaluate → inspect the metrics → predict on
 your own cells**. Every script is runnable as-is from the repo root, with no `--set` overrides,
-because `configs/rhj_fewshot.yaml` and `configs/norman_combo.yaml` now ship the default recipe
-(`docs/default_recipe.md`) and resolve to exactly the published arms.
+because `configs/rhj_fewshot.yaml` and `configs/norman_combo_official.yaml` now ship the selected recipes
+(`docs/default_recipe.md`) and resolve to the arms below. The RHJ scripts reproduce
+the historical Y06 checkpoint. Current RHJ/H1/K562 comparisons use ABL_N_ALL
+from `scripts/grids/ablation/ABL_N_ALL.tsv`; see the current
+[comparison tables](../../data/release/official_comparisons/official_tables.md).
 
 | | `rhj_fewshot` | `norman_combo` |
 |---|---|---|
 | task | unseen perturbation, seen cell line family | unseen PAIR from seen singles |
 | data | HepG2 + Jurkat + RPE1 | K562 (Norman 2019, GEO rebuild) |
-| published arm | `Y06` | `NQ02` |
-| headline | `pearson_delta` **0.4043** (bar: `transfer` 0.2323) | **0.8169** / **0.7380** (bar: `sum_of_singles` 0.8824 / 0.7757) |
+| published arm | `Y06` | `NF32ALLA` |
+| headline | `pearson_delta` **0.4043** (bar: `transfer` 0.2323) | Five-seed mean **0.8955 ± 0.0032** / **0.8013 ± 0.0044** (bar: `sum_of_singles` 0.8822 / 0.7749) |
 | 0. build the data | `build_benchmark_rhj.sh` (+ `build_benchmark_h1.sh`, unseen-line panel) | `build_benchmark_norman.sh` |
 | 1. train | `rhj_train.sh` | `norman_train.sh` |
 | 2. evaluate | `rhj_eval.sh` | `norman_eval.sh` |
@@ -194,10 +197,11 @@ Writes **all 35** cell-eval metrics — not only the four headline ones — per 
 split, per panel, as a tidy long CSV plus wide (mean + SEM) and one-column-per-split
 views, and copies cell-eval's own per-perturbation rows.
 
-`--scope published` (the default, and what is tracked in git) keeps **our published
-arms** (`Y06`; `NQ02` under all 12 composition modes) plus **every baseline** and
+`--scope published` (the historical export tracked in git) keeps the earlier published
+arms (`Y06`; `NQ02` under all 12 composition modes) plus **every baseline** and
 **every competitor arm**. `--scope all` adds the campaign's other ~360 eval roots and is
-published to the Hub as `metrics_all/`.
+published to the Hub as `metrics_all/`. NF32ALLA's complete five-seed export is separately
+published as `final/norman_allsource/`.
 
 See `data/release/metrics/README.md` for the schema, which direction is good per metric,
 which metrics must not be ranked on, and which competitor arms are withdrawn.

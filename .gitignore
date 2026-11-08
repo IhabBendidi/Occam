@@ -12,6 +12,8 @@ wandb_runs/
 # Large binary artifacts, populated by scripts/bootstrap_assets.sh
 checkpoints/**/*.pth
 checkpoints/**/*.pt
+# Local Hugging Face checkpoint archive; populated by the checkpoint download workflow.
+checkpoints/local_artifacts/
 
 # DiverseRNA shards, populated by scripts/export_dataset_hf.py
 data/diverserna/data/
@@ -192,3 +194,7 @@ archive/data/
 # staged copy of per-split cell-eval outputs for the Hub (scripts/stage_eval_outputs.py)
 data/release/eval_outputs/
 data/release/competitor_ckpts/
+
+# Machine-local tool bootstrap and separate scoring environment.
+.tools/
+.venv-celleval/

@@ -63,8 +63,11 @@ without pytest; `pytest tests/` also works if you have it.
 
 ## 2. Get the weights and the data
 
-Everything is in **one private HuggingFace repo**, `bendidiihab/Occam` (21.2 GB, 334
-files). Download only what you need:
+Occam weights and benchmark data live in the **private Hugging Face repo**
+[`bendidiihab/Occam`](https://huggingface.co/bendidiihab/Occam). Competitor checkpoints
+and historical Norman ablations live in the public
+[`bendidiihab/Occam-competitor-checkpoints`](https://huggingface.co/bendidiihab/Occam-competitor-checkpoints)
+repo. Download only what you need; older whole-repository sizes are historical.
 
 ```bash
 hf auth login                      # a read token for the private repo
@@ -77,13 +80,17 @@ hf download bendidiihab/Occam --include 'checkpoints/*.pth' 'checkpoints/*.json'
 hf download bendidiihab/Occam --include 'assets/*' --local-dir /tmp/dl && \
     mkdir -p data/assets && mv /tmp/dl/assets/* data/assets/
 
-# the two perturbation-prediction checkpoints (2.23 GB each)
+# the historical RHJ Y06 checkpoint and official Norman NF32ALLA checkpoints
 hf download bendidiihab/Occam --include 'checkpoints/vcell/*' --local-dir /tmp/dl
+
+# official RHJ ABL_N_ALL, seeds 42–46 (also used for H1/K562 evaluation)
+hf download bendidiihab/Occam --include 'checkpoints/occam_seeds/rhj_fewshot/all_sources/*' \
+    --local-dir /tmp/dl
 ```
 
 | folder | size | needed for |
 |---|---|---|
-| `checkpoints/` | 5.35 GB | the released encoder+decoder **and** both vcell checkpoints + their cards |
+| `checkpoints/` | see HF | encoder+decoder; RHJ seed checkpoints; official Norman NF32ALLA seeds 42–46 and seed-42 alias; cards |
 | `eval/` | 6.25 GB | evaluation data — 7 datasets incl. `norman_2019_k562.h5ad` |
 | `benchmarks/` | see HF | the frozen `rhj_fewshot`, `norman_combo`, `h1_seen`, `k562_seen`, `k562_seen_h1set` benchmarks (the last three with their raw local copies) |
 | `graphs/` | 0.40 GB | the perturbation graph — **required to train or to rebuild a benchmark** |
@@ -158,7 +165,7 @@ specialised to ours.
 ```python
 from occam.api import load_virtual_cell
 
-vc = load_virtual_cell("checkpoints/vcell/norman_combo_NQ02/best_model.pth")
+vc = load_virtual_cell("checkpoints/vcell/norman_combo_NF32ALLA/best_model.pth")
 vc.perturbations[:5]        # the vocabulary it knows (18,216 genes)
 vc.compose_modes            # the 12 multi-perturbation composition modes
 
@@ -167,6 +174,10 @@ pred = vc.predict(controls, ["FOXA1", "CBL+CNN1"], gene_col="gene_id")
 
 effect = vc.delta(controls, ["CBL+CNN1"], gene_col="gene_id")   # (1, n_genes)
 ```
+
+The root Norman checkpoint is a convenience alias for seed 42. The official five-seed
+release also contains `checkpoints/vcell/norman_combo_NF32ALLA/seed_<42..46>/best_model.pth`;
+use all five to reproduce the reported mean and SD.
 
 - `"A+B"` is a **pair**, composed with `mode=` (default `decode_seq_mean`, the adopted
   default — [docs/default_recipe.md](docs/default_recipe.md)). `mode` has no effect on a
@@ -187,7 +198,7 @@ occam-verify
 
 # perturbation prediction from your own control cells
 python scripts/repro/occam_predict.py \
-    --checkpoint checkpoints/vcell/norman_combo_NQ02/best_model.pth \
+    --checkpoint checkpoints/vcell/norman_combo_NF32ALLA/best_model.pth \
     --controls my_controls.h5ad --gene-col gene_id \
     --perts FOXA1 "CBL+CNN1" --out predictions.h5ad
 ```
@@ -465,7 +476,7 @@ it. Rather than refuse, the guard checks the property that digest stands in for,
 A different axis fails (1); a different split fails (2). The acceptance is printed, never
 silent. `--require-exact-benchmark` demands byte equality instead.
 
-Measured: the published Norman checkpoint on a rebuilt panel gives `pearson_delta` 0.7782
+Historical NQ02 rebuild check: that checkpoint on a rebuilt panel gave `pearson_delta` 0.7782
 / `overlap_at_N` 0.3065 / `mae` 0.0137 on split 0 — **identical to the published run** on
 all three.
 
@@ -474,35 +485,31 @@ all three.
 ⚠️ **A score is meaningless without its anchors**, and `pearson_delta` is a rank *within
 its own panel* — a `norman_combo` number and an `rhj_fewshot` number are not comparable.
 
-`rhj_fewshot`, `pearson_delta`, mean of 5 splits:
+The [official comparison tables](data/release/official_comparisons/official_tables.md)
+cover all five frozen benchmarks, four competitors, and both mandatory control anchors.
+Every row has seeds 42–46 × splits 0–4. Average splits within each seed, then report
+mean ± sample SD (`ddof=1`) across the five seed means. The tables retain all four
+headline metrics and their directions; the summary below shows Pearson delta only.
 
-| arm | score |
-|---|---|
-| `ctrlcell` / `ctrlmean` (zero-signal floors) | −0.0018 / 0.0016 |
-| `meanpert` (predict one constant delta) | 0.1324 |
-| `transfer` (same perturbation, other cell line) | 0.2323 |
-| **Occam `Y06`** | **0.4043** ± 0.0019 |
-| `experimental` (replicate agreement) | 0.3722 |
-
-`norman_combo`, `pearson_delta` (additive / non-additive panel):
-
-| arm | score |
-|---|---|
-| `meanpert` | 0.4634 / 0.4016 |
-| **Occam `NQ02` × `decode_seq_mean`** | **0.8169 / 0.7380** |
-| **`sum_of_singles`** ⭐ the bar | **0.8824 / 0.7757** |
-| `experimental` | 0.9165 / 0.8377 |
+| Benchmark / panel | Official Occam arm | Pearson delta ↑ | `ctrlmean` ↑ | `ctrlcell` ↑ |
+|---|---|---:|---:|---:|
+| `rhj_fewshot` / all | `ABL_N_ALL` | 0.3999 ± 0.0035 | 0.0016 ± 0.0000 | 0.0000 ± 0.0012 |
+| `h1_seen` / all | `ABL_N_ALL` | 0.1071 ± 0.0057 | 0.0037 ± 0.0000 | 0.0007 ± 0.0035 |
+| `k562_seen` / all | `ABL_N_ALL` | 0.2115 ± 0.0125 | 0.0040 ± 0.0000 | 0.0004 ± 0.0007 |
+| `k562_seen_h1set` / all | `ABL_N_ALL` | 0.2033 ± 0.0138 | 0.0045 ± 0.0000 | 0.0004 ± 0.0034 |
+| `norman_combo` / additive | `NF32ALLA` | 0.8955 ± 0.0032 | 0.0033 ± 0.0000 | -0.0023 ± 0.0096 |
+| `norman_combo` / nonadditive | `NF32ALLA` | 0.8013 ± 0.0044 | 0.0055 ± 0.0000 | -0.0013 ± 0.0109 |
 
 ⚠️ `experimental` is replicate agreement at the panel's own cell counts, **not an upper
 bound** — a model predicting the group mean can beat a noisy empirical half, and on
 `rhj_fewshot` ours does.
 
-⚠️ On `norman_combo`, `sum_of_singles` (`Δ_A + Δ_B`) **is this architecture's hypothesis
-in closed form**. Our model does not beat it on `pearson_delta`; it does beat it on `mae`
-and `overlap_at_N`.
+On `norman_combo`, the `sum_of_singles` baseline has Pearson delta
+0.8822 / 0.7749 on additive / nonadditive panels. NF32ALLA exceeds it on `pearson_delta` and `mae` on both panels, but is
+slightly below it on `overlap_at_N` and discrimination L1.
 
-⚠️ Do **not** rank on `overlap_at_N` on `rhj_fewshot`: a zero-signal predictor beats a
-real model on it.
+Read `overlap_at_N` alongside the control anchors: some historical RHJ arms showed
+an emission-floor artifact. Retain it alongside Pearson delta, MAE, and discrimination L1.
 
 ---
 
@@ -510,6 +517,8 @@ real model on it.
 
 | file | what is in it |
 |---|---|
+| [data/release/official_comparisons/official_tables.md](data/release/official_comparisons/official_tables.md) | current five-seed comparisons, four metrics, all benchmarks and anchors |
+| [docs/release_audit.md](docs/release_audit.md) | GitHub/Hugging Face audit, verification limits, and release provenance |
 | [docs/default_recipe.md](docs/default_recipe.md) | the adopted recipe, its evidence, and how to start a new dataset |
 | [docs/norman_results.md](docs/norman_results.md) | the 72-cell composition matrix (6 arms × 12 modes × 2 panels) and six aggregations |
 | [docs/rhj_scoreboard.md](docs/rhj_scoreboard.md) | every `rhj_fewshot` arm, ours and the competitors' |

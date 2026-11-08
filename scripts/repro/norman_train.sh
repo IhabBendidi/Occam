@@ -9,29 +9,25 @@
 #SBATCH --output=runs/slurm/norman_repro_train_%j.out
 #SBATCH --error=runs/slurm/norman_repro_train_%j.err
 # =====================================================================
-# REPRODUCE the norman_combo main checkpoint (published arm NQ02) -- TRAINING
+# REPRODUCE the norman_combo main checkpoint (official arm NF32ALLA) -- TRAINING
 #
 # WHAT WE ARE TRYING TO ACHIEVE OVERALL
 #   Predict a perturbation's transcriptional effect in a context where it was
 #   never measured, from a SINGLE control cell.
 #
 # WHAT THIS SCRIPT DOES
-#   Trains one model on norman_combo with the DEFAULT RECIPE and nothing else:
-#   Q02 loss base, 150 epochs, eta_min 3e-4, batch 2048, lr/decoder_lr 1e-3.
-#   ⚠️ 2026-09-23: the YAML default moved to NB10 (bs 256, eta_min 1e-3). NQ02's bs 2048 and
-#   eta_min 3e-4 are therefore pinned below with --set, so this still reproduces NQ02.
-#   (Historical:) There are no --set overrides on purpose -- configs/norman_combo.yaml ships those
-#   values (docs/default_recipe.md), so this command IS the recipe. If a
-#   future edit changes them, tests/test_default_recipe.py fails.
+#   Trains NF32ALLA from configs/norman_combo_official.yaml: GO+STRING, GenePT, ESM2;
+#   smooth_l1 + 0.0255 * delta-cos; batch 32, 150 epochs, eta_min 3e-4.
 #
 # WHAT EACH OUTCOME MEANS
-#   Matching the published number (0.8169 additive / 0.7380 non-additive pearson_delta, nocal, 5 splits)
+#   Matching the five-seed result (0.8955 additive / 0.8013 non-additive Pearson delta,
+#   nocal, decode_seq_mean, 5 splits per seed)
 #   reproduces the result. A LOWER number with an identical config points at
 #   the environment or the data, not the recipe -- check the benchmark sha256
 #   the run prints against the one in the checkpoint card. A HIGHER number is
-#   seed noise unless it exceeds the +-0.002 SEM by a clear margin.
+#   seed noise unless it exceeds the measured seed spread by a clear margin.
 #
-# ANCHORS, norman_combo: sum_of_singles 0.8824 / 0.7757
+# ANCHORS, norman_combo: sum_of_singles 0.8822 / 0.7749
 #
 # COST  one H100, ~3 h wall clock. Writes
 #   runs/norman_combo_repro__*/vcell/checkpoints/{best_model,final_model}.pth (2.2 GB each).
@@ -45,22 +41,20 @@ cd "$HERE"
 mkdir -p runs/slurm
 export PYTHONPATH="$HERE/src${PYTHONPATH:+:$PYTHONPATH}"
 
-SUFFIX="${SUFFIX:-repro_NQ02_s${SEED:-42}}"
+SUFFIX="${SUFFIX:-repro_NF32ALLA_s${SEED:-42}}"
 
-echo "=== norman_combo repro training (arm NQ02) ==="
+echo "=== norman_combo repro training (arm NF32ALLA) ==="
 echo "host   : $(hostname)"
 echo "started: $(date -Is)"
 echo "git sha: $(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
-echo "config : configs/norman_combo.yaml  (+ bs 2048 / eta_min 3e-4 pinned = NQ02)"
+echo "config : configs/norman_combo_official.yaml"
 echo "suffix : $SUFFIX"
 echo
 
 python -m occam.train \
-    --config configs/norman_combo.yaml \
+    --config configs/norman_combo_official.yaml \
     --stages vcell \
     --run-suffix "$SUFFIX" \
-    --set "stages.vcell.optim.batch_size=2048" \
-    --set "stages.vcell.optim.eta_min=3e-4" \
     ${SEED:+--set "seed=$SEED"}
 
 echo
