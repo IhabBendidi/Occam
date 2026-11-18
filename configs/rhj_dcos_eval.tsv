@@ -1,0 +1,25 @@
+# DCOS arms with a LIVE delta-cosine term, for the split-half panel.
+#
+# WHY: F-loss2 measured +0.028..+0.034 on VALIDATION `best_metric` for 5/5 dcos weights,
+# with an interior flat optimum at 0.5. Validation `best_metric` is NOT the split-half test
+# `pearson_delta` the 0.3415 headline refers to, and the two have diverged before in this
+# project. This grid converts the two best arms into comparable test numbers.
+#
+# QUESTION: does the DCOS validation gain survive to cell-eval on the 611 held-out HepG2
+# perturbations? Positive -> DCOS is a real lever and the weight 0.5 is adoptable. Null ->
+# `best_metric` and cell-eval disagree again, and DCOS is a validation-metric artefact.
+#
+# VARIED: delta_cos_weight (0.25 vs 0.5). HELD FIXED: lr 1e-3, decoder_lr 1e-3, cos 0.5,
+# fmode-mult, fh256, fmf1, smooth_l1, seed 42, adjacency-map pert model, the 611-perturbation
+# cohort, the 6,983-gene axis, the seeded control draw, quantile calibration.
+#
+# ANCHORS (test `pearson_delta`, all 5 splits): ctrlcell -0.0018 · ctrlmean 0.0016 ·
+# meanpert 0.1324 · transfer 0.2323 · OURS 0.3415 · experimental 0.3722.
+#
+# ⚠️ The BASELINE to read these against is the INERT twin already scored by job 18179618:
+# L11 has the SAME config hash as D02, and L12 the same as D03 -- they differ only in the
+# git_sha that made the term live. That is the exact A/B, so compare D02 vs L11 and
+# D03 vs L12, NOT against the grid's other arms.
+arm_id	kind	tag
+D02	loss	smooth_l1_nbw0_nbs1.0_dcos0.25_s42
+D03	loss	smooth_l1_nbw0_nbs1.0_dcos0.5_s42

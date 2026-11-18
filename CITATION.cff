@@ -1,0 +1,34 @@
+cff-version: 1.2.0
+message: "If you use Occam, please cite the paper below."
+title: "Occam"
+type: software
+url: "https://github.com/IhabBendidi/Occam"
+authors:
+  - family-names: Bendidi
+    given-names: Ihab
+  - family-names: Kenyon-Dean
+    given-names: Kian
+  - family-names: Denton
+    given-names: Alisandra K.
+  - family-names: Genovesio
+    given-names: Auguste
+  - family-names: Noutahi
+    given-names: Emmanuel
+preferred-citation:
+  type: article
+  title: "OCCAM: Improved Single-Cell Representation Learning and Perturbation Effect Prediction"
+  authors:
+    - family-names: Bendidi
+      given-names: Ihab
+    - family-names: Kenyon-Dean
+      given-names: Kian
+    - family-names: Denton
+      given-names: Alisandra K.
+    - family-names: Genovesio
+      given-names: Auguste
+    - family-names: Noutahi
+      given-names: Emmanuel
+  journal: arXiv
+  year: 2026
+  doi: "10.48550/arXiv.2611.21959"
+  url: "https://arxiv.org/abs/2611.21959"

@@ -1,0 +1,30 @@
+# Z-GRID EVAL -- the three F-disp1 dispersion terms on Q02 @ 90 ep / eta_min 1e-5, two weights each.
+#
+# QUESTION: all four scored metrics are PSEUDOBULK (F-disp1), so these terms cannot win a score
+# through the distribution channel. They are REGULARISER tests: does forcing the prediction to
+# depend on WHICH control cell it was given improve the MEAN path? Pre-registration in
+# scripts/grids/rhj_dispersion.tsv.
+#
+# ⚠️ CONTROL is W23 (Q02, 90 ep, eta_min 1e-5) = 0.3959 / 0.0216 / 0.0887 / 0.7142 -- the
+# identical schedule. NOT W22 (0.3985) or Y06 (0.4043), which differ in eta_min/epochs too.
+#
+# MECHANISM VERIFIED IN TRAINING (final epoch, 0 nan-guard events in all 6 arms):
+#   Z01 cos 0.2181 vs REAL 0.1992   Z02 cos 0.2028 vs REAL 0.1992
+#   Z03 radial ratio 0.9944         Z04 radial ratio 0.9970
+#   Z05 per-gene ratio 0.9923       Z06 per-gene ratio 1.0179
+# i.e. every arm HELD its dispersion at parity, against W23's trained collapse (0.075 / 0.22 /
+# 0.108). Whatever the scores say, the terms took effect.
+#
+# NOCAL ONLY (calibrated mode retired, user directive 2026-09-21). Protocol best_model.pth.
+# 30 tasks = 6 arms x 5 splits. THROTTLE %6: the Y eval ran 60/60 tasks clean at %6, while
+# F-infra1 measured 50% marginal failures at %12 and ~30% at %20. Do NOT raise it.
+#
+#   GRID=configs/rhj_Z_eval.tsv CALIBRATE=none \
+#   sbatch --qos=vco --wckey=vco --array=0-29%6 scripts/slurm/rhj_splithalf_models.sbatch
+arm_id	kind	tag
+Z01	loss	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_dconc13.09_e90_em1e-5_s42
+Z02	loss	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_dconc65.47_e90_em1e-5_s42
+Z03	loss	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_rspread0.512_e90_em1e-5_s42
+Z04	loss	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_rspread2.56_e90_em1e-5_s42
+Z05	loss	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_gvar0.473_e90_em1e-5_s42
+Z06	loss	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_gvar2.37_e90_em1e-5_s42

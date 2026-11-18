@@ -1,0 +1,100 @@
+{
+  "repo": "bendidiihab/Occam",
+  "encoder_decoder": {
+    "local": "checkpoints/release/occam_small_encoder_decoder.pth",
+    "remote": "checkpoints/occam_small_encoder_decoder.pth",
+    "sha256": "ef82433f8a6e20b43a830f60c6dfe5c1b0963d970a9233b9718758b67854e006"
+  },
+  "virtual_cell": [
+    {
+      "benchmark": "rhj",
+      "arm": "ABL_N_ALL",
+      "seed": 42,
+      "local": "checkpoints/vcell/rhj/seed_42/best_model.pth",
+      "remote": "checkpoints/occam_seeds/rhj_fewshot/all_sources/seed_42/best_model.pth",
+      "sha256": "11d5ba5515e79710b3a952532c60aa29515046117292528c59d452a0937685ff",
+      "bytes": 2550066734
+    },
+    {
+      "benchmark": "rhj",
+      "arm": "ABL_N_ALL",
+      "seed": 43,
+      "local": "checkpoints/vcell/rhj/seed_43/best_model.pth",
+      "remote": "checkpoints/occam_seeds/rhj_fewshot/all_sources/seed_43/best_model.pth",
+      "sha256": "a16e94a7a4a2f17bac8b57952997119326e611ec48dda1f15b870e6d25489246",
+      "bytes": 2550066734
+    },
+    {
+      "benchmark": "rhj",
+      "arm": "ABL_N_ALL",
+      "seed": 44,
+      "local": "checkpoints/vcell/rhj/seed_44/best_model.pth",
+      "remote": "checkpoints/occam_seeds/rhj_fewshot/all_sources/seed_44/best_model.pth",
+      "sha256": "5808cc5c721222d75b4f213934a7fb044c61a3af32b2201fb57a1de9194da0c5",
+      "bytes": 2550066734
+    },
+    {
+      "benchmark": "rhj",
+      "arm": "ABL_N_ALL",
+      "seed": 45,
+      "local": "checkpoints/vcell/rhj/seed_45/best_model.pth",
+      "remote": "checkpoints/occam_seeds/rhj_fewshot/all_sources/seed_45/best_model.pth",
+      "sha256": "58464abc54e975ac367b272351a61bdfcb63fb45737f7a60b982a4e8a782c997",
+      "bytes": 2550066734
+    },
+    {
+      "benchmark": "rhj",
+      "arm": "ABL_N_ALL",
+      "seed": 46,
+      "local": "checkpoints/vcell/rhj/seed_46/best_model.pth",
+      "remote": "checkpoints/occam_seeds/rhj_fewshot/all_sources/seed_46/best_model.pth",
+      "sha256": "06dbbfcd709d8a1bdc0190b99bd33f3117a2f9a1b5aa9349d83c800573612d81",
+      "bytes": 2550066734
+    },
+    {
+      "benchmark": "norman",
+      "arm": "NF32ALLA",
+      "seed": 42,
+      "local": "checkpoints/vcell/norman/seed_42/best_model.pth",
+      "remote": "checkpoints/vcell/norman_combo_NF32ALLA/seed_42/best_model.pth",
+      "sha256": "2c73b717bb5391cd4d1dec4f76fc22fbd680a147a124442db354ff8c87597af8",
+      "bytes": 2550014382
+    },
+    {
+      "benchmark": "norman",
+      "arm": "NF32ALLA",
+      "seed": 43,
+      "local": "checkpoints/vcell/norman/seed_43/best_model.pth",
+      "remote": "checkpoints/vcell/norman_combo_NF32ALLA/seed_43/best_model.pth",
+      "sha256": "e18fff6e6c676f9daad9b7ba0828e747b39e929b77e791b0ce2e5429bb25022d",
+      "bytes": 2550014382
+    },
+    {
+      "benchmark": "norman",
+      "arm": "NF32ALLA",
+      "seed": 44,
+      "local": "checkpoints/vcell/norman/seed_44/best_model.pth",
+      "remote": "checkpoints/vcell/norman_combo_NF32ALLA/seed_44/best_model.pth",
+      "sha256": "c181809206fa1e1b06c9f5837696e6a11363e71fbf726e3da6c85953c353660a",
+      "bytes": 2550014382
+    },
+    {
+      "benchmark": "norman",
+      "arm": "NF32ALLA",
+      "seed": 45,
+      "local": "checkpoints/vcell/norman/seed_45/best_model.pth",
+      "remote": "checkpoints/vcell/norman_combo_NF32ALLA/seed_45/best_model.pth",
+      "sha256": "f54ab574a80f725171fe6935ae5a889da27ed2a845327fa30551f8f8a268c0fd",
+      "bytes": 2550014382
+    },
+    {
+      "benchmark": "norman",
+      "arm": "NF32ALLA",
+      "seed": 46,
+      "local": "checkpoints/vcell/norman/seed_46/best_model.pth",
+      "remote": "checkpoints/vcell/norman_combo_NF32ALLA/seed_46/best_model.pth",
+      "sha256": "b37bb66244378ea32709e3f7424c05af1b397e804762ca0e81483a42fcba0720",
+      "bytes": 2550014382
+    }
+  ]
+}

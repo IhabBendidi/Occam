@@ -1,0 +1,65 @@
+{
+  "artifact_sha256": {
+    "exclusions.json": "bddd707b93fbdc31c30a8eec461b47e96dedb88f7ecc66340c20d7eecd842db7",
+    "gene_axis.csv": "541c81627ba9e6b4b05420873c0405b6fdc4b5f476501bae6fbc2818f9a42fa3",
+    "splits.json": "af596a0e4aed688027930d349602ed4269c8ebe140210747b7fa085ea36afb0b"
+  },
+  "benchmark_id": "norman_combo",
+  "builder_version": "norman_combo/v1.0.0",
+  "built": "2026-09-21",
+  "cell_line": "K562",
+  "cell_line_note": "Norman et al. 2019 (Science 365:786), GSE133344. The upstream norman_2016_a549_preprocessed.h5ad mislabels these cells A549; see docs/norman_benchmark.md for the three lines of evidence.",
+  "command": "scripts/norman/norman_build_benchmark.py",
+  "counts": {
+    "cells": 91168,
+    "controls": 9702,
+    "double_pairs": 131,
+    "doubles_in_neither_val_nor_test": [],
+    "excluded_cells": 34197,
+    "single_conditions": 105,
+    "test_pairs": 111,
+    "train_cells": 47269,
+    "val_pairs": 20
+  },
+  "encoder_checkpoint": "checkpoints/release/occam_small_encoder_decoder.pth",
+  "encoder_n_genes": 44728,
+  "encoder_sha256": "ef82433f8a6e20b43a830f60c6dfe5c1b0963d970a9233b9718758b67854e006",
+  "encoder_target_sum": 2000.0,
+  "gene_axis": {
+    "key": "var.gene_id",
+    "n": 8000,
+    "n_source_genes": 33694,
+    "rejected_keys": {
+      "var.gene_name": "only 3 of 5,045 symbols are in the encoder vocabulary; the encoder axis is 99.6% Ensembl"
+    },
+    "selection": "in the encoder's Ensembl vocabulary AND detected in >8% of the 91,168 QC cells, PLUS all 102 resolvable perturbation targets force-included (41 of them fail the detection filter because Norman is CRISPRa and the targets are off at baseline)",
+    "sha256": "6efa91af1af5c8b88fa5b024c683a53962ab9b7aa0c02b82173babb45966c77d",
+    "symbols_sha256": "867ea4eb396f1796692b43679c5774ee7a159b231a316fa1f21f46e4b3b1c5c1"
+  },
+  "git_sha": "a919c1b",
+  "n_graph_nodes": null,
+  "numpy": "1.24.4",
+  "panel": {
+    "benchmark_sha256": "330caefe9606eb9d103e1bae79d753afd84b6435e0b0764e9399f9a610742329",
+    "cohort_sha256": "dc1dd7806ba60d34f67610bf1338f810346106d81eb9c2e8163bba9575f188e2",
+    "dir": "data/benchmarks/norman_combo/splithalf",
+    "scored_panels": [
+      "additive",
+      "nonadditive"
+    ]
+  },
+  "python": "3.8.19",
+  "schema": 1,
+  "sources": {
+    "norman_2019_k562.h5ad": {
+      "bytes": 646867442,
+      "cell_line": "K562",
+      "n_obs": 91168,
+      "n_vars": 33694,
+      "qc": "good_coverage == True AND number_of_cells == 1 (Norman's own filter)",
+      "sha256": "c6cad008202666ef9fab8b2e6afcd21fd81fa580c789bdb55a06c7c30fbac02e",
+      "upstream": "GSE133344 filtered_matrix.mtx.gz"
+    }
+  },
+  "task": "train on single-gene perturbations, predict DOUBLE-gene pairs; both genes of every test pair are seen individually and the pair never is"
+}

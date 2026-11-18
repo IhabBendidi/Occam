@@ -1,0 +1,10 @@
+# W-grid eval, SECOND PASS: the four 90-epoch arms excluded from 18249983 because they
+# were still mid-training when that list was built. best_model.pth existed but was the
+# best-so-far of a partial trajectory -- scoring it would have reported a 70-82 epoch run
+# as a 90-epoch arm, and these are precisely the arms the epochs axis exists to test.
+# NOCAL only. Protocol best_model.pth, per F-ckpt4 (Spearman +0.992..+0.993).
+arm_id	kind	tag
+W11	loss	smooth_l1_nbw0_nbs1.0_dcos0.01_e90_em1e-5_s42
+W12	loss	smooth_l1_nbw0_nbs1.0_dcos0.01_e90_em1e-4_s42
+W23	loss	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_e90_em1e-5_s42
+W24	loss	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_e90_em1e-4_s42

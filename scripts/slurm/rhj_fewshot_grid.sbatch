@@ -1,0 +1,187 @@
+#!/usr/bin/env bash
+# rhj_fewshot ablation grid -- one array task per arm.
+#
+#   sbatch --qos=hooke-predict --wckey=hooke-predict --array=0-12%7 scripts/slurm/rhj_fewshot_grid.sbatch
+#   sbatch --qos=vco          --wckey=vco          --array=13-25%6 scripts/slurm/rhj_fewshot_grid.sbatch
+#
+# qos and wckey must MATCH. Split across both so neither queue's headroom is the
+# bottleneck; check it first with:
+#   squeue -h -o "%q %T %b" | awk '$1=="vco"||$1=="hooke-predict"'
+#
+# WHAT THIS ANSWERS
+# -----------------
+# Overall goal: predict a perturbation's effect in a context where that perturbation was
+# never measured, from a single control cell.
+#
+# This grid's question: which parts of the FiLM conditioning actually matter on THIS
+# benchmark, and does the negative-binomial loss beat smooth-L1 here?
+#
+# Varied (configs/rhj_fewshot_grid.tsv, one row per arm):
+#     film_mode {full, multiplicative_only, additive_only}
+#   x film_hidden_dim {0, 256}
+#   x film_mean_free {0, 1}
+#   x loss_type {smooth_l1, nb}                            = 24 arms
+#   + 2 no-FiLM anchors (interaction_type=additive)        = 26
+#   + 1 baseline arm (kind=baseline -> run_baselines=true)  = 27 total
+#
+# The baseline arm reports ControlBaseline, SimpleMeanBaseline, MeanBaseline and
+# ExperimentalAccuracy on the HepG2 validation set. Those anchors are NOT learned, so its
+# own FiLM settings are irrelevant and it reuses the no-FiLM smooth_l1 configuration; what
+# it contributes are the numbers that make `best_metric` readable at all -- a val
+# pearson_delta with no non-learned anchor beside it cannot be told from a good one.
+#
+# ⛔ IT NEEDS 420G, NOT THE 128G BELOW. Submit it on its own, with the override:
+#   sbatch --qos=vco --wckey=vco --mem=420G --array=26 scripts/slurm/rhj_fewshot_grid.sbatch
+#
+# MEASURED: at 128G it is OUT_OF_MEMORY at 30 min with MaxRSS 117.19G (job 18022390_26).
+# `_run_baselines` builds an IN-MEMORY training dataset -- the one path in this stage that
+# does not stream -- and it builds it on the encoder's 44,728-gene axis, not the benchmark's
+# 6,983: 580,212 cells x 44,728 x 4 B = 103.8 GB, plus a 26 GB bool gene mask.
+#
+# Do NOT raise the 128G below to fix this. The 26 streaming arms peak at ~2 GB RSS, and
+# 420G x 27 = 11 TB would not schedule against either queue's group cap.
+#
+# Held fixed: the frozen benchmark artifact, film_scale 1.0, 30 epochs, seed 42,
+# target_pb_k 1, ctrl_avg_k 1, frozen encoder, stream_v2 + proportional interleave,
+# num_workers 8 (part of the determinism contract), source_weight none.
+#
+# HOW TO READ IT
+# --------------
+# There are NO imported anchors. Research-tree numbers came from a different panel and a
+# different scorer; they justify this starting configuration and nothing more. The anchors
+# are the two no-FiLM arms here, and then the zero-signal/replicate arms measured by
+# scripts/eval_splithalf.py.
+#
+# Pre-registered expectations, so a null is readable:
+#   * additive_only cannot be context-dependent (no (gamma-1)*z term). Its score is the
+#     floor that makes "multiplicative_only is the useful part" mean something.
+#   * additive_only x film_mean_free x film_hidden_dim=0 is analytically near-degenerate
+#     (W(e_p - ebar) is embedding centring, which the bias can absorb). If that arm moves a
+#     lot, suspect the film_mean_free port, not biology.
+#   * nb arms: expect completion with grad-norm max ~100x the smooth_l1 arms, and a score
+#     BELOW smooth_l1. Recorded per arm as a number, not an impression.
+#   * loss_type changes TWO things at cosine_loss_weight 0.5: smooth_l1's recon term is
+#     O(0.1-1), nb's NLL is O(1-10), so the smooth_l1 arms are genuinely half-cosine. Do
+#     not rescale to equalise -- that is tuning inside an ablation. Report the ratio.
+#
+# COST -- MEASURED ON THIS BENCHMARK, 2026-09-16, job 18021830.
+#   608,686 samples/epoch at **1,580 samples/s** = **386 s/epoch**, so 30 epochs is
+#   **~3.2 h** of training plus ~10 min of GO-graph load and the control-embedding scan.
+#   Budget ~3.5 h per arm. The limit below is 8 h: margin, not estimate.
+#
+# ⚠️ The research tree's 14,135 samples/s does NOT transfer and must not be used to size
+# this job. It was measured on a different corpus with a different estimand, and the first
+# launch of this grid was given a 3 h limit on the strength of it -- every arm would have
+# been killed at about epoch 23, which silently confounds the ablation with training
+# length.
+#
+# CONCURRENCY IS FREE -- measured, and it falsified the obvious guess. The 8.9x shortfall
+# was assumed to be I/O contention (many streaming jobs reading the same three h5ad files
+# over GPFS). It is not. Ramping 15 -> 27 concurrent arms changed nothing, on the SAME
+# three jobs across the ramp:
+#
+#     arm   before(15)   after(27)
+#     a00   1527, 1534   1541 samples/s
+#     a03   1584, 1583   1583 samples/s
+#     a06   1561, 1565   1567 samples/s
+#
+# So ~1,580 samples/s is a PER-JOB ceiling -- single-GPU compute or the per-worker data
+# pipeline -- not a shared-bandwidth one. Run this grid as wide as the QOS allows; the only
+# limits worth respecting are the queues' own (hooke-predict hits QOSGrpGRES, vco hits
+# GrpTRES mem=8T at 128 G per arm). Do not throttle to protect throughput.
+
+#SBATCH --job-name=rhj_grid
+#SBATCH --partition=hopper
+#SBATCH --gres=gpu:h100:1
+#SBATCH --cpus-per-task=16
+#SBATCH --mem=128G
+#SBATCH --time=08:00:00
+#SBATCH --output=runs/slurm/rhj_grid_%A_%a.out
+#SBATCH --error=runs/slurm/rhj_grid_%A_%a.err
+
+set -euo pipefail
+
+# Slurm COPIES the batch script into a node spool directory, so ${BASH_SOURCE[0]} does not
+# point into the repo. Prefer the submit dir, and verify whichever candidate wins.
+_find_repo() {
+    local c
+    for c in "${OCCAM_REPO:-}" "${SLURM_SUBMIT_DIR:-}" \
+             "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)"; do
+        if [ -n "$c" ] && [ -f "$c/pyproject.toml" ] && [ -d "$c/src/occam" ]; then
+            echo "$c"; return 0
+        fi
+    done
+    echo "cannot locate the Occam repo; sbatch from the repo root or set OCCAM_REPO" >&2
+    return 1
+}
+HERE="$(_find_repo)" || exit 1
+cd "$HERE"
+mkdir -p runs/slurm runs/rhj_fewshot
+
+export PYTHONPATH="$HERE/src${PYTHONPATH:+:$PYTHONPATH}"
+export CUBLAS_WORKSPACE_CONFIG=":4096:8"
+
+GRID="${GRID:-configs/rhj_fewshot_grid.tsv}"
+CONFIG="${CONFIG:-configs/rhj_fewshot.yaml}"
+IDX="${SLURM_ARRAY_TASK_ID:-0}"
+
+# Row IDX of the data rows (comments and the header are skipped). Read from a checked-in
+# file rather than computed, so an arm cannot silently become a duplicate of its neighbour.
+ROW="$(grep -v '^#' "$GRID" | tail -n +2 | sed -n "$((IDX + 1))p")"
+if [ -z "$ROW" ]; then
+    echo "no grid row at index $IDX in $GRID" >&2
+    exit 1
+fi
+read -r ARM KIND TAG INTERACT FMODE FHID FMF LOSS SEED <<<"$ROW"
+
+# `kind` drives run_baselines rather than a tenth TSV column, deliberately: adding a column
+# while an array is already queued would feed the pending tasks' nine-field `read` a tenth
+# value, and `read` puts the remainder in the LAST variable -- every pending arm would have
+# got seed "42 0". A row appended at the end is invisible to an array submitted as 0-25.
+BASELINES=false
+if [ "$KIND" = "baseline" ]; then
+    BASELINES=true
+fi
+
+# Deterministic run dir: arm id first so `ls` sorts in grid order, every varied axis in the
+# name, no timestamp and no randomness -- re-running an arm returns to the same directory,
+# which is what makes --resume auto and the ledger's block-on-hash-change work.
+SUFFIX="${ARM}__${TAG}"
+
+echo "=== rhj_fewshot grid arm ${ARM} (${KIND}) ==="
+echo "host      : $(hostname)"
+echo "started   : $(date -Is)"
+echo "git sha   : $(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
+echo "slurm     : job ${SLURM_ARRAY_JOB_ID:-?} task ${IDX}  qos ${SLURM_JOB_QOS:-?}"
+echo "arm       : interaction=${INTERACT} film_mode=${FMODE} film_hidden_dim=${FHID}"
+echo "            film_mean_free=${FMF} loss=${LOSS} seed=${SEED}"
+echo "baselines : ${BASELINES}"
+echo "run dir   : runs/rhj_fewshot_${SUFFIX}/vcell"
+echo
+
+# The job id goes INSIDE the run dir, never in its name, so a requeued array task does not
+# fork a second directory.
+mkdir -p "runs/rhj_fewshot_${SUFFIX}/vcell"
+cat > "runs/rhj_fewshot_${SUFFIX}/slurm_job.json" <<JSON
+{"arm_id": "${ARM}", "kind": "${KIND}", "tag": "${TAG}",
+ "slurm_array_job_id": "${SLURM_ARRAY_JOB_ID:-}", "slurm_task_id": "${IDX}",
+ "qos": "${SLURM_JOB_QOS:-}", "host": "$(hostname)", "started": "$(date -Is)"}
+JSON
+
+FMF_BOOL=$([ "$FMF" = "1" ] && echo true || echo false)
+
+python -m occam.train --config "$CONFIG" --stages vcell \
+    --run-suffix "$SUFFIX" \
+    --set "stages.vcell.interaction.interaction_type=${INTERACT}" \
+    --set "stages.vcell.interaction.film_mode=${FMODE}" \
+    --set "stages.vcell.interaction.film_hidden_dim=${FHID}" \
+    --set "stages.vcell.interaction.film_mean_free=${FMF_BOOL}" \
+    --set "stages.vcell.loss.loss_type=${LOSS}" \
+    --set "stages.vcell.eval.run_baselines=${BASELINES}" \
+    --set "seed=${SEED}"
+
+echo
+echo "finished  : $(date -Is)"
+echo
+echo "Collect every arm -- including the ones that did not run -- with:"
+echo "    python scripts/collect_rhj_results.py"

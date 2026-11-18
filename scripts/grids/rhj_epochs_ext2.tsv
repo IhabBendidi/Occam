@@ -1,0 +1,62 @@
+# AA GRID -- push the WINNING corner further: 150/180 epochs x eta_min {3e-4, 5e-4, 7e-4}
+#
+# WHAT WE ARE TRYING TO ACHIEVE OVERALL
+# -------------------------------------
+# Predict a perturbation's effect in a cellular context where that perturbation was never
+# measured, from a single control cell. Headline: split-half paired `pearson_delta` on the 611
+# held-out HepG2 perturbations, 6,983-gene axis, cell-eval 0.6.0, uncalibrated.
+#
+# WHAT THIS GRID ANSWERS
+# ----------------------
+# F-sched3 found the best arm at the EDGE of both axes with both margins still positive:
+# `Y06` (Q02, 150 ep, eta_min 3e-4) = 0.4043, with 120->150 worth +0.0028 (5/5) at that floor
+# and 3e-4 beating every lower floor at both lengths. An endpoint optimum is a range problem,
+# not a finished tuning (F-loss3), so this grid extends BOTH edges one step:
+#   * epochs 150 -> 180 (+30, the step size used throughout)
+#   * eta_min 3e-4 -> 5e-4, 7e-4 (0.5x and 0.7x of lr; 1e-3 would be NO decay and is excluded)
+#
+# WHAT IS VARIED / HELD FIXED
+# ---------------------------
+# VARIED: epochs (150, 180) x eta_min (3e-4, 5e-4, 7e-4), minus the (150, 3e-4) cell, which is
+#   `Y06` itself and is not re-run.
+# HELD FIXED: the Q02 loss composition exactly as Y06 -- smooth_l1 + dcos 0.5 + delta_mag
+#   0.01363 + latent MSE (delta_z) 0.0044, no VICReg, no dispersion terms, no recon split --
+#   batch 2048, lr 1e-3, decoder_lr 1e-3, warmup 5, seed 42, arm s313 otherwise.
+#
+# ⚠️ eta_min APPROACHES lr. At 7e-4 with lr 1e-3 the cosine only ever decays to 0.7x peak, so
+# these arms are close to a CONSTANT learning rate. That is the point -- it asks whether the
+# gain attributed to "a high floor" is really "decay does not help this model at all" -- but it
+# also means a divergent arm is a plausible outcome rather than a bug. Read grad_norm.
+#
+# HOW TO READ THE RESULT -- PRE-REGISTERED
+# ---------------------------------------
+# AA01 (180, 3e-4) > 0.4063 at 4-5/5  -> the epochs axis is STILL live past 150; keep stepping.
+# AA01 ~ 0.4043                       -> 150 is the plateau AT THIS FLOOR.
+# AA02/AA03 (5e-4, 7e-4) > AA01       -> the floor is still the binding axis and the optimum is
+#                                        nearer a CONSTANT lr than a decayed one.
+# AA04/AA05 > Y06 (0.4043)            -> the floor helps at the KNOWN-GOOD length too, so the
+#                                        two axes are separable after all.
+# monotone decline in eta_min         -> 3e-4 was the optimum and F-sched3's edge was the peak.
+# any arm diverges (grad_norm blows)  -> the usable floor has an upper bound; report it as the
+#                                        measured ceiling rather than a failed arm.
+#
+# ANCHORS -- test, uncalibrated, 5/5 splits
+# -----------------------------------------
+# ctrlcell -0.0018 · ctrlmean 0.0016 · meanpert 0.1324 · transfer 0.2323 · experimental 0.3722
+# (mae 0.0257, ovl@N 0.1942, disc_l1 0.7821) · W22 (90 ep, 1e-6) 0.3985 ·
+# Y03 (120 ep, 3e-4) 0.4015 · Y05 (150 ep, 1e-4) 0.3983 · **Y06 (150 ep, 3e-4) 0.4043** <- BEST
+# (mae 0.0215, ovl@N 0.0946, disc_l1 0.7288). Directions: pearson_delta UP · mae DOWN (ERROR) ·
+# ovl@N UP · disc_l1 UP.
+#
+# COST: 180 ep ~= 2 h 30, 150 ep ~= 2 h 05 (41 s/epoch measured) -> 5 arms ~= 11 GPU-h train,
+# plus 25 eval tasks at ~9 min on a %6 throttle (F-infra1) ~= 4 GPU-h.
+# ⚠️ SUBMIT WITH --time=05:00:00: the 180-epoch arms exceed the 4 h used for the Y grid.
+#
+#   GRID=scripts/grids/rhj_epochs_ext2.tsv \
+#   sbatch --qos=vco --wckey=vco --time=05:00:00 --array=0-4 scripts/slurm/rhj_loss_sweep.sbatch
+arm	loss_type	nb_weight	nb_scale	delta_cos_weight	delta_mag_weight	latent_loss_type	latent_loss_weight	latent_cos_weight	latent_cos_target	recon_split	recon_ctrl_weight	recon_delta_weight	recon_split_mode	recon_delta_target	vicreg_var_weight	vicreg_cov_weight	vicreg_gamma	vicreg_target	epochs	eta_min	base	dcos_conc_weight	radial_spread_weight	gene_var_weight
+AA01	smooth_l1	0	1.0	0.5	0.01363	delta_z	0.0044	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	180	3e-4	Q02	0.0	0.0	0.0
+AA02	smooth_l1	0	1.0	0.5	0.01363	delta_z	0.0044	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	180	5e-4	Q02	0.0	0.0	0.0
+AA03	smooth_l1	0	1.0	0.5	0.01363	delta_z	0.0044	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	180	7e-4	Q02	0.0	0.0	0.0
+AA04	smooth_l1	0	1.0	0.5	0.01363	delta_z	0.0044	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	150	5e-4	Q02	0.0	0.0	0.0
+AA05	smooth_l1	0	1.0	0.5	0.01363	delta_z	0.0044	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	150	7e-4	Q02	0.0	0.0	0.0

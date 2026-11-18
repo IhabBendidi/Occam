@@ -1,0 +1,14 @@
+# TEST cell-eval for the VICReg sweep (train 18219652). NOCAL ONLY.
+# READ AGAINST Q02 0.3783/0.0225/0.0774/0.7029. Also re-measure EFFECTIVE RANK per checkpoint:
+# F-latent7 predicts cov moves rank 33/512 up and var does little (0.6% dead dims).
+arm_id	kind	tag
+V01	loss	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_vcov0.000081-delta_z_s42
+V02	loss	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_vcov0.00081-delta_z_s42
+V03	loss	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_vcov0.0081-delta_z_s42
+V04	loss	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_vcov0.00081-z_hat_s42
+V05	loss	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_vvar0.00487g0.55-delta_z_s42
+V06	loss	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_vvar0.0487g0.55-delta_z_s42
+V07	loss	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_vvar0.0131g1.0-delta_z_s42
+V08	loss	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_vvar0.0487g0.55_vcov0.00081-delta_z_s42
+V09	loss	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_vvar0.0487g0.55_vcov0.0081-delta_z_s42
+V10	loss	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_vvar0.0487g0.55_vcov0.00081-z_hat_s42

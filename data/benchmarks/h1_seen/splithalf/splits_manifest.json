@@ -1,0 +1,457 @@
+{
+  "base_seed": 42,
+  "batch_col": "batch",
+  "benchmark_id": "h1_seen",
+  "benchmark_sha256": "740d9aba0f29feb63a7c9d9232aefe2667b29784768a33203536869708b8d84d",
+  "builder_version": "1.0.0",
+  "built": "2026-09-23",
+  "cell_line": "H1",
+  "cohort_sha256": "4bab34796e1cfb38a80da46c11e24ae6467b169648ed2fb223d2080307a51b8e",
+  "command": "scripts/build_h1_seen_panel.py --dataset h1 --from-raw data/benchmarks/h1_seen_99/h1_seen_raw.h5ad --write-raw-subset --out-dir data/benchmarks/h1_seen",
+  "control_label": "non-targeting",
+  "gene_axis_sha256": "d5336c77731920ad0c7c77a554ca16bff428fd3c8d906cfc0c0275419ca83f58",
+  "git_sha": "d184c954575160c99f05e7c9583957fbe47e26cc",
+  "half_size_strata": {
+    "m>=25": 78,
+    "m>=5": 80,
+    "m_median": 394
+  },
+  "min_cells": 10,
+  "n_axis_genes": 6535,
+  "n_cohort_perts": 80,
+  "n_panel_controls": 38176,
+  "n_panel_rows": 105338,
+  "n_splits": 5,
+  "normalisation": "rowsum over 8910 H1 genes also in nadig_2024_hepg2.h5ad, then axis restriction, then log1p(x/rowsum*2000)",
+  "ood_context": true,
+  "pert_col_in_source": "target_gene",
+  "protocol": "splithalf/v1",
+  "seen_from": {
+    "benchmark_id": "rhj_fewshot",
+    "benchmark_sha256": "d934211e5eb1e37e28c893fb8c5ff4211d607a1d77b0103d5c2b79221d21677f",
+    "gene_axis_sha256": "ef64f2ba7ff7816ed947796066cd8a68014884c6176619d750ef79462c78d4c0",
+    "n_axis_genes": 6983
+  },
+  "splits": [
+    {
+      "n_ctrl_per_half": 19088,
+      "n_dropped_odd": 44,
+      "n_pert_per_half": 33559,
+      "split": 0
+    },
+    {
+      "n_ctrl_per_half": 19088,
+      "n_dropped_odd": 44,
+      "n_pert_per_half": 33559,
+      "split": 1
+    },
+    {
+      "n_ctrl_per_half": 19088,
+      "n_dropped_odd": 44,
+      "n_pert_per_half": 33559,
+      "split": 2
+    },
+    {
+      "n_ctrl_per_half": 19088,
+      "n_dropped_odd": 44,
+      "n_pert_per_half": 33559,
+      "split": 3
+    },
+    {
+      "n_ctrl_per_half": 19088,
+      "n_dropped_odd": 44,
+      "n_pert_per_half": 33559,
+      "split": 4
+    }
+  ],
+  "target_sum": 2000.0,
+  "train_grand_mean": {
+    "n_perts": 1657,
+    "source": "rhj_fewshot nadig_2024_hepg2.h5ad training perturbations: grand DELTA (equal weight per pert) + H1 all-control mean",
+    "total_cells": 95527,
+    "weighting": "equal per perturbation"
+  },
+  "transfer": {
+    "cells_per_pert_median": 208.5,
+    "lines_per_pert": {
+      "ARID3A": [
+        "HEPG2",
+        "jurkat",
+        "RPE1"
+      ],
+      "ARPC2": [
+        "HEPG2",
+        "jurkat",
+        "RPE1"
+      ],
+      "ATF4": [
+        "HEPG2",
+        "jurkat",
+        "RPE1"
+      ],
+      "ATP6V0B": [
+        "HEPG2",
+        "jurkat",
+        "RPE1"
+      ],
+      "ATP6V0C": [
+        "HEPG2",
+        "jurkat",
+        "RPE1"
+      ],
+      "C1QBP": [
+        "HEPG2",
+        "jurkat",
+        "RPE1"
+      ],
+      "CHMP3": [
+        "jurkat",
+        "RPE1"
+      ],
+      "COASY": [
+        "HEPG2",
+        "jurkat",
+        "RPE1"
+      ],
+      "COX6C": [
+        "HEPG2",
+        "jurkat",
+        "RPE1"
+      ],
+      "CTBP2": [
+        "HEPG2",
+        "jurkat",
+        "RPE1"
+      ],
+      "CYCS": [
+        "HEPG2",
+        "jurkat",
+        "RPE1"
+      ],
+      "CYFIP1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "DHX36": [
+        "jurkat",
+        "RPE1"
+      ],
+      "DHX9": [
+        "HEPG2",
+        "jurkat",
+        "RPE1"
+      ],
+      "DNAJA3": [
+        "HEPG2",
+        "jurkat",
+        "RPE1"
+      ],
+      "DNMT1": [
+        "HEPG2",
+        "jurkat",
+        "RPE1"
+      ],
+      "DPH2": [
+        "HEPG2",
+        "jurkat",
+        "RPE1"
+      ],
+      "EIF3H": [
+        "HEPG2",
+        "jurkat",
+        "RPE1"
+      ],
+      "EIF4B": [
+        "HEPG2",
+        "jurkat",
+        "RPE1"
+      ],
+      "ELAC2": [
+        "HEPG2",
+        "jurkat",
+        "RPE1"
+      ],
+      "EWSR1": [
+        "HEPG2",
+        "jurkat",
+        "RPE1"
+      ],
+      "FDPS": [
+        "HEPG2",
+        "jurkat",
+        "RPE1"
+      ],
+      "HDAC3": [
+        "jurkat",
+        "RPE1"
+      ],
+      "HIRA": [
+        "HEPG2",
+        "jurkat",
+        "RPE1"
+      ],
+      "HMGCR": [
+        "HEPG2",
+        "jurkat",
+        "RPE1"
+      ],
+      "HMGCS1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "HSP90B1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "HTATSF1": [
+        "HEPG2",
+        "jurkat",
+        "RPE1"
+      ],
+      "INO80B": [
+        "jurkat",
+        "RPE1"
+      ],
+      "JAZF1": [
+        "HEPG2",
+        "jurkat",
+        "RPE1"
+      ],
+      "KIF20A": [
+        "HEPG2",
+        "jurkat",
+        "RPE1"
+      ],
+      "LRPPRC": [
+        "HEPG2",
+        "jurkat",
+        "RPE1"
+      ],
+      "MAT2A": [
+        "jurkat",
+        "RPE1"
+      ],
+      "MAU2": [
+        "jurkat",
+        "RPE1"
+      ],
+      "MAX": [
+        "HEPG2",
+        "jurkat",
+        "RPE1"
+      ],
+      "MBTPS1": [
+        "HEPG2",
+        "jurkat",
+        "RPE1"
+      ],
+      "MED1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "MED12": [
+        "jurkat",
+        "RPE1"
+      ],
+      "MED19": [
+        "jurkat",
+        "RPE1"
+      ],
+      "METTL14": [
+        "HEPG2",
+        "jurkat",
+        "RPE1"
+      ],
+      "METTL17": [
+        "HEPG2",
+        "jurkat",
+        "RPE1"
+      ],
+      "METTL3": [
+        "HEPG2",
+        "jurkat",
+        "RPE1"
+      ],
+      "NCAPH2": [
+        "HEPG2",
+        "jurkat",
+        "RPE1"
+      ],
+      "NCKAP1": [
+        "HEPG2",
+        "jurkat",
+        "RPE1"
+      ],
+      "NDUFB4": [
+        "jurkat",
+        "RPE1"
+      ],
+      "NDUFB6": [
+        "HEPG2",
+        "jurkat",
+        "RPE1"
+      ],
+      "NELFE": [
+        "jurkat",
+        "RPE1"
+      ],
+      "NISCH": [
+        "HEPG2",
+        "jurkat",
+        "RPE1"
+      ],
+      "OSTC": [
+        "jurkat",
+        "RPE1"
+      ],
+      "OXA1L": [
+        "HEPG2",
+        "jurkat",
+        "RPE1"
+      ],
+      "PGAM1": [
+        "HEPG2",
+        "jurkat",
+        "RPE1"
+      ],
+      "PHF12": [
+        "HEPG2",
+        "jurkat",
+        "RPE1"
+      ],
+      "PPP2R3C": [
+        "HEPG2",
+        "jurkat",
+        "RPE1"
+      ],
+      "PSME1": [
+        "HEPG2",
+        "jurkat",
+        "RPE1"
+      ],
+      "PSMG1": [
+        "HEPG2",
+        "jurkat",
+        "RPE1"
+      ],
+      "RNF20": [
+        "jurkat",
+        "RPE1"
+      ],
+      "RNF40": [
+        "HEPG2",
+        "jurkat",
+        "RPE1"
+      ],
+      "RRM1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "RRM2": [
+        "HEPG2",
+        "jurkat",
+        "RPE1"
+      ],
+      "SBDS": [
+        "HEPG2",
+        "jurkat",
+        "RPE1"
+      ],
+      "SDC1": [
+        "HEPG2",
+        "jurkat",
+        "RPE1"
+      ],
+      "SET": [
+        "jurkat",
+        "RPE1"
+      ],
+      "SETDB1": [
+        "HEPG2",
+        "jurkat",
+        "RPE1"
+      ],
+      "SLC25A3": [
+        "HEPG2",
+        "jurkat",
+        "RPE1"
+      ],
+      "SMAGP": [
+        "jurkat",
+        "RPE1"
+      ],
+      "SMARCB1": [
+        "HEPG2",
+        "jurkat",
+        "RPE1"
+      ],
+      "SMARCE1": [
+        "HEPG2",
+        "jurkat",
+        "RPE1"
+      ],
+      "SSBP1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "STRAP": [
+        "HEPG2",
+        "jurkat",
+        "RPE1"
+      ],
+      "SUPT4H1": [
+        "HEPG2",
+        "jurkat",
+        "RPE1"
+      ],
+      "SUPV3L1": [
+        "jurkat",
+        "RPE1"
+      ],
+      "TFAM": [
+        "HEPG2",
+        "jurkat",
+        "RPE1"
+      ],
+      "THAP11": [
+        "HEPG2",
+        "jurkat",
+        "RPE1"
+      ],
+      "TMSB10": [
+        "HEPG2",
+        "jurkat",
+        "RPE1"
+      ],
+      "TSFM": [
+        "jurkat",
+        "RPE1"
+      ],
+      "UQCRB": [
+        "jurkat",
+        "RPE1"
+      ],
+      "UQCRQ": [
+        "HEPG2",
+        "jurkat",
+        "RPE1"
+      ],
+      "USF2": [
+        "HEPG2",
+        "jurkat",
+        "RPE1"
+      ],
+      "WAC": [
+        "HEPG2",
+        "jurkat",
+        "RPE1"
+      ],
+      "ZRSR2": [
+        "jurkat",
+        "RPE1"
+      ]
+    },
+    "rule": "RHJ lines where the perturbation was TRAINED: all 3 for rhj_split=train, Jurkat+RPE1 for val/test",
+    "weighting": "cells per (file, pert)"
+  }
+}

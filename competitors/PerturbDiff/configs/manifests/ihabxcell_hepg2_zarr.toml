@@ -1,0 +1,30 @@
+# Byte-identical copy of ../../../STATE/state/ihabxcell_hepg2_zarr.toml.
+#
+# Keeping it identical is what guarantees both competitors read the same
+# datasets, the same split file and the same fold. If STATE's copy changes,
+# re-copy this one rather than editing it.
+#
+# Note: PerturbDiff names datasets by the *directory basename*
+# (ihabxcell_replogle_nadig_hepg2), not the label below, because
+# src/common/utils.get_short_dsname matches on tahoe/pbmc/replogle/cellxgene.
+# See data_module_setup._zarr_dataset_name.
+
+[datasets]
+ihabxcell_hepg2  = "/rxrx/scratch/the upstream tree/public/ihabxcell_replogle_nadig_hepg2"
+ihabxcell_jurkat = "/rxrx/scratch/the upstream tree/public/ihabxcell_replogle_nadig_jurkat"
+ihabxcell_k562   = "/rxrx/scratch/the upstream tree/public/ihabxcell_replogle_nadig_k562"
+ihabxcell_rpe1   = "/rxrx/scratch/the upstream tree/public/ihabxcell_replogle_nadig_rpe1"
+
+[training]
+ihabxcell_hepg2 = "train"
+ihabxcell_jurkat = "train"
+ihabxcell_k562 = "train"
+ihabxcell_rpe1 = "train"
+
+# Index-based holdout. Only hepg2 has one: the benchmark's test perturbations
+# exist only in that cell line, so jurkat/k562/rpe1 are wholly training data.
+[splits]
+ihabxcell_hepg2 = "/rxrx/data/valence/external_benchmarking/cell_eval/splits/replogle_nadig_xcell.json"
+
+[split_fold]
+ihabxcell_hepg2 = 0

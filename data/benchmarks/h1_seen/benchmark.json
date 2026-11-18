@@ -1,0 +1,34 @@
+{
+  "benchmark_id": "h1_seen",
+  "builder_version": "1.0.0",
+  "built": "2026-09-23",
+  "cell_line": "H1",
+  "command": "scripts/build_h1_seen_panel.py --dataset h1 --from-raw data/benchmarks/h1_seen_99/h1_seen_raw.h5ad --write-raw-subset --out-dir data/benchmarks/h1_seen",
+  "eligible_rule": "file:/rxrx/scratch/sandbox/ihab.bendidi/tx_pretrained_models/Occam/data/benchmarks/shared/h1_k562_perts.json",
+  "encoder_target_sum": 2000.0,
+  "gene_axis_sha256": "d5336c77731920ad0c7c77a554ca16bff428fd3c8d906cfc0c0275419ca83f58",
+  "git_sha": "d184c954575160c99f05e7c9583957fbe47e26cc",
+  "library_size_median": 53673.5,
+  "n_axis_genes": 6535,
+  "n_axis_genes_missing_in_h1": 448,
+  "normalisation": "rowsum over 8910 H1 genes also in nadig_2024_hepg2.h5ad, then axis restriction, then log1p(x/rowsum*2000)",
+  "purpose": "seen perturbation, unseen assay, unseen cell line: score rhj_fewshot checkpoints on H1 (VCC 2025)",
+  "raw_copy": {
+    "format": "CSR int32 counts, gzip-4 (scripts/compress_raw_copy.py)",
+    "n_cells": 126546,
+    "path": "data/benchmarks/h1_seen/h1_seen_raw.h5ad",
+    "sha256": "73ea83694d7c34fc2eaad94697b35fa7758c2606ca5a056b8913b096482d76d0",
+    "sha256_uncompressed_original": "ea72830ab38481a516c4f4420a5723ae5bf521ab26f699cec442dc5658ff1468"
+  },
+  "seen_from": {
+    "benchmark_id": "rhj_fewshot",
+    "benchmark_sha256": "d934211e5eb1e37e28c893fb8c5ff4211d607a1d77b0103d5c2b79221d21677f",
+    "gene_axis_sha256": "ef64f2ba7ff7816ed947796066cd8a68014884c6176619d750ef79462c78d4c0",
+    "n_axis_genes": 6983
+  },
+  "sources": {
+    "raw_copy": {
+      "path": "data/benchmarks/h1_seen_99/h1_seen_raw.h5ad"
+    }
+  }
+}

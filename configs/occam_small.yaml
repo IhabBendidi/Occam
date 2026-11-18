@@ -1,0 +1,304 @@
+# =====================================================================
+# Occam-small: THE PUBLISHED RECIPE.
+#
+# Values below preserve the reference representation-training recipe
+# directly from the released checkpoints' own embedded configs -- NOT from the
+# research tree's documentation, which is wrong for stages 1 and 3. Two run
+# directories there were written by colliding SLURM array tasks.
+# See docs/reproducing_chain_a.md.
+#
+# Run it:
+#     python -m occam.train --config configs/occam_small.yaml
+#     python -m occam.train --config configs/occam_small.yaml --stages decoder
+#     python -m occam.train --config configs/occam_small.yaml --dry-run
+# =====================================================================
+version: 1
+name: occam_small
+seed: 42
+device: cuda
+
+paths: !include paths.yaml          # machine-local; see paths.example.yaml
+
+run:
+  root: ./runs
+  stages: [pretrain, finetune, decoder]
+  runner: inprocess                 # inprocess | subprocess
+  resume: auto                      # auto | never | force
+  wandb:
+    enabled: true
+    project: occam
+    tags: [occam, small, published-recipe]
+
+data:
+  train: ${paths.train_corpus}
+  val: null                         # null -> chunk-based split using val_split
+  train_gene_col: gene_symbol
+  val_gene_col: null
+  # Sanity assertions, checked at load. See data/diverserna/DATASET_CARD.md for
+  # why "raw_counts" in the corpus filename is wrong for 46% of its rows.
+  expect:
+    n_obs: 1434299
+    n_genes: 44728
+
+# ⚠️ STAGE 3 BELOW IS SUPERSEDED (2026-09-16).
+#
+#    Its block records the recipe that produced the `rectified_sigmoid` +
+#    smooth-L1 decoder, which is no longer the released one. That file now
+#    lives at checkpoints/legacy/ and is kept only because the golden fixtures
+#    pin it, making it this repository's port-equivalence evidence.
+#
+#    The RELEASED decoder is configs/decoder_softplus_nb.yaml: softplus + NB,
+#    2048 x 4, lr 5e-5, epoch 124. It scored 0.5732 calibrated pearson_delta on
+#    nadig_2024_jurkat against this recipe's 0.1985 -- see
+#    docs/decoder_retrain_jurkat.md.
+#
+#    Stages 1 and 2 here are unchanged and ARE the published encoder: the
+#    released checkpoint's encoder half is byte-identical to the old one's.
+#    Keep this block as written -- it is verified against the legacy checkpoint
+#    by tests/test_config_frozen.py, and editing it to describe the new decoder
+#    would destroy that correspondence.
+
+stages:
+
+  # -------------------------------------------------------------------
+  # STAGE 1 - MAE pretraining
+  # VERIFIED from stage-1 final_model.pth['config'].
+  # Recorded run name: mlw_nb_softplus_s0.7_e0.9_cd0.0
+  # Result: best_val_loss 0.8786115260685191 (nb_softplus; not
+  # comparable to a poisson loss), 100 epochs completed.
+  #
+  # NOTE the loss and the MLW direction. The old documentation said `poisson`
+  # with a 0.0 -> 0.7 ramp. The weights say otherwise, and the state dict
+  # carries `_recon_loss_fn.log_theta`, which only nb_softplus registers.
+  # -------------------------------------------------------------------
+  pretrain:
+    model:
+      model_size: small
+      hidden_size: null          # null -> 512 for `small`
+      mae_decoder_hidden: null   # null -> 1024 legacy default
+      dropout: 0.0
+    optim:
+      epochs: 100
+      batch_size: 1024
+      learning_rate: 0.0004
+      weight_decay: 1.81890136e-09
+      optimizer: adam
+      lr_scheduler: cosine
+      warmup_epochs: 15
+      warmup_start_factor: 0.001
+      gradient_clip_val: 1.0
+      early_stopping_patience: 3500   # effectively disabled
+      validation_freq: 1
+    masking:
+      mask_probability: 0.1
+      corruption_mode: swap
+      gaussian_sigma: 0.5
+      variable_masking: false
+      gene_presence_mask: false
+      presence_shift: 1.0
+    loss:
+      reconstruction_loss: nb_softplus
+      masked_data_weight: 0.75
+      mask_loss_weight: 0.7
+      mlw_schedule_start: 0.7
+      mlw_schedule_end: 0.9
+      mlw_schedule_warmup: 0.1
+      mlw_schedule_cooldown: 0.0
+      clamp_max_log1p: 5.5
+      w_mse: 1.0
+      w_pois: 0.1
+      recon_loss_scale: 1.0
+      gpl_weight: 0.0
+      loss_diagnostics: true
+    data:
+      data_mode: optim
+      target_sum: 2000.0
+      val_split: 0.1
+      scale: false
+      skip_normalize: false
+      skip_log1p: false
+      optim_chunk_size: 8192
+      optim_buffer_chunks: 4
+      min_gene_overlap_pct: null
+    runtime:
+      enable_amp: false
+      compile: false
+      use_multi_gpu: true
+      use_ddp: true      # effective world size was 1 (no torchrun)
+      freeze_mask_predictor: false
+    eval:
+      enabled: true
+      frequency: 5
+      batch_size: 1024
+      scib: true
+
+  # -------------------------------------------------------------------
+  # STAGE 2 - unmasking finetune. This stage is CLEAN (single array task).
+  # VERIFIED from stage-2 finetuned_final_model.pth['finetuning_config'].
+  # Recorded run name: ft_mlw_B_ramp_lr0.0006
+  # Result: best_val_loss 0.05102195278467501
+  #
+  # `null` below means INHERIT from the parent checkpoint's stage-1 config --
+  # note: from the CHECKPOINT, not from the `pretrain` block above. The loader
+  # writes overlay_audit.json recording which won, per field.
+  # -------------------------------------------------------------------
+  finetune:
+    init_from: ${stages.pretrain.artifacts.final_model}
+    unmasking:
+      mode: gradual
+      zero_at: 0.9
+      final_ratio: 0.5
+      # !! Under mode=gradual the mask probability ramps down from the PARENT
+      #    CHECKPOINT's mask_probability (0.1), not from
+      #    masking.mask_probability below, which is inert. exp_062's log records
+      #    `mask_p: 0.100` at epoch 1. Asserted in tests/test_schedules.py.
+      effective_mask_prob_source: parent_checkpoint.mask_probability
+    optim:
+      epochs: 100
+      learning_rate: 0.0006
+      weight_decay: 1.81890136e-09
+      batch_size: 1024
+      optimizer: adam
+      lr_scheduler: cosine
+      warmup_epochs: 0
+      warmup_start_factor: 0.001
+      gradient_clip: 1.0
+      early_stopping: 3500
+      validation_freq: 1
+    masking:
+      mask_probability: 0.0      # inert under mode=gradual
+      corruption_mode: null        # null -> inherit (swap)
+      gaussian_sigma: null          # null -> inherit (0.5)
+    loss:
+      recon_loss: poisson                  # differs from stage 1 on purpose
+      masked_data_weight: 0.0
+      mask_loss_weight: 0.7
+      mlw_schedule_start: 0.7
+      mlw_schedule_end: 0.0
+      mlw_schedule_warmup: 0.1
+      mlw_schedule_cooldown: 0.1
+      clamp_max_log1p: 5.5
+    runtime:
+      data_mode: optim
+      freeze_mask_predictor: null   # null -> inherit (false)
+      enable_amp: null
+      compile: null
+    eval:
+      eval_freq: 5
+    load:
+      # REQUIRED. The nb_softplus parent contributes `_recon_loss_fn.log_theta`
+      # (44,728 floats) which the poisson child does not have. Declaring the
+      # expectation gives strictness' safety without changing behaviour.
+      strict: false
+      expect_unexpected: ["_recon_loss_fn.log_theta"]
+      expect_missing: []
+
+  # -------------------------------------------------------------------
+  # STAGE 3 - external decoder, frozen encoder, AS RELEASED.
+  # VERIFIED from best_decoder.pth['training_config'] + ['decoder_config'].
+  # Recorded run name: decoder_lr_sweep_3e-6_ep200
+  # Result: best epoch 185, best_val_loss 0.0011785769730683088
+  #
+  # NOTE the learning rate. The neighbouring run_config.json says 1e-5; it
+  # belongs to a different array task. Five tasks shared this run directory.
+  # NOTE decoder_num_blocks is 5, and the code default is 4.
+  # NOTE this arm had the WORST val loss of the three that survived the
+  # collision. configs/decoder_softplus_nb.yaml supersedes it once run.
+  # -------------------------------------------------------------------
+  decoder:
+    init_from: ${stages.finetune.artifacts.final_model}
+    encoder:
+      freeze_encoder: true
+      encoder_lr: 1.0e-05            # unused while frozen
+      # Read from the encoder checkpoint and OR-ed with these; the released
+      # stage-2 config has neither key, so both resolve false.
+      skip_normalize: false
+      skip_log1p: false
+    architecture:
+      decoder_size: null                     # null -> use the explicit dims below
+      decoder_hidden_dim: 2048
+      decoder_num_blocks: 5          # !! code default is 4
+      decoder_dropout: 0.3
+      decoder_se_reduction: 16
+      # NOT recorded in the released checkpoint. Determined empirically by
+      # scripts/verify_checkpoint.py: under rectified_sigmoid 83.6% of genes are
+      # constant across cells, under softplus 0.0%.
+      decoder_output_activation: rectified_sigmoid
+      decoder_weight_tie: false
+      decoder_bottleneck_k: 1
+      decoder_monarch_blocks: 0
+      decoder_kron_rank: 0
+      decoder_glu: false
+      decoder_sparsity_24: false
+    optim:
+      lr: 3.0e-06
+      eta_min: 1.0e-07
+      weight_decay: 0.01
+      gradient_clip: 0.5
+      batch_size: 1024
+      epochs: 200
+      loss_type: smooth_l1
+      smooth_l1_beta: 2.0
+      weight_init: default
+      dispersion_lr: null                    # nb/zinb only; unused here
+    data:
+      data_mode: optim
+      val_split: 0.1
+      optim_chunk_size: 8192
+      optim_buffer_chunks: 4
+      gene_presence_mask: false
+      presence_shift: 1.0
+      min_gene_overlap_pct: null
+      train_gene_col: gene_symbol
+      eval_gene_col: ensembl_gene_id
+    augmentation:
+      no_augmentation: false
+      gvf_cache_dir: null                    # -> runs/<name>/decoder/gvf_cache
+      aug_hparams:
+        final_cov_influence_weight: 0.5
+        final_gene_jitter_strength: 0.05
+        final_gene_mask_rate: 0.0
+        final_mask_activation_threshold: 0.0
+        final_sensitivity_p: 0.25
+        final_sparsity_modulator_strength: 0.1
+        gene_jitter_prob: 0.6
+        gene_mask_prob: 0.5
+        gvf_lower_p: 0.1
+        gvf_upper_p: 0.95
+        initial_cov_influence_weight: 1.5
+        initial_gene_jitter_strength: 0.2
+        initial_gene_mask_rate: 0.05
+        initial_mask_activation_threshold: 0.5
+        initial_sensitivity_p: 2.0
+        initial_sparsity_modulator_strength: 0.75
+        max_effective_mask_rate: 0.25
+        sensitivity_p_phase1_epochs_ratio: 0.25
+    adversarial:                             # all off in the released run
+      adv_loss: false
+      perc_loss: false
+      feature_extractor_checkpoint: null
+      adv_mode: frozen
+      perc_mode: frozen
+      lambda_adv: 0.1
+      lambda_perc: 0.1
+      disc_lr: 0.0002
+    eval:
+      decoder_eval_freq: 25
+      bmdb_eval_freq: 3
+      run_encoder_benchmark: false
+      log_interval: 3
+      cell_eval_enabled: false               # postdates the release; off for parity
+      eval_data:
+        - ${paths.eval_dir}/nadig_2024_jurkat.h5ad
+    # Flags that POSTDATE the released run, listed at their no-op values so a
+    # reader can see they were not in play. Changing any of them departs from
+    # the published recipe.
+    postdates_release:
+      no_amp: false
+      eval_present_genes_only: false
+      eval_zero_threshold: 0.0
+      eval_calibrate: none
+      eval_libnorm: none
+      celleval_calibrate: none
+      celleval_zero_mode: none
+      celleval_sample_predictive: false

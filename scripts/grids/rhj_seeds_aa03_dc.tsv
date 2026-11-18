@@ -1,0 +1,13 @@
+# THE NEW DEFAULT (user, 2026-09-24): AA03 schedule + loss = smooth_l1 + delta-cos only
+#
+# = ABL_A_DC of the AA03 loss ablation (docs/ABLATION_PLAN.md §6): 180 ep, eta_min 7e-4, bs 2048,
+# lr 1e-3, delta_cos 0.5; delta-magnitude, latent MSE and profile cosine all OFF.
+# ⚠️ profile cosine is NOT a grid column: launch with COS_W=0.0 (scripts/ablation/ablate.py does
+# this through the arms.tsv cos_w column). Used as base `AA03_DC` by ablate.py; its 5-seed scores
+# are the ABL_A_DC runs (18435527).
+arm	loss_type	nb_weight	nb_scale	delta_cos_weight	delta_mag_weight	latent_loss_type	latent_loss_weight	latent_cos_weight	latent_cos_target	recon_split	recon_ctrl_weight	recon_delta_weight	recon_split_mode	recon_delta_target	vicreg_var_weight	vicreg_cov_weight	vicreg_gamma	vicreg_target	epochs	eta_min	base	dcos_conc_weight	radial_spread_weight	gene_var_weight	batch_size	lr	seed
+S42_AA03DC	smooth_l1	0	1.0	0.5	0	none	0.0	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	180	7e-4	abl_ABL_A_DC_s42	0.0	0.0	0.0	2048	1e-3	42
+S43_AA03DC	smooth_l1	0	1.0	0.5	0	none	0.0	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	180	7e-4	abl_ABL_A_DC_s43	0.0	0.0	0.0	2048	1e-3	43
+S44_AA03DC	smooth_l1	0	1.0	0.5	0	none	0.0	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	180	7e-4	abl_ABL_A_DC_s44	0.0	0.0	0.0	2048	1e-3	44
+S45_AA03DC	smooth_l1	0	1.0	0.5	0	none	0.0	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	180	7e-4	abl_ABL_A_DC_s45	0.0	0.0	0.0	2048	1e-3	45
+S46_AA03DC	smooth_l1	0	1.0	0.5	0	none	0.0	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	180	7e-4	abl_ABL_A_DC_s46	0.0	0.0	0.0	2048	1e-3	46

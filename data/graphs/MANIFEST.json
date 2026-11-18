@@ -1,0 +1,32 @@
+{
+  "consumed_by": {
+    "go/go_essential_all.csv": "PerturbationGraph, graph_type='go' (graph.py:180)",
+    "master_gene_set_sorted.csv": "occam.vcell.graph.load_pert2id (graph.py:135)",
+    "string/v11.5.parquet": "PerturbationGraph, graph_type='string' (graph.py:188)"
+  },
+  "copied": "2026-09-16",
+  "deviation": "The research-tree recipe used `--graph_types go string pxmap-top1 txmap-top1`. Dropping pxmap and txmap is an UNCONTROLLED deviation from the configuration every prior finding was measured on: it buys portability and costs the claim 'same graph set as the prior work'. Recorded here and in the benchmark card.",
+  "files": {
+    "go/go_essential_all.csv": {
+      "bytes": 354733543,
+      "sha256": "99622d9215462e7bbea99a5f6c0b1e86febfef9f57226269418053484fcb3f9f"
+    },
+    "go/go_essential_top20.csv": {
+      "bytes": 5246092,
+      "sha256": "fcb6764504266f4ea0f10c9b44e11e57b4b51e1836934e5527e179cccebfcc44"
+    },
+    "master_gene_set_sorted.csv": {
+      "bytes": 214965,
+      "sha256": "c62e4648a2a2e88d49b7d602a8a4147586dc7916b4f27df243e2903e2eb9533b"
+    },
+    "string/v11.5.parquet": {
+      "bytes": 38828749,
+      "sha256": "55d312f8d6186078eb00a7caf108ef731cd27aa08a5b48de59cd0333f0206404"
+    }
+  },
+  "n_files": 4,
+  "redistribution": "THIRD-PARTY DATA. Not ours to publish: it must not go to HuggingFace and is gitignored. scripts/check_upload_gate.py must keep refusing it.",
+  "source": "/rxrx/data/valence/pathfinder/modules/gspp/graphs",
+  "total_bytes": 399023349,
+  "why": "Prior-knowledge graphs for the virtual-cell perturbation embedding. Copied rather than symlinked so the benchmark is self-contained on any machine. Only the two graphs the recipe uses (go, string) plus the master gene set are copied; the source tree is 12 GB and includes pxmap/txmap/reactome/afm/depmap/revolution, which this benchmark does not use."
+}

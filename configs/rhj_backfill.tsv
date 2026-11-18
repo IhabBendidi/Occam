@@ -1,0 +1,4 @@
+# F-infra1 backfill: (arm, split) triples whose cell-eval score is MISSING.
+# `calibrate` is EXACTLY the missing modes -- never re-run a mode that worked.
+# Regenerate with scripts/build_backfill_grid.py; do not hand-edit.
+arm_id	tag	split	calibrate	missing_modes

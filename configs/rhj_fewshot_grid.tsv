@@ -1,0 +1,34 @@
+# rhj_fewshot ablation grid. ONE ROW PER ARM, read by array index.
+# Checked in on purpose: index arithmetic in bash is how an arm silently
+# becomes a duplicate of its neighbour, and the mapping then lives only in
+# shell history. tests/test_rhj_fewshot_grid.py asserts this file is exactly
+# the declared Cartesian product with unique ids and unique tags.
+# film_scale is FIXED at 1.0 and is not an axis. epochs 30, seed 42.
+arm_id	kind	tag	interaction_type	film_mode	film_hidden_dim	film_mean_free	loss_type	seed
+a00	grid	fmode-full_fh0_fmf0_smoothl1_s42	film	full	0	0	smooth_l1	42
+a01	grid	fmode-full_fh0_fmf0_nb_s42	film	full	0	0	nb	42
+a02	grid	fmode-full_fh0_fmf1_smoothl1_s42	film	full	0	1	smooth_l1	42
+a03	grid	fmode-full_fh0_fmf1_nb_s42	film	full	0	1	nb	42
+a04	grid	fmode-full_fh256_fmf0_smoothl1_s42	film	full	256	0	smooth_l1	42
+a05	grid	fmode-full_fh256_fmf0_nb_s42	film	full	256	0	nb	42
+a06	grid	fmode-full_fh256_fmf1_smoothl1_s42	film	full	256	1	smooth_l1	42
+a07	grid	fmode-full_fh256_fmf1_nb_s42	film	full	256	1	nb	42
+a08	grid	fmode-mult_fh0_fmf0_smoothl1_s42	film	multiplicative_only	0	0	smooth_l1	42
+a09	grid	fmode-mult_fh0_fmf0_nb_s42	film	multiplicative_only	0	0	nb	42
+a10	grid	fmode-mult_fh0_fmf1_smoothl1_s42	film	multiplicative_only	0	1	smooth_l1	42
+a11	grid	fmode-mult_fh0_fmf1_nb_s42	film	multiplicative_only	0	1	nb	42
+a12	grid	fmode-mult_fh256_fmf0_smoothl1_s42	film	multiplicative_only	256	0	smooth_l1	42
+a13	grid	fmode-mult_fh256_fmf0_nb_s42	film	multiplicative_only	256	0	nb	42
+a14	grid	fmode-mult_fh256_fmf1_smoothl1_s42	film	multiplicative_only	256	1	smooth_l1	42
+a15	grid	fmode-mult_fh256_fmf1_nb_s42	film	multiplicative_only	256	1	nb	42
+a16	grid	fmode-add_fh0_fmf0_smoothl1_s42	film	additive_only	0	0	smooth_l1	42
+a17	grid	fmode-add_fh0_fmf0_nb_s42	film	additive_only	0	0	nb	42
+a18	grid	fmode-add_fh0_fmf1_smoothl1_s42	film	additive_only	0	1	smooth_l1	42
+a19	grid	fmode-add_fh0_fmf1_nb_s42	film	additive_only	0	1	nb	42
+a20	grid	fmode-add_fh256_fmf0_smoothl1_s42	film	additive_only	256	0	smooth_l1	42
+a21	grid	fmode-add_fh256_fmf0_nb_s42	film	additive_only	256	0	nb	42
+a22	grid	fmode-add_fh256_fmf1_smoothl1_s42	film	additive_only	256	1	smooth_l1	42
+a23	grid	fmode-add_fh256_fmf1_nb_s42	film	additive_only	256	1	nb	42
+a24	anchor	noflim-additive_smoothl1_s42	additive	full	0	0	smooth_l1	42
+a25	anchor	noflim-additive_nb_s42	additive	full	0	0	nb	42
+a26	baseline	baselines_noflim-additive_smoothl1_s42	additive	full	0	0	smooth_l1	42

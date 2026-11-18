@@ -1,0 +1,165 @@
+{
+  "anchors_for_reading": {
+    "ctrlcell": -0.0018,
+    "ctrlmean": 0.0016,
+    "experimental": 0.3722,
+    "meanpert": 0.1324,
+    "occam_best": 0.3415,
+    "transfer": 0.2323
+  },
+  "arm": "perturbdiff",
+  "benchmark": "rhj_fewshot",
+  "checkpoints_not_frozen": {
+    "names": [],
+    "why": "written by the same run but NEVER evaluated -- 'best' under a different criterion, plus last/final. Excluded so no one can score one later and report it as this arm's result."
+  },
+  "deliberate_deviations": [
+    "Retrained from scratch on OUR data: 6,983-gene frozen axis, our 611-perturbation cohort, our 5 splits. Does NOT reproduce PerturbDiff's published 0.40306 (2,000 genes / 380 perturbations / 4 cell lines).",
+    "Export-level fixes vs our first port, all making it MORE faithful, none touching training: B1 checkpoint resolved from the run's own .best_ckpt_path marker (save_last=True had made the glob ambiguous, and 'last.ckpt' would have reported weights that were never selected); B2 pl.seed_everything(seed + 1000*split) before sampling, because with eta=0.0 the DDIM prediction is a deterministic function of one previously-UNSEEDED randn; M1 per-cell cov_batch taken from the PERTURBED cell's batch (upstream's get_covarates runs on the perturbed row), replacing a single constant covariate broadcast over the whole panel; M2 batch_size=len(split) so no chunk boundary can split a perturbation's cell set in two.",
+    "genept arm only. The onehot twin is a separate embedding choice and is not this arm's number."
+  ],
+  "files": {
+    "celleval/split_0/agg_results.csv": {
+      "bytes": 3658,
+      "sha256": "d8ce4b7fee7f9d9163acbd967d7eba8ef58133240414943f7b2c35db8a96b83d"
+    },
+    "celleval/split_0/metrics.json": {
+      "bytes": 13675,
+      "sha256": "5d0946ce06f0b9d9567a8bf86ef5c923d0d10a279b68b81bd56afddcaec5edbb"
+    },
+    "celleval/split_0/results.csv": {
+      "bytes": 240489,
+      "sha256": "a45dac3e301ffa1e78a7ccf62f0f9c88aeee023daf406a670790c21d5bc83562"
+    },
+    "celleval/split_1/agg_results.csv": {
+      "bytes": 3644,
+      "sha256": "75ab88e54ed79981ee5a6da8e15c3ed290a4ceed4f5ef6af4525943badb78637"
+    },
+    "celleval/split_1/metrics.json": {
+      "bytes": 13675,
+      "sha256": "9a0d382886aea7e275423c39e8e6a690800ffa4f29c91582bf9a30f76f8e6904"
+    },
+    "celleval/split_1/results.csv": {
+      "bytes": 239061,
+      "sha256": "c724202eccfa9f44849fa2c772df4767cdfe95cd39d8712f3bfcd272ab58ec2b"
+    },
+    "celleval/split_2/agg_results.csv": {
+      "bytes": 3731,
+      "sha256": "2ccb046d85234db6dd45aaff9847c186221131dfb9907fda5909656a75abddde"
+    },
+    "celleval/split_2/metrics.json": {
+      "bytes": 13685,
+      "sha256": "3c75d97f964e105a45a72ed45c93af20ed3b3dbe106b92667035d3716a0f91fd"
+    },
+    "celleval/split_2/results.csv": {
+      "bytes": 239612,
+      "sha256": "d6ec024adcc0416795643b19818f01e336bcbc657f9947507eb3264d31a9f709"
+    },
+    "celleval/split_3/agg_results.csv": {
+      "bytes": 3626,
+      "sha256": "f7e46bb42105d28b4b2f8f0e02ff0017dd2eb4353b617fa46191d62b10ccf690"
+    },
+    "celleval/split_3/metrics.json": {
+      "bytes": 13676,
+      "sha256": "f6eb2043c57733902efd6129bb8f0c0aa316aff842605790f76db72794405dd3"
+    },
+    "celleval/split_3/results.csv": {
+      "bytes": 239536,
+      "sha256": "bde69239d7d3bd80c69b29eabec5e53ee927a046838ab41d5a02802e0cef7bf7"
+    },
+    "celleval/split_4/agg_results.csv": {
+      "bytes": 3559,
+      "sha256": "bb61a8c7c2d48c54e311e64644e817de6dd97581d14de28861a61a55561106e2"
+    },
+    "celleval/split_4/metrics.json": {
+      "bytes": 13648,
+      "sha256": "87d0eec9f375db7369499249cb069c96c396c50e62f1c98f08bf0db81e9d521d"
+    },
+    "celleval/split_4/results.csv": {
+      "bytes": 241408,
+      "sha256": "38f2d83ad8cedd804be27e1a7149d8d12324cee721e75f63aa4c2b044a908bda"
+    },
+    "checkpoints/epoch=12-step=64000-validation_random_Perturbseq_loss=0.00.ckpt": {
+      "bytes": 1982752307,
+      "sha256": "bd06975bcab0e8d67c75790679d6ee6f1384d45d5d23acf6aae41d20f63fc8fd"
+    },
+    "predictions/split_0/h1_model_nocal_pred_injctrl.h5ad": {
+      "bytes": 589537730,
+      "sha256": "80a80ad7fa023f0ae3c4d180cb007d87aab3df49ac0645a2617d02bea06da27d"
+    },
+    "predictions/split_1/h1_model_nocal_pred_injctrl.h5ad": {
+      "bytes": 589537730,
+      "sha256": "f38cc929fdb791fe8de7a732ad82e50c618d8853d22ce9f7dd1a8ef21460108e"
+    },
+    "predictions/split_2/h1_model_nocal_pred_injctrl.h5ad": {
+      "bytes": 589537730,
+      "sha256": "370475eee889541a7f903952dbecc41cc250acb5a6ece3de580aa19108d23848"
+    },
+    "predictions/split_3/h1_model_nocal_pred_injctrl.h5ad": {
+      "bytes": 589537730,
+      "sha256": "6d077cb0e4f69f45cd4e42e98d2023d2085fc06c5a71bfe1f0e6e8295c09860a"
+    },
+    "predictions/split_4/h1_model_nocal_pred_injctrl.h5ad": {
+      "bytes": 589537730,
+      "sha256": "e970e7daffb1c98e9b5b313adbac14156f00d6feb859e8c32bdad2770bc90eef"
+    }
+  },
+  "git_commit": "6107045abe4e53d8572d3453966db2569026332b",
+  "n_splits_scored": 5,
+  "not_copied": {
+    "pred_de.csv": "~95 MB per split, fully derivable from the prediction h5ad",
+    "target_h5ad": "a deterministic function of the frozen panel and the split seed; reproducible, and it would double the footprint"
+  },
+  "note": "PerturbDiff (genept perturbation embeddings) on the rhj_fewshot split-half panel. Set-based: use_cell_set=16, cell_set_group_by=pert_celltype, DDIM eta=0.0. The checkpoint holds the EMA-averaged weights that validation scored.",
+  "scored_by": "cell-eval 0.6.0 / pdex 0.1.24, uncalibrated (model_nocal), one drawn half-B control cell per predicted row",
+  "seed": 42,
+  "selected_checkpoint": "epoch=12-step=64000-validation_random_Perturbseq_loss=0.00.ckpt",
+  "source_run_dir": "runs/competitors/perturbdiff/ckpt/pd_occam_pert_celltype_lr0.002_genept_cs16_s42_genept",
+  "source_scored_dir": "runs/rhj_splithalf/compet_perturbdiff_genept_s42",
+  "test_scores_model_nocal": {
+    "mean": {
+      "discrimination_score_l1": 0.664981610999649,
+      "mae": 0.028650356563945257,
+      "overlap_at_N": 0.07337312332084109,
+      "pearson_delta": 0.24491420710866846
+    },
+    "per_split": {
+      "0": {
+        "discrimination_score_l1": 0.6679586736347539,
+        "mae": 0.028766803469344265,
+        "overlap_at_N": 0.07381674459583952,
+        "pearson_delta": 0.24723136394494116
+      },
+      "1": {
+        "discrimination_score_l1": 0.663396915790968,
+        "mae": 0.02861249840585134,
+        "overlap_at_N": 0.07119369703609896,
+        "pearson_delta": 0.24862016472728343
+      },
+      "2": {
+        "discrimination_score_l1": 0.6638174653984105,
+        "mae": 0.02861714355019569,
+        "overlap_at_N": 0.07299459315794567,
+        "pearson_delta": 0.2444662436291989
+      },
+      "3": {
+        "discrimination_score_l1": 0.6680417120922745,
+        "mae": 0.028602510369070324,
+        "overlap_at_N": 0.07291077842136197,
+        "pearson_delta": 0.24547543673360794
+      },
+      "4": {
+        "discrimination_score_l1": 0.6616932880818384,
+        "mae": 0.028652827025264647,
+        "overlap_at_N": 0.07594980339295931,
+        "pearson_delta": 0.23877782650831095
+      }
+    },
+    "sd": {
+      "discrimination_score_l1": 0.002868217309040737,
+      "mae": 6.78077940518997e-05,
+      "overlap_at_N": 0.0017279342327330704,
+      "pearson_delta": 0.0037839844911861063
+    }
+  }
+}

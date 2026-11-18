@@ -1,0 +1,12 @@
+# TEST cell-eval for the 60-epoch / eta_min 1e-5 arms (train job 18217450). NOCAL ONLY.
+# E1 = M03's loss (dcos 0.01), E2 = M06's (dcos 0.5 + mag), E3 = Q02's (+ latent MSE 0.0044).
+# Only the SCHEDULE differs from the 30-epoch originals: epochs 30->60, eta_min 1e-7->1e-5.
+# READ AGAINST: Q02 0.3783/0.0225/0.0774/0.7029 · M06 0.3681/0.0232/0.0703/0.7047 ·
+#               M03 0.3679/0.0212/0.0722/0.6715.  `mae` is an ERROR: LOWER IS BETTER.
+# ⚠️ 60 epochs also doubles the checkpoints best_model.pth selects over, and the validation
+#    metric oscillates +/-0.20 between consecutive epochs (F7) -- so a gain may be a better
+#    optimum OR just more chances to catch a lucky epoch.
+arm_id	kind	tag
+E1	loss	smooth_l1_nbw0_nbs1.0_dcos0.01_e60_em1e-5_s42
+E2	loss	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_e60_em1e-5_s42
+E3	loss	smooth_l1_nbw0_nbs1.0_dcos0.5_mag0.01363_lmse0.0044_e60_em1e-5_s42

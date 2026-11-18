@@ -1,0 +1,366 @@
+"""Phase A for STATE: predict our panel's split from the drawn half-B control cells.
+
+WHAT THIS ANSWERS
+-----------------
+Overall goal: predict a perturbation's effect in a context where that perturbation was never
+measured, from a single control cell.
+
+This script's job: run STATE's selected checkpoint over one split of our frozen panel and write
+`(18575, 6983)` float32 in OUR evaluation space, which `scripts/eval_competitor.py` then scores
+through OUR cell-eval 0.6.0. It measures nothing itself; it is the transport.
+
+HOW IT PREDICTS
+---------------
+STATE is a SET-level model: `cell_set_len=64`, so `predict_step` consumes a batch of
+"sentences" shaped `(B, S, G)` and returns `preds` the same way. The batch dict is built here
+to `collate_fn`'s exact contract (`zarr_perturbation.py:764`) --
+
+    pert_cell_emb · ctrl_cell_emb · pert_emb · pert_name · cell_type ·
+    cell_type_onehot · batch · batch_name · dataset_name
+
+-- using the datamodule's OWN one-hot maps, so a perturbation's vector is the one the
+checkpoint was trained with. Building the maps independently would silently permute the
+condition space.
+
+⚠️ `pert_cell_emb` IS NOT AN INPUT. It is the target during training and is ignored at
+predict time; it is filled with the control cells here so the tensor exists with the right
+shape. Do not read the prediction as conditioned on it.
+
+⚠️ ONE DRAWN CONTROL CELL PER PREDICTED ROW, which is ours and must be. STATE's own loader
+pairs a perturbed cell with a control drawn from its (cell_type, batch) pool. Our split-half
+protocol conditions each predicted cell on ONE SPECIFIC drawn control cell -- the same cell our
+own arms and all five baselines see (`eval_control="single"`, `ctrl_avg_k=1`,
+`rng = default_rng(42 + 1000 * split)`). The paired design is what buys the 0.001-0.003
+split-to-split std on `pearson_delta`; feeding STATE a differently drawn control while every
+other arm gets the panel's own would stop the comparison being paired. Recorded beside STATE's
+numbers in `docs/rhj_competitors.md`.
+
+⚠️ THE SENTENCE IS PADDED, NOT WRAPPED. The last sentence of a split is padded with repeats of
+its final row and the padding is DISCARDED after prediction. Wrapping to the front would make
+the first cells' predictions depend on how many cells the split happens to have.
+
+EMISSION SPACE
+--------------
+`output_space: gene`, so STATE emits gene space in the space it was trained on:
+`log1p(counts / rowsum_FULL_PANEL * 10_000)`. Declared to `export_split` as
+`from_target_sum=10_000, from_log1p=True`; `assert_representable` refuses only what cannot be SCORED; library size and density are
+recorded as diagnostics, because refusing on them would exclude weak arms.
+
+⚠️ UNEXERCISED UNTIL A CHECKPOINT EXISTS. Per the plan's own rule, run ONE arm, ONE seed, ONE
+split end to end before any 4x5 sweep: the last two 135-task launches died on code that had
+never executed once on the real path.
+"""
+
+from __future__ import annotations
+
+import argparse
+import os
+import sys
+from typing import Sequence
+
+import numpy as np
+
+ARM = "state"
+_HERE = os.path.dirname(os.path.abspath(__file__))
+_REPO = os.path.dirname(os.path.dirname(_HERE))
+for _p in (os.path.join(_HERE, "state", "src"),
+           os.path.join(_REPO, "competitors", "shared")):
+    if os.path.isdir(_p) and _p not in sys.path:
+        sys.path.insert(0, _p)
+
+
+def _bench_tag(bench_dir: str) -> str:
+    """`""` for rhj_fewshot, `"__<bench>"` otherwise -- the run-directory suffix.
+
+    ⚠️ The training legs tag their run directory by benchmark and the export legs did
+    NOT, so an export defaulted to the rhj_fewshot run and would have scored the WRONG
+    CHECKPOINT on the right panel. CellFlow's emission-space guard caught its version of
+    this ("the gene axis is not ours: 6983 vs 8000"); an arm whose axis happened to match
+    would have produced a plausible number instead. Measured 2026-09-22, job 18328366.
+    """
+    import os as _os
+    name = _os.path.basename(_os.path.normpath(str(bench_dir)))
+    return "" if name == "rhj_fewshot" else f"__{name}"
+
+
+def _resolve_checkpoint(seed: int, explicit: str, bench_dir: str = "") -> str:
+    """The checkpoint STATE itself selected on VALIDATION, never the last step.
+
+    Its training leg writes `best_celleval.ckpt`, chosen on
+    selection_score = mean(pearson_delta, discrimination_score_l1), mode=max. Refuse rather
+    than fall back to `final.ckpt`: silently scoring the last step would be incomparable to
+    every other arm and nothing about the output would say so.
+    """
+    if explicit:
+        if not os.path.isfile(explicit):
+            raise SystemExit(f"no checkpoint at {explicit}")
+        return explicit
+    d = os.path.join(_REPO, "runs", "competitors", "state",
+                     f"occam_s{seed}{_bench_tag(bench_dir)}", "checkpoints")
+    p = os.path.join(d, "best_celleval.ckpt")
+    if not os.path.isfile(p):
+        have = sorted(os.listdir(d)) if os.path.isdir(d) else []
+        raise SystemExit(
+            f"no validation-selected checkpoint at {p}. Present: {have[:6]}. Either training "
+            f"has not finished for seed {seed}, or it finished without selecting one. "
+            f"Refusing to fall back to the final step, which would be silently "
+            f"incomparable to every other arm.")
+    return p
+
+
+def _evaluated_line(bench_dir: str) -> str:
+    """The cell line whose perturbations are held out and scored, from the artifact."""
+    import json as _json
+    import os as _os
+    b = _json.load(open(_os.path.join(bench_dir, "benchmark.json")))
+    line = b.get("cell_line") or ""
+    if not line:
+        for rec in (b.get("sources") or {}).values():
+            if rec.get("cell_line"):
+                line = rec["cell_line"]
+                break
+    if not line:
+        ecl = b.get("eval_cell_lines") or []
+        line = ecl[0] if ecl else ""
+    if not line:
+        raise SystemExit(
+            f"{bench_dir}/benchmark.json records no `cell_line` or `eval_cell_lines`, so "
+            f"the evaluated line cannot be resolved. Pass --cell-type explicitly.")
+    return str(line)
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--seed", type=int, required=True)
+    ap.add_argument("--split", type=int, required=True)
+    ap.add_argument("--out-dir", required=True)
+    ap.add_argument("--panel-dir", required=True)
+    ap.add_argument("--bench-dir", required=True)
+    ap.add_argument("--checkpoint", default="")
+    ap.add_argument("--cell-type", default="",
+                    help="the EVALUATED cell line. Empty (the default) resolves it from "
+                         "--bench-dir, which is the only place that knows: it was pinned "
+                         "to rhj_fewshot's held-out line, and every other benchmark then "
+                         "asked for a line its artifact does not have.")
+    ap.add_argument("--sentence-len", type=int, default=64)
+    ap.add_argument("--sentences-per-batch", type=int, default=4)
+    ap.add_argument("--device", default="cuda")
+    # ⛔ HOW A PAIR IS ANSWERED. This arm has no multi-perturbation mechanism of its own,
+    # so on a combinatorial panel (norman_combo) the composition rule is applied HERE, at
+    # the export boundary, by feeding the first pass's output back in as the second pass's
+    # control. `none` leaves single-perturbation panels bit-identical to before, which is
+    # why it is the default. See competitors/shared/export_predictions.py and
+    # docs/competitors_on_doubles.md.
+    ap.add_argument("--compose", default="none",
+                    choices=["none", "decode_seq_ab", "decode_seq_ba",
+                             "decode_seq_mean"],
+                    help="sequential composition for `A+B` labels. Required on "
+                         "norman_combo; a no-op on a single-perturbation panel, where "
+                         "every label passes straight through.")
+    ap.add_argument("--proxy-batch-draw", action="store_true",
+                    help="OOD-context panels only (h1_seen): the panel's batches are not "
+                         "in this checkpoint's vocabulary, so each cell's batch covariate "
+                         "is a seeded uniform draw from the proxy cell line's batches. "
+                         "Recorded in the manifest as `context_proxy`.")
+    args = ap.parse_args(argv)
+    if not args.cell_type:
+        args.cell_type = _evaluated_line(args.bench_dir)
+        print(f"[export] evaluated cell line from the benchmark: "
+              f"{args.cell_type!r}")
+
+    import torch
+
+    from export_predictions import (TRAIN_TARGET_SUM, draw_proxy_batches, export_split,
+                                    load_panel_split)
+    from state.tx.pure_sentence import make_composed_pair_predict, predict_pure_sentences
+    from state.tx.data import get_datamodule
+
+    ckpt = _resolve_checkpoint(args.seed, args.checkpoint, args.bench_dir)
+    print(f"[{ARM}] checkpoint {ckpt}")
+
+    split = load_panel_split(args.panel_dir, args.split, target_sum=TRAIN_TARGET_SUM)
+
+    # The datamodule is instantiated for its ONE-HOT MAPS and its var dims, not for its
+    # loaders: a perturbation's vector must be the one the checkpoint was trained with.
+    # No `toml_config_path`: in occam mode the benchmark directory IS the source manifest
+    # (`ZarrExperimentConfig.from_occam`), and the datamodule refuses both at once so the
+    # source list has exactly one owner. See C23.
+    dm = get_datamodule("ZarrPerturbationDataModule", dict(
+        toml_config_path=None,
+        source_format="occam", occam_bench_dir=args.bench_dir,
+        occam_verify_sources=False,
+        feature_loading="ram", target_sum=None, log1p=False,
+        embed_key="X_hvg", output_space="gene", batch_col="batch_center",
+        cell_type_key="cell_type", pert_col="gene_pert", control_pert="empty",
+        num_workers=0, basal_mapping_strategy="random",
+        cell_sentence_len=args.sentence_len,
+    ), batch_size=args.sentences_per_batch, cell_sentence_len=args.sentence_len)
+    dm.setup()
+
+    missing = sorted({str(p) for p in split.labels} - set(dm.pert_onehot_map))
+    if missing:
+        raise SystemExit(
+            f"{len(missing)} cohort perturbation(s) are absent from the checkpoint's one-hot "
+            f"map, e.g. {missing[:5]}. The frozen 611-perturbation cohort is not negotiable; "
+            f"a partial arm would be scored on a different panel.")
+    if args.cell_type not in dm.cell_type_onehot_map:
+        raise SystemExit(
+            f"cell type {args.cell_type!r} is not in the checkpoint's map "
+            f"({sorted(dm.cell_type_onehot_map)}). The panel is HepG2.")
+
+    from state.tx.models.state_transition import StateTransitionPerturbationModel as _M
+
+    # Their `_predict.py` passes the dims explicitly rather than trusting the checkpoint's
+    # saved hyperparameters, so this does the same: `var_dims` comes from the datamodule, and
+    # everything else from the checkpoint's own `hyper_parameters`. Trusting only the
+    # checkpoint risks a silent dim mismatch against OUR 6,983-gene axis.
+    var_dims = dm.get_var_dims()
+    saved = torch.load(ckpt, map_location="cpu", weights_only=False)
+    hp = dict(saved.get("hyper_parameters", {}))
+    for k in ("input_dim", "gene_dim", "hvg_dim", "output_dim", "pert_dim"):
+        if k in var_dims:
+            hp[k] = var_dims[k]
+    del saved
+    model = _M.load_from_checkpoint(ckpt, weights_only=False, **hp).to(args.device).eval()
+    print(f"[{ARM}] {len(dm.pert_onehot_map):,} perturbations · "
+          f"gene_dim {var_dims.get('gene_dim')} · output_dim {var_dims.get('output_dim')}")
+
+    ct_onehot = dm.cell_type_onehot_map[args.cell_type]
+
+    # ⚠️ PER-CELL BATCH, not a constant. `batch_encoder=True` in this checkpoint
+    # (`batch_dim=167`) and the embedding is added to EVERY token, so pinning the covariate to
+    # one label applies that batch's learned offset to the whole panel. Training reads the
+    # PERTURBED cell's own batch (`zarr_perturbation.py:689`), and a real 30-cell sentence
+    # spans ~22 distinct batches. Measured cost of the constant: 0.37 relative change, with
+    # the perturbation-specific delta correlating only 0.73-0.86 with the faithful prediction.
+    #
+    # The panel names batches `hepg2-nad-49`; STATE's map is keyed `HEPG2__hepg2-nad-49`. The
+    # mapping is BUILT and ASSERTED here rather than assumed -- an unknown key would index
+    # past the embedding table, and a silently-wrong one would not.
+    if split.batches is None:
+        raise SystemExit(
+            "the panel carries no per-cell `batches`, so this arm would have to condition on "
+            "a single constant batch. Rebuild the panel, or pass --allow-constant-batch to "
+            "accept the measured 0.37 relative distortion.")
+
+    if split.manifest.get("ood_context"):
+        if not args.proxy_batch_draw:
+            raise SystemExit(
+                f"panel is an OOD context ({split.manifest.get('cell_line')!r}); its batches "
+                f"are not in this checkpoint's vocabulary. Pass --proxy-batch-draw.")
+        draw_proxy_batches(
+            split, [k for k in dm.batch_onehot_map if str(k).startswith(f"{args.cell_type}__")],
+            seed=args.seed, why=f"OOD panel; proxy cell type {args.cell_type}")
+
+    def _batch_key(raw: str) -> str:
+        for cand in (f"{args.cell_type}__{raw}", raw, f"{args.cell_type}_{raw}"):
+            if cand in dm.batch_onehot_map:
+                return cand
+        raise SystemExit(
+            f"batch {raw!r} from the panel is not in the checkpoint's batch_onehot_map "
+            f"(tried {args.cell_type}__{raw}, {raw}, {args.cell_type}_{raw}). "
+            f"Known examples: {sorted(dm.batch_onehot_map)[:3]}")
+
+    _uniq = sorted(set(str(b) for b in split.batches))
+    _keymap = {b: _batch_key(b) for b in _uniq}
+    batch_labels = np.asarray([_keymap[str(b)] for b in split.batches], dtype=object)
+    batch_onehot = torch.stack([dm.batch_onehot_map[k] for k in batch_labels])
+    print(f"[{ARM}] batch covariate: {len(_uniq)} distinct, per cell "
+          f"(e.g. {_uniq[0]!r} -> {_keymap[_uniq[0]]!r})")
+
+    S = int(args.sentence_len)
+
+    def predict(ctrl: np.ndarray, pert_names: Sequence[str]) -> np.ndarray:
+        """One predicted cell per control row, in PURE cell sentences.
+
+        ⚠️ STATE DOES NOT PREDICT PER CELL. It predicts per SENTENCE of `cell_set_len`
+        cells, and its backbone is a `LlamaBidirectionalModel` -- bidirectional attention
+        across the whole sentence -- so every cell's prediction depends on its companions.
+        `SentenceBatchSampler._create_sentences` groups training sentences by
+        `(cell_type, perturbation)`, i.e. **one perturbation per sentence, always**.
+
+        This function used to pad the whole matrix to a multiple of S and reshape
+        sequentially. On split 0 that produced only 39 PURE sentences out of 290: the median
+        sentence mixed 3 perturbations and some mixed 6, so for ~87% of the panel STATE was
+        predicting each cell while attending over cells of two to five OTHER perturbations --
+        a regime absent from training. The result collapsed to the `meanpert` baseline
+        (`pearson_delta` 0.1306 vs 0.1324) while the same checkpoint scored 0.2049 on its own
+        validation pass, which uses the sampler and therefore pure sentences. See C27.
+
+        Grouping happens inside this function rather than over the whole split because
+        `export_split` calls it on chunks. A perturbation whose cells straddle a chunk
+        boundary simply yields two pure sentences instead of one -- exactly what training
+        does for any perturbation with more than `cell_set_len` cells.
+        """
+
+        # The sentence construction lives in `state.tx.pure_sentence` so the in-training
+        # validation pass (which selects `best_celleval.ckpt`) runs the SAME code on the
+        # same kind of input. Behaviour unchanged: pure sentences, one `predict_step` each,
+        # true length, per-cell batch covariate -- see that module and C27/S1.
+        n = int(np.asarray(ctrl).shape[0])
+        # `batch_onehot` / `batch_labels` are indexed by the FULL split, so this function must
+        # receive the whole split -- see the `batch_size=len(split)` note at the call site.
+        if n != len(batch_labels):
+            raise RuntimeError(
+                f"predict got {n} rows but the batch covariate has {len(batch_labels)}. "
+                f"export_split must hand this adapter the whole split in one call, or every "
+                f"row is conditioned on another row's batch.")
+        return predict_pure_sentences(
+            model, ctrl, pert_names,
+            pert_onehot_map=dm.pert_onehot_map,
+            batch_onehot=batch_onehot,
+            batch_names=batch_labels,
+            cell_type_onehot=ct_onehot.unsqueeze(0).expand(n, -1),
+            cell_type_names=[args.cell_type] * n,
+            sentence_len=S,
+            device=args.device,
+            dataset_name="occam_panel")
+
+    # ⚠️ THE WHOLE SPLIT IN ONE `predict` CALL. `export_split` otherwise chunks the panel and
+    # calls `predict` per chunk, which breaks this adapter two ways:
+    #   1. the per-cell batch covariate is indexed by the FULL split, while `sent` inside
+    #      `predict` is chunk-local -- every row would get another row's batch;
+    #   2. the per-perturbation sentence plan is built inside `predict`, so a chunk boundary
+    #      would cut a perturbation into two short sentences (~36 of 611 at the old size).
+    # `predict` already loops one sentence at a time internally, so this costs no extra
+    # memory beyond holding the split's control matrix (~519 MB).
+    # Wrap AFTER the arm's own `predict` is fully built, so the composition sees the
+    # real model and nothing inside it changes. `make_composed_pair_predict` IS
+    # `compose_sequential` (imported from competitors/shared, not re-implemented); it only
+    # answers compose_sequential's discarded pass-through call on the raw "A+B" labels
+    # without running the model, so the untrained "A+B" one-hot is never read. The pair
+    # predictions are identical to wrapping with compose_sequential directly. The in-training
+    # validation pass (validation_celleval.py) uses the same wrapper, so the checkpoint is
+    # selected on exactly what this exports.
+    if args.compose != "none":
+        predict = make_composed_pair_predict(predict, n_rows=len(split),
+                                             order=args.compose.rsplit("_", 1)[1])
+        print(f"[export] composition: {args.compose} (sequential, at the export "
+              f"boundary -- this arm has no native multi-perturbation mechanism)")
+
+    export_split(predict, split, args.out_dir, arm=ARM,
+                 from_target_sum=TRAIN_TARGET_SUM, from_log1p=True,
+                 batch_size=len(split),
+                 extra_manifest={
+                     "checkpoint": ckpt,
+                     "seed": args.seed,
+                     "cell_set_len": S,
+                     # per-cell now, not one constant -- see S3. Recording the count and a
+                     # sample keeps the manifest honest about which regime produced the number.
+                     "batch_covariate": f"per-cell, {len(_uniq)} distinct "
+                                        f"(e.g. {_uniq[0]} -> {_keymap[_uniq[0]]})",
+                     "batch_covariate_n_distinct": len(_uniq),
+                     "control_pairing": "one drawn half-B control cell per predicted row; "
+                                        "OUR protocol, not their (cell_type, batch) pool",
+                     "sentences": "PURE -- one perturbation per sentence, matching "
+                                  "SentenceBatchSampler._create_sentences. See C27: mixed "
+                                  "sentences collapsed this arm to the meanpert baseline.",
+                     "padding": "a short sentence is tiled from that perturbation's OWN "
+                                "cells; padding rows are discarded after prediction",
+                 })
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

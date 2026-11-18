@@ -1,0 +1,33 @@
+# COMPOUNDING TEST: V09's VICReg terms + E3's schedule, on the Q02 base.
+# User direction 2026-09-21 ("launch it in a similar setup as E3 too, to see how it could compound").
+#
+# WHY. Two independent gains over Q02 (0.3783) have been measured, from different mechanisms:
+#   E3  = Q02 + 60 epochs + eta_min 1e-5          -> 0.3933  (+0.0150)  F-sched1
+#   V09 = Q02 + VICReg var 1x + cov 10x (delta_z) -> 0.3846  (+0.0063)  F-vicreg1, 4/5
+# X01 applies BOTH. If they are independent the naive expectation is ~0.3996; anything much
+# below that means they overlap, and anything above means they interact positively.
+#
+# ⚠️ THE MECHANISMS ARE NOT OBVIOUSLY INDEPENDENT. F-ckpt3 showed the oscillation never settles
+# (last-5-epoch swing 0.0381, largest consecutive jump 0.1744) and that the selector reliably
+# catches peaks -- so part of E3's gain may be "more peaks sampled" rather than better
+# convergence. VICReg's covariance term attacks representational redundancy (effective rank
+# 33/512, F-latent7), which could plausibly make the trajectory less erratic and therefore
+# reduce how much extra epochs buy. A sub-additive result would be evidence for exactly that.
+#
+# X02 is the 90-epoch variant, because if the gain is "more peaks sampled" it should keep
+# growing with epochs, whereas a convergence gain should saturate.
+#
+# HELD FIXED: the Q02 loss (dcos 0.5, delta_mag 0.01363, latent MSE 0.0044) and V09's VICReg
+# weights (var 0.0487, cov 0.0081, gamma 0.55, delta_z). Arm s313 otherwise, seed 42.
+#
+# READ AGAINST (test, uncalibrated): Q02 0.3783/0.0225/0.0774/0.7029 · E3 0.3933/0.0217/0.0817/0.7047
+# · V09 0.3846/0.0225/0.0809/0.7064 (4/5). experimental 0.3722 (mae 0.0257).
+# `mae` is an ERROR: LOWER IS BETTER.
+#
+# PRE-REGISTERED. X01 ~ 0.3996 -> the two gains are independent and both mechanisms are real.
+# X01 ~ 0.393 (i.e. no better than E3) -> VICReg's gain was the same thing the longer schedule
+# already buys, and F-vicreg1's +0.0063 is not additive value. X01 > 0.400 -> positive
+# interaction. X02 > X01 -> the epochs effect is still unsaturated even with VICReg on.
+arm	loss_type	nb_weight	nb_scale	delta_cos_weight	delta_mag_weight	latent_loss_type	latent_loss_weight	latent_cos_weight	latent_cos_target	recon_split	recon_ctrl_weight	recon_delta_weight	recon_split_mode	recon_delta_target	vicreg_var_weight	vicreg_cov_weight	vicreg_gamma	vicreg_target	epochs	eta_min	base
+X01	smooth_l1	0	1.0	0.5	0.01363	delta_z	0.0044	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0487	0.0081	0.55	delta_z	60	1e-5	Q02
+X02	smooth_l1	0	1.0	0.5	0.01363	delta_z	0.0044	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0487	0.0081	0.55	delta_z	90	1e-5	Q02

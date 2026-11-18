@@ -1,0 +1,169 @@
+{
+  "0": {
+    "block": 0,
+    "candidates": [],
+    "citation": "",
+    "evidence": [
+      "no exact n_obs match; the block was subsetted from its source"
+    ],
+    "is_raw_counts": true,
+    "license": "",
+    "looks_like_bulk": false,
+    "n_rows": 502080,
+    "source_family": "",
+    "status": "UNRESOLVED"
+  },
+  "1": {
+    "block": 1,
+    "candidates": [],
+    "citation": "",
+    "evidence": [
+      "no exact n_obs match; the block was subsetted from its source"
+    ],
+    "is_raw_counts": true,
+    "license": "",
+    "looks_like_bulk": false,
+    "n_rows": 102205,
+    "source_family": "",
+    "status": "UNRESOLVED"
+  },
+  "2": {
+    "block": 2,
+    "candidates": [],
+    "citation": "",
+    "evidence": [
+      "no exact n_obs match; the block was subsetted from its source"
+    ],
+    "is_raw_counts": true,
+    "license": "",
+    "looks_like_bulk": false,
+    "n_rows": 99300,
+    "source_family": "",
+    "status": "UNRESOLVED"
+  },
+  "3": {
+    "block": 3,
+    "candidates": [],
+    "citation": "",
+    "evidence": [
+      "no exact n_obs match; the block was subsetted from its source"
+    ],
+    "is_raw_counts": true,
+    "license": "",
+    "looks_like_bulk": false,
+    "n_rows": 71585,
+    "source_family": "",
+    "status": "UNRESOLVED"
+  },
+  "4": {
+    "block": 4,
+    "candidates": [],
+    "citation": "",
+    "evidence": [
+      "no exact n_obs match; the block was subsetted from its source"
+    ],
+    "is_raw_counts": false,
+    "license": "",
+    "looks_like_bulk": false,
+    "n_rows": 88399,
+    "source_family": "",
+    "status": "UNRESOLVED"
+  },
+  "5": {
+    "block": 5,
+    "candidates": [],
+    "citation": "",
+    "evidence": [
+      "no exact n_obs match; the block was subsetted from its source"
+    ],
+    "is_raw_counts": false,
+    "license": "",
+    "looks_like_bulk": false,
+    "n_rows": 31542,
+    "source_family": "",
+    "status": "UNRESOLVED"
+  },
+  "6": {
+    "block": 6,
+    "candidates": [],
+    "citation": "",
+    "evidence": [
+      "no exact n_obs match; the block was subsetted from its source"
+    ],
+    "is_raw_counts": false,
+    "license": "",
+    "looks_like_bulk": false,
+    "n_rows": 504929,
+    "source_family": "",
+    "status": "UNRESOLVED"
+  },
+  "7": {
+    "block": 7,
+    "candidates": [
+      {
+        "citation": "",
+        "dataset": "GTEx_homosapiens_bulk",
+        "evidence": "exact n_obs match",
+        "gene_count_consistent": true,
+        "gene_jaccard_vs_corpus": 0.0,
+        "genes_supported_in_block": 35708,
+        "license": "",
+        "n_obs": 10526,
+        "n_var": 36916,
+        "name": "GTEx_homosapiens_bulk"
+      }
+    ],
+    "citation": "",
+    "evidence": [
+      "exact n_obs match",
+      "gene count corroborates"
+    ],
+    "is_raw_counts": true,
+    "license": "",
+    "looks_like_bulk": true,
+    "n_rows": 10526,
+    "source_family": "GTEx_homosapiens_bulk",
+    "status": "CONFIRMED"
+  },
+  "8": {
+    "block": 8,
+    "candidates": [
+      {
+        "citation": "",
+        "dataset": "TCGA_bulk_rna_gene_expression",
+        "evidence": "exact n_obs match",
+        "gene_count_consistent": true,
+        "gene_jaccard_vs_corpus": 0.0,
+        "genes_supported_in_block": 19556,
+        "license": "",
+        "n_obs": 23733,
+        "n_var": 19962,
+        "name": "TCGA_bulk_rna_gene_expression"
+      },
+      {
+        "citation": "",
+        "dataset": "TCGA_bulk_rna_gene_expression",
+        "evidence": "exact n_obs match",
+        "gene_count_consistent": true,
+        "gene_jaccard_vs_corpus": 0.0,
+        "genes_supported_in_block": 19556,
+        "license": "",
+        "n_obs": 23733,
+        "n_var": 19962,
+        "name": "TCGA_bulk_rna_gene_expression"
+      }
+    ],
+    "citation": "",
+    "evidence": [
+      "exact n_obs match",
+      "gene count corroborates",
+      "2 files of one dataset (TCGA_bulk_rna_gene_expression); same shape, so the source is unambiguous even though the file is not"
+    ],
+    "is_raw_counts": true,
+    "license": "",
+    "looks_like_bulk": true,
+    "n_rows": 23733,
+    "source_family": "TCGA_bulk_rna_gene_expression",
+    "status": "CONFIRMED"
+  }
+}

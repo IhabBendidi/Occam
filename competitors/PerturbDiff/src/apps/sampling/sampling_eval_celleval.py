@@ -1,0 +1,195 @@
+"""cell-eval scoring, matched to STATE's `tx predict`.
+
+PerturbDiff natively reports R^2 and an energy-MMD, which are not comparable to
+the numbers we have for STATE. This module runs the *same* cell-eval evaluation
+STATE runs, so the two competitors produce directly comparable CSVs.
+
+It is a deliberate port of
+``../STATE/state/src/state/_cli/_tx/_predict.py:896-946``. Every argument that
+affects a metric is matched: the ``[0, 14]`` clip applied before scoring, the
+per-cell-type split, ``pdex_kwargs={"exp_post_agg": True, "is_log1p": True}``,
+the cgroup-aware thread count, and the skipped metrics. Changing any of them
+here silently breaks comparability, so keep this file in sync with STATE's.
+
+Outputs land in ``<output_dir>/<prefix>_*.csv``, mirroring
+``../STATE/state/test_replogle_zarr/hepg2_holdout_ram/eval_last.ckpt/``::
+
+    HepG2_results.csv
+    HepG2_pred_de.csv
+    HepG2_real_de.csv
+    HepG2_inject_ctrl_agg_results.csv
+    HepG2_rcstrct_ctrl_agg_results.csv
+"""
+
+import logging
+import os
+from pathlib import Path
+
+import numpy as np
+from scipy import sparse as sp
+
+logger = logging.getLogger(__name__)
+
+# Matches STATE: expression is log1p-scaled, and cell-eval's scale checks reject
+# values outside this range.
+CLIP_MIN, CLIP_MAX = 0.0, 14.0
+SKIP_METRICS = ["pearson_edistance", "clustering_agreement"]
+PDEX_KWARGS = dict(exp_post_agg=True, is_log1p=True)
+
+
+
+def _pdex_in_process_pool():
+    """Make pdex's `mp.Pool(1)` an IN-PROCESS pool. Idempotent.
+
+    ⚠️ "serial" was not serial: pdex's `parallel_differential_expression` always does
+    `with mp.Pool(num_workers)`, so num_workers=1 still FORKS a worker out of a training
+    process that holds CUDA and dataloader threads. Measured 2026-09-23: 4 TxPert runs
+    (norman s46, rhj s43/s45/s46) froze at "Processing batches" with CELLEVAL_NUM_THREADS=1
+    and were killed by the watchdog after 45 min of silence. `multiprocessing.dummy.Pool`
+    runs the same `imap` over the same shared-memory batches in a thread of THIS process:
+    identical results, nothing forked, nothing to deadlock.
+    """
+    import multiprocessing as _mp
+    import multiprocessing.dummy as _mpd
+    import types as _types
+    try:
+        import pdex._single_cell as _sc
+    except Exception:  # noqa: BLE001 -- pdex absent: nothing to patch
+        return
+    if getattr(_sc.mp, "_occam_in_process", False):
+        return
+    shim = _types.SimpleNamespace(**{k: getattr(_mp, k) for k in dir(_mp)
+                                     if not k.startswith("__")})
+    shim.Pool = _mpd.Pool
+    shim._occam_in_process = True
+    _sc.mp = shim
+
+def effective_cpu_count() -> int:
+    """cgroup-aware CPU count (port of ``_predict.py:5-16``).
+
+    cell-eval's ``num_threads=-1`` resolves through ``mp.cpu_count()``, which
+    ignores SLURM/Docker cgroup limits and returns the host count;
+    ``numba.set_num_threads(N)`` then raises when N exceeds the allocation.
+    ``os.sched_getaffinity`` returns the allowed set on Linux.
+    """
+    if hasattr(os, "sched_getaffinity"):
+        return len(os.sched_getaffinity(0))
+    return os.cpu_count() or 1
+
+
+def clip_anndata_values(adata, max_value: float = CLIP_MAX, min_value: float = CLIP_MIN) -> None:
+    """Clip ``adata.X`` in place, keeping sparsity intact (port of _predict.py:174-183)."""
+    if sp.issparse(adata.X):
+        if adata.X.data.size:
+            np.clip(adata.X.data, min_value, max_value, out=adata.X.data)
+            if hasattr(adata.X, "eliminate_zeros"):
+                adata.X.eliminate_zeros()
+    else:
+        np.clip(adata.X, min_value, max_value, out=adata.X)
+
+
+def run_cell_eval(
+    pred_adata,
+    true_adata,
+    *,
+    output_dir,
+    pert_col: str,
+    cell_type_key: str,
+    control_pert: str,
+    profile: str = "full",
+    logger=logger,
+):
+    """Score predictions with cell-eval, one evaluation per cell type.
+
+    :param pred_adata: predictions, control rows carrying *real* expression
+    :param true_adata: ground truth, row-aligned with ``pred_adata``
+    :param output_dir: directory for the metric CSVs
+    :param pert_col: obs column holding the perturbation (STATE: ``gene``)
+    :param cell_type_key: obs column holding the cell type (STATE: ``cell_type``)
+    :param control_pert: control label in ``pert_col`` (zarr: ``empty``)
+    :param profile: cell-eval profile -- ``full`` / ``minimal`` / ``de`` / ``anndata``
+    """
+    from cell_eval import MetricsEvaluator
+    from cell_eval.utils import split_anndata_on_celltype
+
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    if pert_col not in pred_adata.obs:
+        raise KeyError(
+            f"pert_col {pert_col!r} not in obs (have {list(pred_adata.obs.columns)})"
+        )
+    if cell_type_key not in pred_adata.obs:
+        raise KeyError(
+            f"cell_type_key {cell_type_key!r} not in obs (have {list(pred_adata.obs.columns)})"
+        )
+    n_control = int((pred_adata.obs[pert_col].astype(str) == str(control_pert)).sum())
+    if n_control == 0:
+        raise ValueError(
+            f"no control rows (obs[{pert_col!r}] == {control_pert!r}) in the adata; "
+            f"cell-eval computes differential expression against them."
+        )
+
+    clip_anndata_values(pred_adata)
+    clip_anndata_values(true_adata)
+    logger.info(
+        "cell-eval: clipped X to [%.1f, %.1f]; %d cells, %d control",
+        CLIP_MIN, CLIP_MAX, pred_adata.n_obs, n_control,
+    )
+
+    ct_real = split_anndata_on_celltype(adata=true_adata, celltype_col=cell_type_key)
+    ct_pred = split_anndata_on_celltype(adata=pred_adata, celltype_col=cell_type_key)
+    if len(ct_real) != len(ct_pred):
+        raise AssertionError(
+            f"cell type count differs between real and pred: {len(ct_real)} != {len(ct_pred)}"
+        )
+
+    n_threads = effective_cpu_count()
+    # ⚠️ HANG GUARD. With N > 1, pdex builds a multiprocessing pool ("Initializing parallel
+    # processing pool" -> "Processing batches"). Inside a training process that already
+    # holds CUDA and forked dataloader workers, that pool can deadlock: on 2026-09-22 two
+    # arms (TxPert s46 and PerturbDiff s42 on norman_combo) went SILENT for 7+ hours at
+    # exactly that line, 0 progress, each holding an H100. The same family as the 10 h
+    # PerturbDiff stall recorded in _competitor_common.sh.
+    # CELLEVAL_NUM_THREADS=1 makes pdex run serially -- no pool, nothing to deadlock. The
+    # validation set is small (norman: 20 pairs), so serial costs seconds, not minutes.
+    # Unset keeps the previous behaviour, so rhj_fewshot runs reproduce.
+    _override = os.environ.get("CELLEVAL_NUM_THREADS", "").strip()
+    if _override:
+        n_threads = max(1, int(_override))
+    if n_threads == 1:
+        _pdex_in_process_pool()
+    for cell_type in ct_real:
+        logger.info("cell-eval: scoring %s (%d threads) ...", cell_type, n_threads)
+        evaluator = MetricsEvaluator(
+            adata_pred=ct_pred[cell_type],
+            adata_real=ct_real[cell_type],
+            control_pert=control_pert,
+            pert_col=pert_col,
+            outdir=str(output_dir),
+            prefix=str(cell_type),
+            # ⚠️ allow_discrete=True DISABLES cell-eval's own scale check
+            # (`guess_is_lognorm`), which raises
+            #     Invalid scale: max value 17.29 exceeds log1p threshold of 15.0
+            # on any prediction that leaves log1p range. Unconstrained heads do that: STATE's
+            # output is a plain `relu` (state_transition.py:516), non-negative but unbounded,
+            # and one validation pass hit 17.29 -- so that pass published NO score and the
+            # checkpoint could not be selected, for a reason that is about the model's output
+            # rather than about the scoring being invalid.
+            #
+            # Set at the user's explicit instruction (2026-09-18): score high-max checkpoints
+            # rather than skipping them. This also MATCHES the reported-number path, which
+            # already passes allow_discrete=True (`celleval_v1.run_celleval_v1`) -- so
+            # selection and reporting now disable the same check instead of only one of them.
+            allow_discrete=True,
+            pdex_kwargs=PDEX_KWARGS,
+            num_threads=n_threads,
+        )
+        evaluator.compute(profile=profile, skip_metrics=SKIP_METRICS)
+
+    written = sorted(p.name for p in output_dir.glob("*.csv"))
+    logger.info("cell-eval wrote %d file(s) to %s: %s", len(written), output_dir, written)
+    return output_dir
+
+
+__all__ = ["run_cell_eval", "clip_anndata_values", "effective_cpu_count"]

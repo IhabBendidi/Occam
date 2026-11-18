@@ -1,0 +1,197 @@
+# TxPert on OCCAM's rhj_fewshot benchmark.
+#
+# Derived from config-txpert-zarr-fewshot.yaml, the OFFICIAL best setup recorded in
+# the upstream benchmark/reproducibility/txpert__replogle_nadig_fewshot/. Every model, optimiser and
+# adjacency-map setting is carried over unchanged -- the hyperparameters are NOT re-swept.
+#
+# FOUR DELTAS, each deliberate:
+#
+#   1. datamodule.occam=true + occam_bench_dir -- reads Occam's OWN h5ads in place via
+#      gspp/data/occam_loader.py. No zarr, no conversion, no second copy on disk. `zarr`
+#      stays false; the datamodule refuses both at once, because they are different
+#      benchmarks on different gene axes.
+#
+#   2. graph: GO + STRING ONLY (decision 2026-09-17). Their official recipe uses
+#      kg_list: [go, string, pxmap, txmap] with pxmap-top1 / txmap-top1; the last two
+#      are dropped so TxPert and Occam see the SAME prior knowledge (Occam's own
+#      config is graph_types: [go, string]). ⚠️ This IS a deviation from the setup
+#      their published 0.50787 was measured with -- recorded beside TxPert's numbers
+#      in docs/rhj_competitors.md. It mirrors a deviation already accepted for our
+#      own runs; see data/benchmarks/rhj_fewshot/CARD.md on dropping pxmap/txmap.
+#
+#   3. hvg_number: 6983, not 2000. Inert on this path -- the axis is already the frozen
+#      6,983 genes -- but a stale 2000 invites the wrong conclusion when read later.
+#
+#   4. run name and checkpoint dirpath, so the two benchmarks cannot overwrite each other.
+#
+# NOT changed, and worth knowing: checkpoint selection stays on
+# val/celleval/selection_score = mean(pearson_delta, discrimination_score_l1), mode=max,
+# computed by gspp's own callback in TxPert's own venv. That is training-internal; every
+# REPORTED number comes from Occam's cell-eval 0.6.0 path. See docs/rhj_competitors.md.
+
+global:
+  use_added_data: false
+
+wandb:
+  name: txpert-occam-rhj-fewshot
+  project: Occam-Competitors
+  entity: valencelabs
+
+model:
+  model_type: gears_derivate
+  no_basal_model: false
+  no_pert_model: false
+  # Sweep optimum (scripts/sweeps/sweep-xcell-v2-training-params.yaml, 217 runs):
+  # dropout 0.1 / hidden 512 / latent 128 / lr 3e-4 / warmup 5 / wd 0 -> test_pearson_delta
+  # 0.4779, vs 0.4660 for the shipped defaults (0.2 / 512 / 64 / 1e-3 / 5 / 0).
+  # NOTE: xcell_v2 has no validation split, so that sweep maximised a TEST metric. The
+  # hyperparameters are therefore test-selected; report them with that caveat. Checkpoint
+  # selection is NOT test-driven here (see training.checkpoint below).
+  hidden_dim: 512
+  latent_dim: 128
+  dropout: 0.1
+  use_batch_norm: true
+  use_layer_norm: false
+  omit_cntr: false
+  mse_weight: 1
+  slow_benchmark: false
+
+  cntr_model:
+    model_type: mlp
+    rank: 16
+    decode_latent: false
+    use_batch_norm: true
+    use_layer_norm: false
+
+  # Unchanged from the best adjacency-map configuration. Per upstream's own sweeps
+  # (CLAUDE.md): all 4 KGs >> any subset, adj_deg=1 >> 2 >> 3, normalize=none best,
+  # only_reverse=true best, and adjacency map > GNN.
+  pert_model:
+    pert_type: gene
+    model_type: simple_adjacency_map
+    hidden_dim: 128
+    dropout: 0.2
+    adj_deg: 1
+    normalize: none
+    undir_or_addcol: none
+    self_loops: false
+    poly_sum: false
+    only_reverse: true
+    kg_list: [go, string]
+
+datamodule:
+  zarr: false
+  occam: true
+  # Occam's frozen artifact. Its files/*.json carry the source h5ad paths and sha256s, which
+  # occam_data verifies before reading. Path is relative to the TxPert root, which the
+  # launcher cd's into -- same idiom as ${hydra:runtime.cwd} above.
+  occam_bench_dir: ${hydra:runtime.cwd}/../../data/benchmarks/rhj_fewshot
+  # log1p(target_sum) handed to the model. 10,000 matches what the zarr path receives and
+  # what target_sum=null / log1p=false below assumes. Occam evaluates at 2,000 and the
+  # conversion is exact; see competitors/shared/emission_space.py.
+  occam_target_sum: 10000.0
+  occam_verify_sources: true
+  # Preprocessed-AnnData cache. Inside the checkout and gitignored -- never the shared
+  # /rxrx/data/valence/.../cache_v2 (2.8 TB, another user's).
+  cache_dir: ${hydra:runtime.cwd}/cache
+  data_dir: null          # no GEARS-style h5ad root; expression comes from the manifest
+  auxiliary_dir: null     # Pharos knowledge levels are slow_benchmark-only
+  match_cntr: true
+  avg_cntr: true
+  batch_size: 64
+  xtraining_strategy: train_together_implicit
+  test_cell_type: hepg2
+  train_cell_types: all
+  combine_strategy: intersect
+  # Inert on the zarr path: the datasets are already the benchmark's 2,000 genes on a
+  # log1p(1e4) scale, and no HVG selection / normalization / DE filtering is applied.
+  hvg_number: 6983
+  target_sum: null
+  min_cells: 25
+  min_de_genes: 50
+  knockdown_threshold: -0.3
+  use_predefined_splits: true
+  embed_cntr: true
+  test_split: 0
+  use_cache: true
+  n_jobs_preprocessing: 4
+  debug: false
+  obsm_key: raw
+
+graph:
+  # Shared, read-only. Byte-identical to the graphs the upstream benchmark's own AdjacencyMapEmbedder reads
+  # (the upstream tree/architecture/embedding.py), so nothing is copied. Needs the D-Valence-R group.
+  cache_dir: /rxrx/data/valence/pathfinder/modules/gspp/graphs
+  graph_cfg:
+    go:
+      graph_type: go
+      reduce2perts: true
+      norm_weights: true
+      mode: top_20
+    string:
+      graph_type: string
+      reduce2perts: true
+      norm_weights: false
+      mode: top_20
+
+training:
+  seed: 1
+  epochs: 50
+  lr: 0.0003
+  lr_scheduler:
+    type: cosine
+    warmup_epochs: 5
+    total_epochs: ${training.epochs}
+  weight_decay: 0.0
+  # DELTA 2: validation cell-eval 5x over the run. The final epoch is only validated when
+  # epochs % check_val_every_n_epoch == 0; 50 % 10 == 0 holds, and the launcher asserts it rather
+  # than trusting it. A final epoch that is never scored cannot be selected.
+  check_val_every_n_epoch: 10
+  checkpoint:
+    dirpath: ${hydra:runtime.cwd}/cache/checkpoints/txpert-occam-rhj-fewshot
+    # DELTA 4: keep the single best checkpoint by VALIDATION score.
+    #
+    # `monitor` being present is what makes main.py leave these alone instead of falling back to
+    # save_last (no validation split) or test_pearson_delta (upstream's test-set selection).
+    #
+    # every_n_epochs: 1 means "every validation pass", because ModelCheckpoint counts the epochs
+    # it is actually invoked on. It saves in on_validation_end, i.e. AFTER the metric is
+    # refreshed. Do not switch to every_n_train_steps: that saves in on_train_batch_end, BEFORE
+    # the validation loop, so it ranks against the previous pass's value -- the bug that made
+    # PerturbDiff keep a 0.35278 checkpoint when 0.40559 existed.
+    monitor: val/celleval/selection_score
+    mode: max
+    save_top_k: 1
+    save_last: false
+    every_n_epochs: 1
+  # DELTA 3: run cell-eval on the validation split so the monitor above resolves.
+  validation_celleval:
+    enabled: true
+    interval: 1
+    profile: full
+    output_dir: ${hydra:runtime.cwd}/outputs/valscore/txpert-zarr-fewshot
+  # DELTA 5: do not score the TEST loader on every validation pass (upstream behaviour).
+  run_test_during_validation: false
+  # DELTA 6: no trailing trainer.test on the final in-memory weights.
+  test_after_fit: false
+  run_val_on_train_data: false
+  match_cntr_for_eval: true
+
+# cell-eval export: DELTA 6 -- off during training. The test leg
+# (launch/txpert_fewshot_eval.sh) runs it once, from the validation-selected checkpoint.
+celleval:
+  enable: false
+  output_dir: ${hydra:runtime.cwd}/outputs/celleval
+  profile: full
+
+mode: train
+checkpoint_path: null
+
+# Artifact export for the test leg. Declared here (rather than added with Hydra's `+` prefix on the
+# command line) so launch/txpert_fewshot_eval.sh can override these keys plainly -- main.py calls
+# OmegaConf.set_struct(cfg, False) only AFTER Hydra has applied CLI overrides, so a genuinely new
+# key would still need `+`.
+export_artifacts:
+  enable: false
+  dir: null
+  split: test

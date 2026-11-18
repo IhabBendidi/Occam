@@ -1,0 +1,10 @@
+# TEST cell-eval for the magnitude-weight sweep on M03's setup (train job 18215120).
+# QUESTION: does a larger delta_mag_weight push test `mae` below M03's 0.0212 while holding
+# pearson_delta at ~0.3679? `mae` is an ERROR: LOWER IS BETTER.
+# READ AGAINST: M03 0.3679/0.0212/0.0722/0.6715 · M06 0.3681/0.0232/0.0703/0.7047 ·
+#               D03 0.3686/0.0321/0.0718/0.7263 · L11 0.3415/0.0210/0.0642/0.6534
+# N01 is the same-setup control for M06's weight; N02 is 10x it, N03 is 50x.
+arm_id	kind	tag
+N01	loss	smooth_l1_nbw0_nbs1.0_dcos0.01_mag0.01363_s42
+N02	loss	smooth_l1_nbw0_nbs1.0_dcos0.01_mag0.1363_s42
+N03	loss	smooth_l1_nbw0_nbs1.0_dcos0.01_mag0.6815_s42

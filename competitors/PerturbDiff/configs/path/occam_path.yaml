@@ -1,0 +1,31 @@
+# Filesystem paths for Occam's `rhj_fewshot` benchmark.
+#
+# Select with `path=occam_path`. Unlike `upstream_path.yaml`, which points at the upstream benchmark
+# canonical zarr dumps, this points at the frozen Occam benchmark and at Occam's own run root,
+# so every product of a competitor run lands under `runs/competitors/` and is gitignored.
+
+# Logging / checkpoint roots. save_dir becomes trainer.default_root_dir, and
+# cfg.save_dir_path is derived from it as "{save_dir}/{run_name}".
+wandb:
+  logging_dir: "/rxrx/scratch/sandbox/ihab.bendidi/tx_pretrained_models/Occam/runs/competitors/perturbdiff/wandb"
+diffusion:
+  save_dir: "/rxrx/scratch/sandbox/ihab.bendidi/tx_pretrained_models/Occam/runs/competitors/perturbdiff/runs"
+
+# Root for the pretrained embedding pickles that cov_encoding interpolates. The official
+# recipe uses `replogle_gene_encoding=genept`, which reads
+# `gene_names/replogle_gene_emb_dict_perturbation_emb_dict.pkl` from here. Shared with the
+# upstream tree rather than re-downloaded: it is a 3 TB release and we need one file from it.
+tmp_dir: "/rxrx/scratch/sandbox/ihab.bendidi/perturbdiff_out/assets_dl/perturb_data"
+
+# MUST be writable: dataset_grouping pickles the cell-set grouping here.
+indices_cache_dir: "/rxrx/scratch/sandbox/ihab.bendidi/tx_pretrained_models/Occam/runs/competitors/perturbdiff/indices_cache/"
+
+# The frozen benchmark: gene axis, splits, exclusions, per-file sha256s.
+occam_bench_dir: "/rxrx/scratch/sandbox/ihab.bendidi/tx_pretrained_models/Occam/data/benchmarks/rhj_fewshot"
+
+# Which of our h5ads participate, one per cell line. No [splits] table: the benchmark owns
+# the split and `split_index_occam` reads it live.
+manifest_file: "/rxrx/scratch/sandbox/ihab.bendidi/tx_pretrained_models/Occam/competitors/PerturbDiff/configs/manifests/occam_rhj_fewshot.toml"
+
+# REFUSED in occam mode: the axis already IS the frozen 6,983 genes, in axis order.
+selected_gene_file: null

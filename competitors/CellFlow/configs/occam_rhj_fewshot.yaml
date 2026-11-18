@@ -1,0 +1,141 @@
+# CellFlow on Occam's `rhj_fewshot`. OUR three h5ads, read in place.
+#
+# WHAT THIS ANSWERS
+# -----------------
+# Overall goal: predict a perturbation's effect in a context where that perturbation was never
+# measured, from a single control cell.
+#
+# This arm's question: what does CellFlow score on OUR instrument -- our three h5ads, our
+# frozen 6,983-gene axis, our 611-perturbation split-half cohort, our cell-eval 0.6.0?
+#
+# Derived from `replogle_nadig_fewshot.yaml`. **The `pca`, `model` and `train` blocks below are
+# byte-identical to it** -- no hyperparameter is retuned. Check with:
+#   diff <(sed -n '/^pca:/,/^output:/p' configs/replogle_nadig_fewshot.yaml) \
+#        <(sed -n '/^pca:/,/^output:/p' configs/occam_rhj_fewshot.yaml)
+#
+# THE DELTAS, all in the `data` block, all recorded in docs/rhj_competitors.md C8:
+#   1. `occam_bench_dir` instead of `data_dir` + `split_path` + `train_sources` +
+#      `vocabulary_data_dirs`. The frozen benchmark owns the split, the gene axis, the
+#      exclusions and the source sha256s, and `occam_bridge/occam.py` reads it LIVE -- so
+#      there is no row-index JSON that can drift, and `train_cellflow.py` REFUSES if a
+#      `split_path` is also given.
+#   2. 6,983 genes instead of 2,000, ours, in `gene_axis.csv` order. `assert_axis_order`
+#      refuses any other order: the prediction bridge is positional, so a reordered axis
+#      would silently relabel every gene.
+#   3. The perturbation vocabulary is read from the benchmark's own split lists
+#      (2,381 + 103 + 621 symbols, unioned), not from the loaded cells. ⚠️ The vocabulary
+#      fixes the model's condition-input width and cannot grow after training: a test
+#      perturbation with no column makes `cf.predict` raise `Representation ... not found`
+#      and produce NO predictions. Upstream hit exactly this on 8 of their 380 test
+#      perturbations.
+#
+# ⚠️ `pca.n_comps: 256` IS A PCA RANK, NOT A GENE COUNT. It is unchanged and must stay
+# unchanged while the axis widens: it is the dimensionality the flow is learned in. The axis
+# change affects what PCA is fitted ON, not how many components are kept.
+#
+# ⚠️ `target_sum: null` and `log1p: false` are REQUIRED, not defaults. The data arrives
+# already normalised at 10,000 on the FULL source panel row sum; a second transform would
+# renormalise on the 6,983-gene sum, which leaves `pearson_delta` alone but shifts `mae` and
+# moves the DE calls. `occam_bridge/occam.py` refuses any other combination.
+#
+# ⚠️ CHECKPOINT SELECTION STAYS THEIRS: the in-memory best state by
+# mean(pearson_delta, discrimination_score_l1), restored before the pickle is saved, scored by
+# OUR cell-eval 0.6.0 -- the same scorer every reported number comes from.
+# choice -- our own model also selects on an internal metric. **Every reported number comes
+# from our own 0.6.0 path** (scripts/eval_competitor.py). If `run_meta.json` carries no
+# `selection` block, the pickle holds the FINAL state and that must be said beside the number.
+
+data:
+  # The frozen benchmark: gene axis, splits, exclusions, per-file sha256s.
+  occam_bench_dir: /rxrx/scratch/sandbox/ihab.bendidi/tx_pretrained_models/Occam/data/benchmarks/rhj_fewshot
+  # Normalisation happens once, in competitors/shared/occam_data.py, on the FULL panel row sum.
+  occam_target_sum: 10000.0
+  occam_log1p: true
+  train_key: finetune
+  valid_key: validation
+  max_control_cells: null
+  # Condition on cell line, and match each perturbation to controls of its own line.
+  sample_covariates: [cell_type]
+  split_covariates: [cell_type]
+  selected_genes_path: null
+  on_missing_genes: error
+  # No runtime normalisation: see the warning above. occam.py refuses anything else.
+  target_sum: null
+  log1p: false
+  max_combination_length: 1
+  max_cells: null
+
+pca:
+  # DELTA 4: match the upstream benchmark's PCA width on this benchmark.
+  n_comps: 256
+
+model:
+  solver: otfm
+  condition_mode: deterministic
+  pooling: mean
+  # Zebrafish genetic tutorial: MLP on the pert token before pooling.
+  # Keys must match prepare_data groups (`gene`) and sample_covariates (`cell_type`).
+  layers_before_pool:
+    gene:
+      layer_type: mlp
+      dims: [512, 512]
+      dropout_rate: 0.0
+    cell_type:
+      layer_type: mlp
+      dims: [512, 512]
+      dropout_rate: 0.0
+  layers_after_pool:
+    layer_type: mlp
+    dims: [1024, 1024]
+    dropout_rate: 0.0
+  condition_embedding_dim: 256
+  cond_output_dropout: 0.0
+  time_freqs: 1024
+  time_encoder_dims: [1024, 1024, 1024]
+  hidden_dims: [2048, 2048, 2048]
+  decoder_dims: [4096, 4096, 4096]
+  conditioning: concatenation
+  # PBMC uses 0.5; ComboSciPlex uses 1.5 on PCA cell lines. Midpoint for Replogle.
+  probability_path:
+    constant_noise: 0.5
+  # match_fn: library default (epsilon=1, tau_a=tau_b=1) -- cell-line / ComboSciPlex.
+  # Best balanced setting in the Replogle sweep (CellEval Pearson/direction).
+  linear_projection_before_concatenation: true
+  learning_rate: 5.0e-5
+  optimizer_multi_steps: 20
+  seed: 0
+
+train:
+  num_iterations: 100000
+  batch_size: 1024
+  # 100000 / 20000 = 5 validations, plus the unconditional on_train_end pass, so the final state
+  # is always a selection candidate.
+  valid_freq: 20000
+  # DELTA 5: score EVERY validation perturbation, not a random sample.
+  #
+  # ⚠️ THESE WERE 60 AGAINST A 103-PERTURBATION SPLIT, which did not do what the comment
+  # said. `ValidationSampler` draws `rng.choice(n_perturbations, size, replace=False)` from a
+  # single rng created at `train()` time (`data/_dataloader.py:135-148, 164-165`), so each of
+  # the five validation passes scored a DIFFERENT random 60 of 103 -- and the five selection
+  # scores that choose the checkpoint were therefore not comparable to one another. The
+  # apparent rise 0.4089 -> 0.4614 -> 0.5165 mixes real improvement with a changing panel.
+  #
+  # `null` is upstream's own way of saying "all" (`model/_cellflow.py:206-211`); 103 would
+  # also work but silently becomes a cap if the split ever grows.
+  n_conditions_on_log_iteration: null
+  n_conditions_on_train_end: null
+  # Validation cell-eval and best-state selection, scored by OUR cell-eval
+  # 0.6.0 / pdex 0.1.24 -- the SAME scorer every reported number comes from.
+  # It used to shell out to a sibling repo's scorer on a different cell-eval
+  # (0.7.2 / pdex 0.2.2-0.3.0), so this arm's selection metric and its
+  # reported metric disagreed by construction, and the arm depended on that
+  # repo existing at a hard-coded path. Both problems are gone.
+  selection:
+    enabled: true
+    profile: full
+    # No scorer paths: selection runs OUR cell-eval 0.6.0, whose interpreter and repo root
+    # are the defaults in cellflow_selection.py. Override with occam_py / occam_repo only if
+    # they move.
+output:
+  dir: /rxrx/scratch/sandbox/ihab.bendidi/tx_pretrained_models/Occam/runs/competitors/cellflow
+  run_name: occam_rhj_fewshot_s42

@@ -1,0 +1,33 @@
+{
+ "path": "data/eval/pert/norman_2019_k562.h5ad",
+ "sha256": "c6cad008202666ef9fab8b2e6afcd21fd81fa580c789bdb55a06c7c30fbac02e",
+ "bytes": 646867442,
+ "shape": [
+  91168,
+  33694
+ ],
+ "nnz": 286342111,
+ "cells_by_class": {
+  "control": 9702,
+  "single": 47269,
+  "double": 34197
+ },
+ "conditions": 237,
+ "batches": [
+  1,
+  2,
+  3,
+  4,
+  5,
+  6,
+  7,
+  8
+ ],
+ "scoring_axis_genes": 8000,
+ "library_size": {
+  "median": 13361.0,
+  "min": 3712,
+  "max": 53183
+ },
+ "seconds": 107.6
+}

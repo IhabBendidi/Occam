@@ -1,0 +1,28 @@
+# RHJ SEED REPLICATES -- the PUBLISHED arm (Y06) at seeds 43, 44, 45, 46
+#
+# WHY. Every number reported on this benchmark so far is n=1 SEED. Pairing over the 5
+# split-halves removes PANEL sampling noise, not model noise: the splits re-slice the same
+# cells from the SAME trained checkpoint. The seed is what re-draws the trained model, so
+# it is the unit of replication for any statistical claim
+# (scripts/seed_split_test.py refuses to emit a p-value from one seed, which is the
+# situation these runs exist to fix).
+#
+# WHAT IS VARIED: the seed, and nothing else. Every row is byte-identical to the published
+# arm in configuration -- Y06: Q02 base, 150 epochs, eta_min 3e-4, batch 2048, lr 1e-3 --
+# so the spread across these four runs IS the seed variance, with no confound.
+#
+# WHAT EACH OUTCOME MEANS
+#   a spread much SMALLER than the effects we have been reporting (0.02-0.06 pearson_delta)
+#     -> the n=1 numbers were safe and the published margins stand;
+#   a spread COMPARABLE to them
+#     -> several reported margins are within seed noise and must be re-stated as such,
+#        including the TxPert/Occam stratum reversal (F-comp6) and the mode ranking that
+#        selected `decode_seq_mean` as the default.
+# Either way it is the measurement that lets the campaign's margins be quoted honestly.
+#
+# ⚠️ seed 42 already exists -- these four COMPLETE the 5-seed design, they do not replace it.
+arm	loss_type	nb_weight	nb_scale	delta_cos_weight	delta_mag_weight	latent_loss_type	latent_loss_weight	latent_cos_weight	latent_cos_target	recon_split	recon_ctrl_weight	recon_delta_weight	recon_split_mode	recon_delta_target	vicreg_var_weight	vicreg_cov_weight	vicreg_gamma	vicreg_target	epochs	eta_min	base	dcos_conc_weight	radial_spread_weight	gene_var_weight	batch_size	lr	seed
+S43_Y06	smooth_l1	0	1.0	0.5	0.01363	delta_z	0.0044	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	150	3e-4	seedrep_Y06_s43	0.0	0.0	0.0	2048	1e-3	43
+S44_Y06	smooth_l1	0	1.0	0.5	0.01363	delta_z	0.0044	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	150	3e-4	seedrep_Y06_s44	0.0	0.0	0.0	2048	1e-3	44
+S45_Y06	smooth_l1	0	1.0	0.5	0.01363	delta_z	0.0044	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	150	3e-4	seedrep_Y06_s45	0.0	0.0	0.0	2048	1e-3	45
+S46_Y06	smooth_l1	0	1.0	0.5	0.01363	delta_z	0.0044	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	150	3e-4	seedrep_Y06_s46	0.0	0.0	0.0	2048	1e-3	46

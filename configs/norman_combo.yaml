@@ -1,0 +1,231 @@
+# Historical research configuration; use configs/norman_combo_official.yaml for the published model.
+version: 1
+name: norman_combo
+seed: 42
+device: cuda
+
+paths: !include paths.yaml
+
+run:
+  root: ./runs
+  stages: [vcell]
+  runner: inprocess
+  resume: auto
+  wandb:
+    enabled: true
+    project: occam
+    tags: [occam, norman_combo, vcell]
+
+data:
+  # Unused by the vcell stage (its corpus is stages.vcell.data.paths), but the loader's
+  # `data:` block is shared.
+  train: ${paths.eval_dir}/norman_2019_k562.h5ad
+
+stages:
+  vcell:
+    # The released encoder+decoder. The encoder is FROZEN; only the perturbation
+    # conditioning and the decoder train.
+    init_from: checkpoints/release/occam_small_encoder_decoder.pth
+
+    benchmark:
+      dir: data/benchmarks/norman_combo
+      id: norman_combo
+      # Asserted against the artifact. Editing the definition changes this, which changes
+      # the stage hash, which makes the orchestrator refuse to reuse the run -- so a
+      # redefined benchmark cannot be mistaken for a re-run of the old one.
+      sha256: 8ac7da0d5adb3ae49e3a3dfe084494f4dce051286d219e346b4ea11c467cb3cf
+      # Restrict BOTH the encoder input and the loss to the 8,000-gene axis, so the model,
+      # every baseline and every competitor read exactly the same columns.
+      axis_scope: input_and_loss
+      # One cell line, so this is not a choice here — but it must be stated, because the
+      # upstream file claims A549 and the cells are K562.
+      eval_cell_lines: [K562]
+      # The test-perturbation eval dataset is gigabytes and nothing evaluates it during
+      # training. It is also the test set.
+      build_test_datasets: false
+
+    data:
+      paths:
+        - ${paths.eval_dir}/norman_2019_k562.h5ad
+      # ⚠️ `gene_id`, the Ensembl column. Matching on `gene_name` gives 3 of 5,045 — the
+      #    encoder's vocabulary is 99.6% Ensembl (docs/norman_benchmark.md).
+      gene_col: gene_id
+      # Single perturbations are the bare symbol (`FOXA1`); doubles are `A+B` and are
+      # excluded from training by both the split and exclusions.json.
+      pert_col: gene_name
+      # ⚠️ REQUIRED on a combinatorial corpus. 'GENE_A+GENE_B' is not a graph node, so
+      # without this every double resolves to nothing: the val split (20 pairs) comes out
+      # EMPTY and the run dies with "No perturbation cells found for this split".
+      # It also switches the TRAINING forward to `forward_sequential` (latent-chained,
+      # order-averaged) -- which is a no-op for the singles this corpus trains on, since
+      # every composition mode is identical on one perturbation, but it does mean the
+      # VALIDATION metric on the 20 double pairs is computed under `latent_seq_mean`
+      # rather than `sum`. That is the right default for a composition benchmark; the
+      # 12-mode comparison at eval time is where the modes are actually contested.
+      combo_decomposition: true
+      # ⛔ The VALIDATION metric composes pairs the same way the REPORT does. Without
+      # this, predict_panel defaults to `model(ctrl, pert_idx)` -- the `sum` mode -- so
+      # checkpoint selection optimised `sum` while every reported number used
+      # `decode_seq_mean`. The two differ by 0.04-0.08 pearson_delta on the 72-cell
+      # matrix (docs/norman_results.md), which is larger than most effects being selected
+      # between. Empty string = the old `sum` behaviour, kept so earlier runs reproduce.
+      panel_compose: decode_seq_mean
+      batch_col: batch              # the 8 GEO gemgroups
+      target_sum: 2000.0            # from the checkpoint; must match
+      # SINGLE CELL IN. n_controls_per_sample defaults to 5 and AVERAGES, which would make
+      # the input a pseudobulk and the eval input inconsistent with training.
+      n_controls_per_sample: 1
+      include_controls_as_training: true
+
+    stream:
+      stream_v2: true               # only v2 implements proportional interleave
+      # ⚠️ roundrobin leaves a single-source epoch tail, and eval-time BatchNorm running
+      #    statistics then reflect whatever that tail was -- measured at +-0.007, larger
+      #    than most effects in the grid.
+      interleave: proportional
+      balance_sources: true
+      fixed_pairs: false
+      chunk_size: 4096
+      buffer_chunks: 4
+      # Part of the determinism contract: group->worker sharding is `gi % num_workers`, so
+      # determinism holds for a FIXED worker count. Must be identical across all arms.
+      num_workers: 8
+      control_cache_dir: null       # enable only after the cache-key test is green
+      amp_dtype: bf16
+      target_pb_k: 1                # SINGLE CELL OUT (0 would be the group mean)
+      ctrl_avg_k: 1
+
+    encoder:
+      freeze_encoder: true
+      freeze_decoder: false
+
+    graph:
+      graph_type: go
+      graph_types: [go, string]     # NB: the source recipe also used pxmap+txmap
+      graph_edge_filter_mode: top_20
+      # Perturbation model. `gnn` is the 4-layer GATv2 over 18,216 nodes / 515,063 edges,
+      # which costs 48.8 ms forward+backward PER OPTIMISER STEP (measured) -- 30% of a
+      # 161 ms step at batch 256, and it does not shrink with batch size because the GNN is
+      # trained and cannot be cached. `adjacency_map` is SimpleAdjacencyMapModel: each
+      # gene's embedding is MLP(its adjacency row), no learned message passing. `no_gnn`
+      # with pert_model_type=adjacency_map swaps in a plain learnable embedding table,
+      # which is the falsifier for the graph itself.
+      # ⛔ adjacency_map is THE choice for this benchmark, by decision 2026-09-17: "we will
+      #    only ever use the simple adjacency map". `gnn` remains selectable so the
+      #    completed 27-arm grid stays reproducible from its own resolved_config.yaml, but
+      #    no new sweep should use it.
+      pert_model_type: adjacency_map   # adjacency_map | gnn
+      no_gnn: false
+      master_gene_set_path: ${paths.kg_graph_dir}/master_gene_set_sorted.csv
+      graph_cache_dir: ${paths.kg_graph_dir}
+      gnn_layer_type: gat_v2
+      gnn_num_layers: 4
+      pert_latent_dim: 128
+      graph_reduce2perts: true
+      # ⚠️ Must stay false: film_mean_free averages over the WHOLE node table, so
+      #    restricting the table silently changes the reference it subtracts.
+      data_perts_only: false
+      # Adjacency-map settings. Values are the research tree's defaults.
+      adj_hidden_dim: 128
+      adj_dropout: 0.2
+      adj_deg: 1
+      adj_normalize: none
+      adj_self_loops: false
+      adj_only_reverse: true
+      adj_make_undirected: true
+      adj_use_ffn: true
+      adj_activation: relu
+
+    interaction:
+      interaction_type: film
+      film_mode: multiplicative_only
+      film_scale: 1.0
+      film_hidden_dim: 256
+      film_activation: none
+      film_mean_free: true
+
+    optim:
+      # ⛔ 2026-09-23: batch_size/eta_min switched to arm NB10 (user decision) -- pd
+      # 0.8910/0.7763 add/non vs NQ02 0.8169/0.7380; the published HF checkpoint is still
+      # NQ02 (scripts/repro/norman_train.sh pins its bs 2048 / eta_min 3e-4 explicitly).
+      # ⛔ DEFAULT RECIPE, adopted 2026-09-22 (user decision). These are arm NQ02's exact
+      # resolved values -- the campaign best on this benchmark. The SCHEDULE is worth more
+      # than any loss term measured so far (+0.026 pearson_delta on rhj_fewshot, against
+      # <=0.01 for every loss knob), and it transfers: +0.0840 pΔ on norman_combo over
+      # 30 ep / eta_min 1e-7, positive in 43/48 paired cells (F-nor6). A new loss term must
+      # be compared against THIS, never against the old 30-epoch number.
+      lr: 1.0e-03
+      decoder_lr: 1.0e-03          # was 3.0e-04 -- raised together with batch_size (W23)
+      epochs: 150                  # was 30. 180 epochs is FLAT (+0.0003, F-sched4)
+      warmup_epochs: 5
+      batch_size: 256              # NB10, adopted 2026-09-23 (user). Was 2048 (NQ02). F-sweep1:
+                                   # Norman is step-starved at 2048 (27 steps/epoch)
+      gradient_clip: 1.0
+      eta_min: 1.0e-03             # NB10: = lr, i.e. NO decay (constant LR after warmup).
+                                   # At bs 256, 3e-4 (NB09) is worse: 0.8785/0.7660 vs 0.8910/0.7763
+      save_every_epochs: 0         # >0 saves epoch_NNN.pth every N epochs (2.13 GB each)
+
+    loss:
+      loss_type: smooth_l1
+      smooth_l1_beta: 2.0
+      cosine_loss_weight: 0.5
+      # ⚠️ REQUIRED, and not a style choice. `source_weight != none` with loss_type nb or
+      #    zinb RAISES: the normalisation is implemented for the elementwise losses only.
+      #    It is also unnecessary here -- it exists to correct a per-file gene-count
+      #    imbalance, and the frozen axis gives every file an identical gene mask.
+      source_weight: none
+      loss_norm: pooled
+      delta_mag_weight: 0.0400866   # DEFAULT: Q02's magnitude term, scale-matched for this corpus
+      # ⚠️ DECLARED so --set can reach them. A key present only in the dataclass schema
+      # and absent here is NOT settable, and the run proceeds at the default with no
+      # error -- the F-loss1 failure. The MSE latent loss needs latent_loss_type set to
+      # `delta_z` (what Q02 uses); at "none" the weight below is ignored. latent_cos_weight
+      # is a separate term and works on its own.
+      latent_loss_type: delta_z  # DEFAULT: Q02 = M06 + the latent MSE on delta_z
+      latent_loss_weight: 0.00198826  # scale-matched; NOT transferable
+      latent_loss_alpha: 0.5
+      latent_cos_weight: 0.0
+      latent_cos_target: delta_z
+      vicreg_var_weight: 0.0       # VICReg variance hinge; needs vicreg_gamma > 0
+      vicreg_cov_weight: 0.0       # VICReg covariance (decorrelates latent dims)
+      vicreg_gamma: 0.0            # hinge threshold; set from the MEASURED per-dim std
+      vicreg_target: delta_z       # delta_z | z_hat   # delta_z | z_hat -- NOT equivalent, unlike the MSE
+      recon_split: false           # F-recon1: split recon into ctrl-passthrough + delta
+      recon_split_mode: cmean
+      recon_delta_target: cell     # cell | group_mean  (group_mean = PHASE 2)      # cmean | raw | delta_only
+      recon_ctrl_weight: 1.0
+      recon_delta_weight: 1.0
+      # DCOS -- 1 - cos(pred - ctrl_mean, group_mean - ctrl_mean): the direction of the
+      # EFFECT. ⚠️ NOT the same as `cosine_loss_weight` above, which is cos(prediction,
+      # target) on the PROFILE and is dominated by the baseline expression every
+      # perturbation shares -- two predictions that disagree completely about the effect can
+      # still score ~0.99 there. 0.0 = off.
+      delta_cos_weight: 0.32977   # DEFAULT: Q02's effect-direction term, scale-matched
+      # F-disp1 dispersion terms. 0.0 = off. Weights must be SCALE-MATCHED against the
+      # measured magnitude of each term (scripts/loss_scale_disp.py), never guessed --
+      # `dcos` is ~100x `smooth_l1` and these are all dimensionless O(1) quantities.
+      dcos_conc_weight: 0.0        # calibrate the effect-direction concentration to the real 0.246
+      radial_spread_weight: 0.0    # match the spread of ||pred - ctrl_mean|| to the real one
+      gene_var_weight: 0.0         # match per-gene within-group variance to the real one
+      disp_ema_momentum: 0.99      # EMA of the model's own per-group mean, used as the centre
+      # nb_smooth_l1 only: recon = (1 - nb_weight) * smooth_l1 + nb_weight * nb / nb_scale.
+      # ⚠️ The two terms differ by a MEASURED ~6.5x in scale, which is exactly the confound
+      # F6 recorded: at cosine_loss_weight 0.5 its smooth_l1 arms were genuinely half-cosine
+      # while its NB arms were effectively pure-NB, so F6 compared loss *configurations*, not
+      # likelihoods. `nb_scale` divides the NB term first so `nb_weight` sweeps the trade-off
+      # rather than one order of magnitude of the NB term's own size.
+      nb_weight: 0.5
+      nb_scale: 1.0
+      # The released checkpoint carries a trained per-gene log_theta; warm-starting it
+      # removes the early-training regime where the NB gradient diverges worst.
+      vc_load_dispersion: true
+
+    guards:
+      # >0 stops the first epoch after N batches and prints samples/s. 0 = train normally.
+      bench_batches: 0
+      nan_guard_max_frac: 0.10
+      weight_check_every: 500
+
+    eval:
+      eval_freq: 1
+      run_baselines: false

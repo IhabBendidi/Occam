@@ -1,0 +1,104 @@
+# Z GRID -- the three F-disp1 DISPERSION terms on the Q02 base at 90 epochs, two weights each
+#
+# WHAT WE ARE TRYING TO ACHIEVE OVERALL
+# -------------------------------------
+# Predict a perturbation's effect in a cellular context where that perturbation was never
+# measured, FROM A SINGLE CONTROL CELL. Headline: split-half paired `pearson_delta` on the
+# 611 held-out HepG2 perturbations, 6,983-gene axis, cell-eval 0.6.0, uncalibrated.
+#
+# WHAT THIS GRID ANSWERS
+# ----------------------
+# F-disp1 measured that our predicted cells are DISPERSION-COLLAPSED: on the scored panel the
+# mean per-gene within-perturbation std is 0.0026 against a real 0.1009 (2.6%, 568/568
+# perturbations), which inflates FDR-significant gene calls 30.8x (3,475 vs 113 of 6,983).
+# Re-measured per-cell on W23 with REAL control cells as input: radial std ratio 0.22,
+# per-gene std ratio 0.108, and cos(pred cell delta, group delta) 0.075 against a REAL 0.238.
+#
+# THE QUESTION: does making the prediction depend on WHICH control cell it was given -- which
+# is what all three terms do -- change any of the four scored metrics?
+#
+# ⚠️ NONE OF THESE CAN WIN A SCORE THROUGH THE DISTRIBUTION CHANNEL, and that is measured, not
+# assumed: in cell-eval 0.6.0 `pearson_delta`, `mae` and `discrimination_score_l1` all go
+# through `iter_bulk_arrays` (group means), and `overlap_at_N` takes N from the REAL
+# significant-gene count (`_de.py:241`) and ranks by |fold_change| of the means. The only
+# channel dispersion touches is the pred-side FDR filter, and with 3,475 genes passing against
+# an N of at most ~113 it is NOT BINDING. These arms are therefore REGULARISER tests: the
+# hypothesis is that forcing per-cell responsiveness improves the MEAN path.
+#
+# WHAT IS VARIED / HELD FIXED
+# ---------------------------
+# VARIED: which dispersion term is on (one per arm, never two) x its weight (1x, 5x parity).
+# HELD FIXED: the Q02 loss composition exactly as W23 -- smooth_l1 + delta_cos 0.5 +
+#   delta_mag 0.01363 + latent MSE (delta_z) 0.0044, no VICReg, no recon split -- 90 epochs,
+#   eta_min 1e-5, batch 2048, lr 1e-3, decoder_lr 1e-3, seed 42, arm s313 otherwise.
+#   W23 itself (0.3959) is the control; no new control arm is needed.
+#
+# THE WEIGHTS ARE MEASURED, NOT GUESSED (scripts/loss_scale_disp.py on W23's checkpoint,
+# 128 perts x 8 real control cells, 9,612 present genes)
+# ---------------------------------------------------------------------------------------
+#   smooth_l1 per element                     0.035431
+#   dcos = 1 - cos(dpred, dtrue)              0.924964
+#   REFERENCE = Q02's own dcos contribution   0.462482   (= 0.5 x dcos, the term that
+#                                                          dominates Q02's gradient today)
+#   dcos_conc      term 0.035320 -> 1x parity 13.09    5x 65.47
+#   radial_spread  term 0.903433 -> 1x parity 0.512    5x 2.56
+#   gene_var       term 0.976866 -> 1x parity 0.473    5x 2.37
+# "1x parity" = the new term contributes as much as DCOS does in Q02 TODAY. The two moment
+# terms are (m2 - 1)^2 with m2 a normalised second moment, so they sit at ~1.0 while the
+# prediction is collapsed and at 0.0 when the dispersion matches -- bounded by construction.
+# Two weights and not three because F-latent5 showed under-weighting is the harmful direction
+# (0.01x was worse than 0.1x) and F-vicreg1 needed 1x-10x before anything moved.
+#
+# ⚠️ CORRECTION, MEASURED 2026-09-21, to what was said when this was proposed. The claim was
+# that `dcos` OVER-concentrates the predicted directions and that `dcos_conc` would relax it.
+# Per-cell against the control mean, the model aligns at 0.075 while REAL cells align at
+# 0.238 -- we are UNDER-aligned, not over-aligned, because the per-cell delta is dominated by
+# the control cell's own identity, which the model must reconstruct and does imperfectly.
+# So `dcos_conc` pushes alignment UP here and partially DUPLICATES `dcos` rather than
+# opposing it. The term is still the right quantity (it calibrates to the real value instead
+# of maximising), but the direction of the current error is the opposite of predicted.
+#
+# WHAT EACH OUTCOME MEANS -- PRE-REGISTERED, before any number is seen
+# --------------------------------------------------------------------
+# Any arm > 0.3959 + 0.002 at 4-5/5     -> per-cell responsiveness helps the MEAN path; the
+#                                          collapse was costing us score, not just realism.
+# All six ~ 0.3959 (|delta| < 0.002)    -> dispersion is orthogonal to this benchmark, exactly
+#                                          as the metric audit predicts. Then it is a realism
+#                                          fix to keep or drop on other grounds, not a lever.
+# Any arm < 0.3959 - 0.002              -> the terms spend capacity the mean path needed; read
+#                                          it with the std ratio to see whether that bought any
+#                                          dispersion at all.
+# `overlap_at_N` FALLS while std ratio RISES -> the predicted FDR pool shrank below N, which is
+#                                          the risk the metric audit flagged in advance.
+# std ratio stays ~0.1 in every arm     -> the TERM did not take effect; that is a plumbing
+#                                          result, not a scientific one, and the weights are
+#                                          the first suspect.
+#
+# ⚠️ READ THE DIAGNOSTICS, NOT ONLY THE SCORE. Training prints `[disp] ... std_pred/std_real`
+# every epoch and the eval prints `[disp] <arm>: per-gene within-pert std ... FDR-significant
+# genes/pert ...` next to the metrics. An arm whose score moves without its std ratio moving
+# did not test this hypothesis.
+#
+# ANCHORS -- test, uncalibrated, 5/5 splits
+# -----------------------------------------
+# ctrlcell -0.0018 · ctrlmean 0.0016 · meanpert 0.1324 · transfer 0.2323 · experimental 0.3722
+# (mae 0.0257, ovl@N 0.1942, disc_l1 0.7821) · Q02 (30 ep) 0.3783 · E3 (60 ep) 0.3933 ·
+# W23 (90 ep, 1e-5) 0.3959 / mae 0.0216 / ovl@N 0.0887 / disc_l1 0.7142  <-- THE CONTROL.
+# Directions: pearson_delta UP · mae DOWN (it is an ERROR) · ovl@N UP · disc_l1 UP.
+#
+# COST: 6 arms x ~1 h 30 (90 ep at 41 s/epoch) ~= 9 GPU-h train, plus 30 eval tasks at ~9 min
+# on a %6 throttle (F-infra1) ~= 4.5 GPU-h. ⚠️ SUBMIT WITH --time=04:00:00.
+#
+#   GRID=scripts/grids/rhj_dispersion.tsv \
+#   sbatch --qos=vco --wckey=vco --time=04:00:00 --array=0-5 scripts/slurm/rhj_loss_sweep.sbatch
+#
+# ⚠️ PREREQUISITE: cache/pert_disp/*.npz (scripts/pert_group_dispersion.py). The launcher
+# REFUSES to train without it rather than matching a variance target of zero, which would be
+# an instruction to collapse -- the pathology these terms exist to fix.
+arm	loss_type	nb_weight	nb_scale	delta_cos_weight	delta_mag_weight	latent_loss_type	latent_loss_weight	latent_cos_weight	latent_cos_target	recon_split	recon_ctrl_weight	recon_delta_weight	recon_split_mode	recon_delta_target	vicreg_var_weight	vicreg_cov_weight	vicreg_gamma	vicreg_target	epochs	eta_min	base	dcos_conc_weight	radial_spread_weight	gene_var_weight
+Z01	smooth_l1	0	1.0	0.5	0.01363	delta_z	0.0044	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	90	1e-5	Q02	13.09	0.0	0.0
+Z02	smooth_l1	0	1.0	0.5	0.01363	delta_z	0.0044	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	90	1e-5	Q02	65.47	0.0	0.0
+Z03	smooth_l1	0	1.0	0.5	0.01363	delta_z	0.0044	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	90	1e-5	Q02	0.0	0.512	0.0
+Z04	smooth_l1	0	1.0	0.5	0.01363	delta_z	0.0044	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	90	1e-5	Q02	0.0	2.56	0.0
+Z05	smooth_l1	0	1.0	0.5	0.01363	delta_z	0.0044	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	90	1e-5	Q02	0.0	0.0	0.473
+Z06	smooth_l1	0	1.0	0.5	0.01363	delta_z	0.0044	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	90	1e-5	Q02	0.0	0.0	2.37

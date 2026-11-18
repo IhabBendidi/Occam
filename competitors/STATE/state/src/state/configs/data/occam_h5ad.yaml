@@ -1,0 +1,47 @@
+# STATE reading Occam's `rhj_fewshot` directly: our h5ads, our 6,983-gene axis, our splits.
+#
+# The sibling of `perturbation_zarr.yaml`. Only the source changes; every training-relevant
+# value below is transcribed unchanged from the official recipe
+# (`reproducibility/state__replogle_nadig_fewshot/launch.train.sh`).
+#
+# ⚠️ `target_sum: null` + `log1p: false` are REQUIRED here, not merely defaults. The data
+# arrives already normalised at 10,000 on the FULL source panel row sum; STATE's own
+# `_transform_expression` would divide by the 6,983-gene row sum instead, which leaves
+# `pearson_delta` alone but shifts `mae` and moves the DE calls. The datamodule refuses any
+# other combination in occam mode rather than letting it through.
+#
+# ⚠️ `num_workers: 0`, matching upstream's `${NUM_WORKERS:-0}`. An occam source holds its
+# matrix in RAM and cannot cross a process boundary (it is dropped in `__getstate__` so a
+# worker is never sent several GB through a pickle), so a worker would raise rather than
+# silently re-read our three h5ads once per worker.
+name: ZarrPerturbationDataModule
+kwargs:
+  toml_config_path: null
+  source_format: occam
+  occam_bench_dir: null
+  occam_target_sum: 10000.0
+  occam_log1p: true
+  occam_verify_sources: true
+  occam_max_cells_per_line: null
+  feature_loading: ram
+  selected_ensembl_gene_ids_path: null
+  target_sum: null
+  log1p: false
+  split_idx: 0
+  pert_feature_mode: onehot
+  pert_feature_path: null
+  embed_key: X_hvg
+  output_space: gene
+  batch_col: batch_center
+  cell_type_key: cell_type
+  pert_col: gene_pert
+  control_pert: empty
+  num_workers: 0
+  basal_mapping_strategy: random
+  n_basal_samples: 1
+  should_yield_control_cells: true
+  barcode: false
+  drop_last: false
+  is_log1p: true
+output_dir: null
+debug: true

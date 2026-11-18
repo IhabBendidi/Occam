@@ -1,0 +1,86 @@
+# =====================================================================
+# Label-free (self-supervised) finetune of the released Occam encoder on YOUR data.
+#
+# The stage-2 recipe of configs/occam_small.yaml, unchanged except epochs 100 -> 5,
+# started from the stage-2 MAE (the only released file that still carries the MAE's own
+# decoder + mask predictor; its encoder is byte-identical to the released one).
+# Full procedure, gotchas and a worked example: docs/finetuning.md.
+#
+#   1. python scripts/finetune/make_finetune_init.py \
+#        --parent checkpoints/reference/occam_small_stage2_finetune.pth \
+#        --out runs/finetune_init/occam_small_stage2_mask0.1.pth
+#   2. raw counts, genes named by the checkpoint vocabulary (Ensembl), DENSE X:
+#        python scripts/finetune/densify_h5ad.py --src mine.h5ad --dst mine_dense.h5ad
+#   3. python -m occam.train --config configs/finetune_ssl.yaml \
+#        --set data.train=mine_dense.h5ad
+#
+# ⚠️ init_from must be the step-1 copy, not the stage-2 file itself: gradual unmasking
+#    ramps from the PARENT's mask_probability, which stage 2 records as 0.0.
+# =====================================================================
+version: 1
+name: finetune_ssl
+seed: 42
+device: cuda
+
+paths: !include paths.yaml
+
+run:
+  root: ./runs
+  stages: [finetune]
+  runner: inprocess
+  resume: auto
+  wandb:
+    enabled: false
+    project: occam
+    tags: [occam, small, finetune-ssl]
+
+data:
+  train: data/finetune/train_dense.h5ad   # override with --set data.train=<dense h5ad>
+  val: null                               # chunk-based split using val_split (10%)
+  train_gene_col: null                    # null -> var_names; else the .var column
+  val_gene_col: null
+
+stages:
+  finetune:
+    init_from: runs/finetune_init/occam_small_stage2_mask0.1.pth
+    unmasking:
+      mode: gradual
+      zero_at: 0.9
+      final_ratio: 0.5
+      effective_mask_prob_source: parent_checkpoint.mask_probability
+    optim:
+      epochs: 5                           # stage 2 was 100
+      learning_rate: 0.0006
+      weight_decay: 1.81890136e-09
+      batch_size: 1024
+      optimizer: adam
+      lr_scheduler: cosine
+      warmup_epochs: 0
+      warmup_start_factor: 0.001
+      gradient_clip: 1.0
+      early_stopping: 3500
+      validation_freq: 1
+    masking:
+      mask_probability: 0.0               # inert under mode=gradual
+      corruption_mode: null               # inherit (swap)
+      gaussian_sigma: null
+    loss:
+      recon_loss: poisson
+      masked_data_weight: 0.0
+      mask_loss_weight: 0.7
+      mlw_schedule_start: 0.7
+      mlw_schedule_end: 0.0
+      mlw_schedule_warmup: 0.1
+      mlw_schedule_cooldown: 0.1
+      clamp_max_log1p: 5.5
+    runtime:
+      data_mode: optim
+      freeze_mask_predictor: null
+      enable_amp: null
+      compile: null
+    eval:
+      eval_freq: 5
+    load:
+      strict: true                        # poisson parent -> poisson child: same 21 tensors
+      expect_unexpected: []
+      expect_missing: []

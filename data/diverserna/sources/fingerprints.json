@@ -1,0 +1,232 @@
+{
+  "corpus": "txfm_ICLR_train_data_composite___raw_counts.h5ad",
+  "n_obs": 1434299,
+  "n_var": 44728,
+  "blocks": [
+    {
+      "block": 0,
+      "n_rows": 502080,
+      "row_range": [
+        0,
+        502079
+      ],
+      "contiguous": true,
+      "pct_nonzero": 6.95,
+      "max_value": 977.0,
+      "min_nonzero": 1.0,
+      "integral": true,
+      "median_row_sum": 11033.0,
+      "row_sum_q": [
+        3826.0,
+        7365.75,
+        11033.0,
+        14357.5,
+        21367.049999999996
+      ],
+      "genes_supported": 8248,
+      "sampled_rows": 512,
+      "is_raw_counts": true,
+      "looks_like_bulk": false
+    },
+    {
+      "block": 1,
+      "n_rows": 102205,
+      "row_range": [
+        502080,
+        604284
+      ],
+      "contiguous": true,
+      "pct_nonzero": 8.68,
+      "max_value": 3908.0,
+      "min_nonzero": 1.0,
+      "integral": true,
+      "median_row_sum": 16527.5,
+      "row_sum_q": [
+        6807.35,
+        10719.0,
+        16527.5,
+        25750.75,
+        53016.59999999999
+      ],
+      "genes_supported": 15432,
+      "sampled_rows": 512,
+      "is_raw_counts": true,
+      "looks_like_bulk": false
+    },
+    {
+      "block": 2,
+      "n_rows": 99300,
+      "row_range": [
+        604285,
+        703584
+      ],
+      "contiguous": true,
+      "pct_nonzero": 6.76,
+      "max_value": 5801.0,
+      "min_nonzero": 1.0,
+      "integral": true,
+      "median_row_sum": 5978.0,
+      "row_sum_q": [
+        3804.95,
+        4737.5,
+        5978.0,
+        8436.5,
+        16374.6
+      ],
+      "genes_supported": 18287,
+      "sampled_rows": 512,
+      "is_raw_counts": true,
+      "looks_like_bulk": false
+    },
+    {
+      "block": 3,
+      "n_rows": 71585,
+      "row_range": [
+        703585,
+        775169
+      ],
+      "contiguous": true,
+      "pct_nonzero": 6.77,
+      "max_value": 404058.0,
+      "min_nonzero": 1.0,
+      "integral": true,
+      "median_row_sum": 10513.5,
+      "row_sum_q": [
+        5796.1,
+        7672.5,
+        10513.5,
+        14698.5,
+        796868.3999999996
+      ],
+      "genes_supported": 17572,
+      "sampled_rows": 512,
+      "is_raw_counts": true,
+      "looks_like_bulk": false
+    },
+    {
+      "block": 4,
+      "n_rows": 88399,
+      "row_range": [
+        775170,
+        863568
+      ],
+      "contiguous": true,
+      "pct_nonzero": 7.4,
+      "max_value": 8.426358222961426,
+      "min_nonzero": 0.005743219517171383,
+      "integral": false,
+      "median_row_sum": 496.07220458984375,
+      "row_sum_q": [
+        341.8718490600586,
+        449.01905059814453,
+        496.0722198486328,
+        541.5438079833984,
+        624.2827972412109
+      ],
+      "genes_supported": 16403,
+      "sampled_rows": 512,
+      "is_raw_counts": false,
+      "looks_like_bulk": false
+    },
+    {
+      "block": 5,
+      "n_rows": 31542,
+      "row_range": [
+        863569,
+        895110
+      ],
+      "contiguous": true,
+      "pct_nonzero": 7.33,
+      "max_value": 8.659945487976074,
+      "min_nonzero": 0.08182782679796219,
+      "integral": false,
+      "median_row_sum": 3004.20849609375,
+      "row_sum_q": [
+        2512.9907348632814,
+        2815.0474243164062,
+        3004.20849609375,
+        3212.3165893554688,
+        3609.336193847656
+      ],
+      "genes_supported": 20693,
+      "sampled_rows": 512,
+      "is_raw_counts": false,
+      "looks_like_bulk": false
+    },
+    {
+      "block": 6,
+      "n_rows": 504929,
+      "row_range": [
+        895111,
+        1400039
+      ],
+      "contiguous": true,
+      "pct_nonzero": 7.27,
+      "max_value": 7.05521297454834,
+      "min_nonzero": 0.00471517164260149,
+      "integral": false,
+      "median_row_sum": 2053.79833984375,
+      "row_sum_q": [
+        1611.9529357910155,
+        1848.9714050292969,
+        2053.7984619140625,
+        2222.5203247070312,
+        2456.763781738281
+      ],
+      "genes_supported": 20267,
+      "sampled_rows": 512,
+      "is_raw_counts": false,
+      "looks_like_bulk": false
+    },
+    {
+      "block": 7,
+      "n_rows": 10526,
+      "row_range": [
+        1400040,
+        1410565
+      ],
+      "contiguous": true,
+      "pct_nonzero": 50.21,
+      "max_value": 26309592.0,
+      "min_nonzero": 1.0,
+      "integral": true,
+      "median_row_sum": 60686904.0,
+      "row_sum_q": [
+        40793560.6,
+        50997304.0,
+        60686906.0,
+        73714518.0,
+        91500686.4
+      ],
+      "genes_supported": 35708,
+      "sampled_rows": 512,
+      "is_raw_counts": true,
+      "looks_like_bulk": true
+    },
+    {
+      "block": 8,
+      "n_rows": 23733,
+      "row_range": [
+        1410566,
+        1434298
+      ],
+      "contiguous": true,
+      "pct_nonzero": 38.34,
+      "max_value": 27590498.0,
+      "min_nonzero": 1.0,
+      "integral": true,
+      "median_row_sum": 40963360.0,
+      "row_sum_q": [
+        16094613.9,
+        29238986.0,
+        40963358.0,
+        56024414.0,
+        76036891.6
+      ],
+      "genes_supported": 19556,
+      "sampled_rows": 512,
+      "is_raw_counts": true,
+      "looks_like_bulk": true
+    }
+  ]
+}

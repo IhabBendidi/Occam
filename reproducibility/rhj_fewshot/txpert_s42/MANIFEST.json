@@ -1,0 +1,171 @@
+{
+  "anchors_for_reading": {
+    "ctrlcell": -0.0018,
+    "ctrlmean": 0.0016,
+    "experimental": 0.3722,
+    "meanpert": 0.1324,
+    "occam_best": 0.3415,
+    "transfer": 0.2323
+  },
+  "arm": "txpert",
+  "benchmark": "rhj_fewshot",
+  "checkpoints_not_frozen": {
+    "names": [],
+    "why": "written by the same run but NEVER evaluated -- 'best' under a different criterion, plus last/final. Excluded so no one can score one later and report it as this arm's result."
+  },
+  "deliberate_deviations": [
+    "SINGLE-CELL basal controls at BOTH training and inference (match_cntr=false, avg_cntr=false), not the published (cell_type,batch) MEAN control. Reason: every other arm and our own model predict from ONE drawn half-B control cell, so a denoised mean input would make TxPert's number incomparable with the rest of the panel.",
+    "omit_cntr=true on BOTH training and inference, dropping the -1 control token TxPert's published config keeps. Reason: -1 is the SECOND SLOT of GEARS' 'SYMBOL+ctrl' condition format and our cohort is single-gene throughout, so on our data it is padding, not signal. Upstream's own TODO notes it is added twice when omit_cntr=false.",
+    "Retrained from scratch on OUR data: 6,983-gene frozen axis, our 611-perturbation cohort, our 5 splits. Does NOT reproduce TxPert's published 0.50787, which is a 2,000-gene / 380-perturbation / 4-cell-line panel.",
+    "NOT changed, deliberately: BatchNorm behaviour is exactly as upstream (running statistics under eval()). Left alone for the same fairness reason.",
+    "T9 SELECTION-ON-TEST CAVEAT, inherited from upstream: three model hyperparameters came from a 217-run sweep whose own config records the objective as maximising a TEST metric."
+  ],
+  "files": {
+    "artifacts/best_ckpt_path.txt": {
+      "bytes": 123,
+      "sha256": "94dd2e1bf7a1e17430300a9db6301bd96fbf1e210f7afd1c62291310fc842131"
+    },
+    "celleval/split_0/agg_results.csv": {
+      "bytes": 3736,
+      "sha256": "7092bc8eeca1041d69eaba373e5061d2a676c9352e9ad562982bd6e45c19ae7b"
+    },
+    "celleval/split_0/metrics.json": {
+      "bytes": 13673,
+      "sha256": "bc4859d14066b4942030c8891e82b44c693961ffc2ecaa829573bd5225abf880"
+    },
+    "celleval/split_0/results.csv": {
+      "bytes": 242871,
+      "sha256": "b463374c5997f5a4dd3776abcf4cb8c83fe8fabf6ca7359452c31b807086fd6d"
+    },
+    "celleval/split_1/agg_results.csv": {
+      "bytes": 3705,
+      "sha256": "cb28ba3ecb14adafd0d76d91c4b7d7d26cb008f36c92df191807d61c6e32d778"
+    },
+    "celleval/split_1/metrics.json": {
+      "bytes": 13672,
+      "sha256": "43aaad0ca30da0a15878b106c04cb2687a84ea0d83a5ca11cd1d92e353d72885"
+    },
+    "celleval/split_1/results.csv": {
+      "bytes": 243409,
+      "sha256": "9542f0749df89efc709986f11c1a30bc610894c9058b56ef37859b54f8596813"
+    },
+    "celleval/split_2/agg_results.csv": {
+      "bytes": 3705,
+      "sha256": "f0a528edef5285ddf9b556d9a654820e427fe8aa7f1fecb9b85b28400397eb76"
+    },
+    "celleval/split_2/metrics.json": {
+      "bytes": 13683,
+      "sha256": "13f50f783d73fcfc78cfdd077effdfb9245c55915e8dfbbbc68368387a02c270"
+    },
+    "celleval/split_2/results.csv": {
+      "bytes": 244976,
+      "sha256": "e0d0b0633c071040d3230130895df2a37eaad57df8357496fdb6be2d4df897d2"
+    },
+    "celleval/split_3/agg_results.csv": {
+      "bytes": 3646,
+      "sha256": "a279388d7860ba69a66647855a255c63c180b2d19224a4f05ecceadbd2e119a6"
+    },
+    "celleval/split_3/metrics.json": {
+      "bytes": 13672,
+      "sha256": "56e46e0a99f1854e421f95008efd58a30f2c3840fdc5cfd878e6e195c557c2b3"
+    },
+    "celleval/split_3/results.csv": {
+      "bytes": 243972,
+      "sha256": "04a017850fab39ec98760d15952209d56bcc19632868be9c26de597c0860391f"
+    },
+    "celleval/split_4/agg_results.csv": {
+      "bytes": 3639,
+      "sha256": "910664d8a6a3167f124cb0540ca387b30895054e2c6623b38fd19611c8180a93"
+    },
+    "celleval/split_4/metrics.json": {
+      "bytes": 13640,
+      "sha256": "68e0e252d62b6cce6dac88d11e6b4b49d7d1dc8d68eb6bca7a6ab61e8e63a716"
+    },
+    "celleval/split_4/results.csv": {
+      "bytes": 243678,
+      "sha256": "f32b84fa9f342bec94492c2b5f5927273b65044d6327974b4b9de4aca0c5b766"
+    },
+    "checkpoints/best-ep49.ckpt": {
+      "bytes": 102901694,
+      "sha256": "b67257e9eaf90630018d143f71c63cf8b78e3b02c84cf9c19f394ae518f08b90"
+    },
+    "predictions/split_0/h1_model_nocal_pred_injctrl.h5ad": {
+      "bytes": 589537730,
+      "sha256": "bb498eefbca7fd6f0614c86ba8cc5c53264af1b88c72f4638a2f06be608c5545"
+    },
+    "predictions/split_1/h1_model_nocal_pred_injctrl.h5ad": {
+      "bytes": 589537730,
+      "sha256": "f4e83eddd1f865a7be0948ad6e88e01c325869d34ba123481cf7769bbc4885d7"
+    },
+    "predictions/split_2/h1_model_nocal_pred_injctrl.h5ad": {
+      "bytes": 589537730,
+      "sha256": "706de216df00d5f4358bcbb2359f557c5813e45d0157957247efbc10e707e35f"
+    },
+    "predictions/split_3/h1_model_nocal_pred_injctrl.h5ad": {
+      "bytes": 589537730,
+      "sha256": "426b13841b61d26f70bdcf23a3e07206d1ff96705d95debb9c00534f2b84ef34"
+    },
+    "predictions/split_4/h1_model_nocal_pred_injctrl.h5ad": {
+      "bytes": 589537730,
+      "sha256": "fc5b665d67b45ee3df781627b3d16432a0ce6fafc9b08b82041dfdcc91275617"
+    }
+  },
+  "git_commit": "6107045abe4e53d8572d3453966db2569026332b",
+  "n_splits_scored": 5,
+  "not_copied": {
+    "pred_de.csv": "~95 MB per split, fully derivable from the prediction h5ad",
+    "target_h5ad": "a deterministic function of the frozen panel and the split seed; reproducible, and it would double the footprint"
+  },
+  "note": "TxPert on the rhj_fewshot split-half panel; the single-cell-control fairness arm. Supersedes the withdrawn 0.3077 export.",
+  "scored_by": "cell-eval 0.6.0 / pdex 0.1.24, uncalibrated (model_nocal), one drawn half-B control cell per predicted row",
+  "seed": 42,
+  "selected_checkpoint": "best-ep49.ckpt",
+  "source_run_dir": "runs/competitors/txpert/ckpt/occam_s42_single",
+  "source_scored_dir": "runs/rhj_splithalf/compet_txpert_single_s42",
+  "test_scores_model_nocal": {
+    "mean": {
+      "discrimination_score_l1": 0.670418754905296,
+      "mae": 0.0226524721065905,
+      "overlap_at_N": 0.05819132310728459,
+      "pearson_delta": 0.34629385726097295
+    },
+    "per_split": {
+      "0": {
+        "discrimination_score_l1": 0.6707069787126897,
+        "mae": 0.022611210371158808,
+        "overlap_at_N": 0.05853722402883406,
+        "pearson_delta": 0.34282576805693066
+      },
+      "1": {
+        "discrimination_score_l1": 0.671288247915333,
+        "mae": 0.022653089953607798,
+        "overlap_at_N": 0.059790501899956994,
+        "pearson_delta": 0.3519282906649984
+      },
+      "2": {
+        "discrimination_score_l1": 0.6692471090562813,
+        "mae": 0.022655743652872387,
+        "overlap_at_N": 0.05797771406004838,
+        "pearson_delta": 0.3445811779708827
+      },
+      "3": {
+        "discrimination_score_l1": 0.6695658695867632,
+        "mae": 0.02263100305648365,
+        "overlap_at_N": 0.057180088049584216,
+        "pearson_delta": 0.3472571210300649
+      },
+      "4": {
+        "discrimination_score_l1": 0.6712855692554128,
+        "mae": 0.02271131349882986,
+        "overlap_at_N": 0.05747108749799927,
+        "pearson_delta": 0.34487692858198776
+      }
+    },
+    "sd": {
+      "discrimination_score_l1": 0.0009605500425931032,
+      "mae": 3.753946294901808e-05,
+      "overlap_at_N": 0.0010324709146421478,
+      "pearson_delta": 0.0035229006809897674
+    }
+  }
+}

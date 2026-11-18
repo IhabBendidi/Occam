@@ -1,0 +1,42 @@
+# VICReg variance + covariance in LATENT SPACE, on the Q02 base. User direction 2026-09-20
+# (latent only -- gene space and gene delta explicitly dropped).
+#
+# WHY. F-latent7 measured the latent's EFFECTIVE RANK at 32.9 of 512 on Q02 and 24.6 on M03 --
+# the representation uses ~5-6% of its dimensions. Our latent MSE already plays VICReg's
+# INVARIANCE role; these are the two terms that stop an invariance objective collapsing the
+# representation.
+#
+# PRE-REGISTERED SPLIT OF EXPECTATION (F-latent7): only 0.6% of dims are dead (std < 0.01), so
+# the VARIANCE term has little to fix; the dims are alive but heavily REDUNDANT, so the
+# COVARIANCE term is the one with a real target. Expect cov to matter and var not to. If var
+# helps more, the reading of the std distribution was wrong.
+#
+# WEIGHTS ARE SCALE-MATCHED to Q02's own latent term, which contributes
+# 0.0044 x 1.2942 = 0.005695:
+#     variance  gamma 0.55 (the measured MEDIAN std): term 0.117 -> parity 0.0487
+#     variance  gamma 1.00 (the paper's value):       term 0.435 -> parity 0.0131
+#     covariance:                                     term 7.05  -> parity 0.00081
+# ⚠️ gamma is NOT the paper's 1.0 by default. Measured per-dim std here is ~0.55-0.60, so
+# gamma=1 keeps the hinge permanently active and degenerates into "make every dim bigger".
+# V07 runs gamma=1.0 deliberately, as the control for that choice.
+#
+# TARGETS. delta_z vs z_hat are NOT equivalent: verified they differ 6x in covariance under a
+# per-row control (7.66 vs 47.21). F-latent7's probe could not separate them because it fed one
+# control per cell line, which makes z_hat a constant shift of delta_z.
+#
+# READ AGAINST (test, uncalibrated, 5/5): Q02 0.3783 / mae 0.0225 / ovl@N 0.0774 / disc_l1 0.7029.
+# ANCHORS: meanpert 0.1324 · transfer 0.2323 · experimental 0.3722 (mae 0.0257).
+# `mae` is an ERROR: LOWER IS BETTER.
+# ⚠️ Also re-measure EFFECTIVE RANK on the resulting checkpoints -- that is the direct test of
+# whether the term did what it was added for, independent of whether the score moves.
+arm	loss_type	nb_weight	nb_scale	delta_cos_weight	delta_mag_weight	latent_loss_type	latent_loss_weight	latent_cos_weight	latent_cos_target	recon_split	recon_ctrl_weight	recon_delta_weight	recon_split_mode	recon_delta_target	vicreg_var_weight	vicreg_cov_weight	vicreg_gamma	vicreg_target
+V01	smooth_l1	0	1.0	0.5	0.01363	delta_z	0.0044	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.000081	0.0	delta_z
+V02	smooth_l1	0	1.0	0.5	0.01363	delta_z	0.0044	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.00081	0.0	delta_z
+V03	smooth_l1	0	1.0	0.5	0.01363	delta_z	0.0044	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0081	0.0	delta_z
+V04	smooth_l1	0	1.0	0.5	0.01363	delta_z	0.0044	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.00081	0.0	z_hat
+V05	smooth_l1	0	1.0	0.5	0.01363	delta_z	0.0044	0.0	delta_z	false	1.0	1.0	cmean	cell	0.00487	0.0	0.55	delta_z
+V06	smooth_l1	0	1.0	0.5	0.01363	delta_z	0.0044	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0487	0.0	0.55	delta_z
+V07	smooth_l1	0	1.0	0.5	0.01363	delta_z	0.0044	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0131	0.0	1.0	delta_z
+V08	smooth_l1	0	1.0	0.5	0.01363	delta_z	0.0044	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0487	0.00081	0.55	delta_z
+V09	smooth_l1	0	1.0	0.5	0.01363	delta_z	0.0044	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0487	0.0081	0.55	delta_z
+V10	smooth_l1	0	1.0	0.5	0.01363	delta_z	0.0044	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0487	0.00081	0.55	z_hat

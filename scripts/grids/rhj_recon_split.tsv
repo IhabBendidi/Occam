@@ -1,0 +1,62 @@
+# SPLIT-RECONSTRUCTION ratio sweep + scale-matched constants + the 0.01x latent arms.
+# User direction 2026-09-20. PHASE 1: SINGLE-CELL targets (target_pb_k=1, the default).
+# Phase 2 (group-mean targets) is deliberately held back so denoising and weighting are not
+# confounded.
+#
+# WHY. F-recon1: smooth_l1(pred, target) is ~99.8% CONTROL RECONSTRUCTION on M03
+# (||D(z_ctrl)-c|| = 15.34 vs a true effect size of 2.88), so the perturbation is supervised by
+# ~0.2% of that term's gradient. Splitting it lets the two be weighted independently:
+#     L_ctrl  = recon(D(z_ctrl), ctrl)                 pass the control through
+#     L_delta = recon(pred - D(z_ctrl), target - ctrl) predict the CHANGE
+#
+# ⚠️ WHY A RATIO SWEEP AND NOT SCALE-MATCHED CONSTANTS. Measured on the real training path,
+# UNWEIGHTED, the two terms do NOT hold a fixed ratio -- it moves 8x in three epochs:
+#     ep1  L_ctrl 1.8473 (93.0%)  L_delta 0.1388 (7.0%)   ratio 13.31x
+#     ep2  L_ctrl 1.4587 (91.1%)  L_delta 0.1420 (8.9%)   ratio 10.27x
+#     ep3  L_ctrl 0.2649 (61.5%)  L_delta 0.1656 (38.5%)  ratio  1.60x
+# L_ctrl decays as the autoencoder learns the passthrough; L_delta is flat. Every other
+# scale-matched weight in this campaign (nb_scale, dcos 0.01, delta_mag 0.01363, the latent
+# parity weights) was a CONSTANT from a one-off measurement, which was sound because those
+# ratios were stable. Here a weight balancing the terms at epoch 1 leaves the delta 8x
+# over-weighted by epoch 3. So the axis swept is the RATIO, anchored at 1:1.
+#
+# S-ARMS ARE THE SCALE-MATCHED CONTROL, and they are NOT in the (1, k) ratio family. They set
+# both weights so the two terms contribute EQUALLY at the measured converged point while
+# holding the TOTAL reconstruction contribution unchanged -- i.e. each gets half of
+# (0.2649 + 0.1656) = 0.4305:  w_ctrl = 0.2153/0.2649 = 0.813, w_delta = 0.2153/0.1656 = 1.298.
+# The ratio arms keep w_ctrl = 1, so their TOTAL recon grows with w_delta and its balance
+# against dcos shifts; the S-arms hold that balance fixed. That is the difference being tested.
+# ⚠️ 0.813/1.298 come from the rhj_smoke config (720 cells/epoch, 3 epochs). The TREND
+# transfers; the endpoint does not. Read each arm's printed [recon-split] trajectory.
+#
+# T-ARMS: P11 (latent both at 0.1x parity) was the best combination arm on M03 -- closest
+# pearson_delta (-0.0009), best mae (0.0211) and the best overlap_at_N in that table (0.0738 vs
+# M03's 0.0722). This takes the same shape an order of magnitude lower, 0.01x parity, on both
+# bases. M03 parity: lmse 0.0157, lcos 0.0097. M06 parity: lmse 0.0044, lcos 0.0059.
+#
+# BASES, held fixed: M03 = dcos 0.01, mag 0. M06 = dcos 0.5, mag 0.01363. Everything else is arm
+# s313 (adjacency_map, batch 2048, lr 1e-3, decoder_lr 1e-3, cosine_loss_weight 0.5, film
+# multiplicative_only, fh 256, mean-free, 30 epochs, seed 42).
+#
+# READ AGAINST (test, uncalibrated, 5/5): M03 0.3679/0.0212/0.0722/0.6715 ·
+# M06 0.3681/0.0232/0.0703/0.7047. `mae` is an ERROR: LOWER IS BETTER.
+# ANCHORS: meanpert 0.1324 · transfer 0.2323 · experimental 0.3722 (mae 0.0257).
+#
+# PRE-REGISTERED. mae falls below M03's 0.0212 while pearson_delta holds -> F-recon1's
+# hypothesis is right: mae was immovable because every prior lever acted on the perturbation
+# while mae is dominated by control reconstruction. mae flat across all ratios -> the hypothesis
+# is wrong and mae is limited by something else entirely. S-arm != its neighbouring ratio arms
+# -> the recon-vs-dcos total balance matters independently of the internal split.
+arm	loss_type	nb_weight	nb_scale	delta_cos_weight	delta_mag_weight	latent_loss_type	latent_loss_weight	latent_cos_weight	latent_cos_target	recon_split	recon_ctrl_weight	recon_delta_weight
+R01	smooth_l1	0	1.0	0.01	0.0	none	0.0	0.0	delta_z	true	1.0	1.0
+R02	smooth_l1	0	1.0	0.01	0.0	none	0.0	0.0	delta_z	true	1.0	3.0
+R03	smooth_l1	0	1.0	0.01	0.0	none	0.0	0.0	delta_z	true	1.0	10.0
+R04	smooth_l1	0	1.0	0.01	0.0	none	0.0	0.0	delta_z	true	1.0	30.0
+S01	smooth_l1	0	1.0	0.01	0.0	none	0.0	0.0	delta_z	true	0.813	1.298
+R05	smooth_l1	0	1.0	0.5	0.01363	none	0.0	0.0	delta_z	true	1.0	1.0
+R06	smooth_l1	0	1.0	0.5	0.01363	none	0.0	0.0	delta_z	true	1.0	3.0
+R07	smooth_l1	0	1.0	0.5	0.01363	none	0.0	0.0	delta_z	true	1.0	10.0
+R08	smooth_l1	0	1.0	0.5	0.01363	none	0.0	0.0	delta_z	true	1.0	30.0
+S02	smooth_l1	0	1.0	0.5	0.01363	none	0.0	0.0	delta_z	true	0.813	1.298
+T01	smooth_l1	0	1.0	0.01	0.0	delta_z	0.000157	0.000097	delta_z	false	1.0	1.0
+T02	smooth_l1	0	1.0	0.5	0.01363	delta_z	0.000044	0.000059	delta_z	false	1.0	1.0

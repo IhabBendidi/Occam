@@ -1,0 +1,136 @@
+# Official Norman virtual-cell recipe: NF32ALLA (seed 42 by default).
+# This file is separate from historical norman_combo.yaml and
+# norman_combo_pertemb.yaml so their earlier run identities remain reproducible.
+# The scientific settings below match scripts/grids/norman_seeds_nf32_alla.tsv.
+
+version: 1
+name: norman_combo
+seed: 42
+device: cuda
+paths: !include paths.yaml
+run:
+  root: ./runs
+  stages: [vcell]
+  runner: inprocess
+  resume: auto
+  wandb:
+    enabled: true
+    project: occam
+    tags: [occam, norman_combo, vcell]
+data:
+  train: ${paths.eval_dir}/norman_2019_k562.h5ad
+stages:
+  vcell:
+    init_from: checkpoints/release/occam_small_encoder_decoder.pth
+    benchmark:
+      dir: data/benchmarks/norman_combo
+      id: norman_combo
+      sha256: 8ac7da0d5adb3ae49e3a3dfe084494f4dce051286d219e346b4ea11c467cb3cf
+      axis_scope: input_and_loss
+      eval_cell_lines: [K562]
+      build_test_datasets: false
+    data:
+      paths:
+        - ${paths.eval_dir}/norman_2019_k562.h5ad
+      gene_col: gene_id
+      pert_col: gene_name
+      combo_decomposition: true
+      panel_compose: decode_seq_mean
+      batch_col: batch
+      target_sum: 2000.0
+      n_controls_per_sample: 1
+      include_controls_as_training: true
+    stream:
+      stream_v2: true
+      interleave: proportional
+      balance_sources: true
+      fixed_pairs: false
+      chunk_size: 4096
+      buffer_chunks: 4
+      num_workers: 8
+      control_cache_dir: null
+      amp_dtype: bf16
+      target_pb_k: 1
+      ctrl_avg_k: 1
+    encoder:
+      freeze_encoder: true
+      freeze_decoder: false
+    graph:
+      graph_type: go
+      graph_types: [go, string]
+      graph_edge_filter_mode: top_20
+      pert_model_type: adjacency_map
+      no_gnn: false
+      master_gene_set_path: ${paths.kg_graph_dir}/master_gene_set_sorted.csv
+      graph_cache_dir: ${paths.kg_graph_dir}
+      gnn_layer_type: gat_v2
+      gnn_num_layers: 4
+      pert_latent_dim: 128
+      graph_reduce2perts: true
+      data_perts_only: false
+      adj_hidden_dim: 128
+      adj_dropout: 0.2
+      adj_deg: 1
+      adj_normalize: none
+      adj_self_loops: false
+      adj_only_reverse: true
+      adj_make_undirected: true
+      adj_use_ffn: true
+      adj_activation: relu
+      pert_embedding_path: ""
+      pert_embedding_norm: zscore
+      pert_embedding_paths:
+        - data/assets/genept_full_occam_rhj_fewshot.pkl
+        - data/assets/esm2_t33_650M_UR50D_occam_rhj_fewshot.pkl
+    interaction:
+      interaction_type: film
+      film_mode: multiplicative_only
+      film_scale: 1.0
+      film_hidden_dim: 256
+      film_activation: none
+      film_mean_free: true
+    optim:
+      lr: 1.0e-03
+      decoder_lr: 1.0e-03
+      epochs: 150
+      warmup_epochs: 5
+      batch_size: 32
+      gradient_clip: 1.0
+      eta_min: 3.0e-04
+      save_every_epochs: 0
+    loss:
+      loss_type: smooth_l1
+      smooth_l1_beta: 2.0
+      cosine_loss_weight: 0.0
+      source_weight: none
+      loss_norm: pooled
+      delta_mag_weight: 0.0
+      latent_loss_type: none
+      latent_loss_weight: 0.0
+      latent_loss_alpha: 0.5
+      latent_cos_weight: 0.0
+      latent_cos_target: delta_z
+      vicreg_var_weight: 0.0
+      vicreg_cov_weight: 0.0
+      vicreg_gamma: 0.0
+      vicreg_target: delta_z
+      recon_split: false
+      recon_split_mode: cmean
+      recon_delta_target: cell
+      recon_ctrl_weight: 1.0
+      recon_delta_weight: 1.0
+      delta_cos_weight: 0.0255
+      dcos_conc_weight: 0.0
+      radial_spread_weight: 0.0
+      gene_var_weight: 0.0
+      disp_ema_momentum: 0.99
+      nb_weight: 0.0
+      nb_scale: 1.0
+      vc_load_dispersion: true
+    guards:
+      bench_batches: 0
+      nan_guard_max_frac: 0.10
+      weight_check_every: 500
+    eval:
+      eval_freq: 1
+      run_baselines: false

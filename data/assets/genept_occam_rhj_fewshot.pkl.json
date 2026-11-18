@@ -1,0 +1,32 @@
+{
+  "built": "scripts/build_genept_for_occam.py",
+  "caveat": "NOT comparable to PerturbDiff's published 0.40306, which used the truncated 2,024-key pickle on their own 2,000-gene panel.",
+  "coverage": {
+    "all_symbols": {
+      "merged": 2376,
+      "theirs": 2021
+    },
+    "cohort_611": {
+      "merged": 611,
+      "still_zero": [],
+      "theirs": 547
+    }
+  },
+  "dim": 3072,
+  "merge_rule": "union; their value kept on a shared key",
+  "n_keys": 2376,
+  "restricted_to_benchmark_symbols": true,
+  "sources": {
+    "full_release": {
+      "n_keys": 133736,
+      "path": "/rxrx/scratch/sandbox/ihab.bendidi/tx_pretrained_models/GenePT/genept_embeddings/extracted/GenePT_emebdding_v2/GenePT_gene_protein_embedding_model_3_text.pickle.",
+      "sha256": "cd64611edab310b517cbb461295605a37821f6cd4f8ddae90ba18a2f861a6618"
+    },
+    "perturbdiff_pickle": {
+      "n_keys": 2024,
+      "path": "/rxrx/scratch/sandbox/ihab.bendidi/perturbdiff_out/assets_dl/perturb_data/gene_names/replogle_gene_emb_dict_perturbation_emb_dict.pkl",
+      "sha256": "8c43bce711e34b4b7cb27541e1dc654d54d01a0efb225993b5c396124c4a7574"
+    }
+  },
+  "value_check_max_abs_diff": 0.0
+}

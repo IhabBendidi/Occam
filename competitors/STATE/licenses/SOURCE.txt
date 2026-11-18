@@ -1,0 +1,1 @@
+Fetched 2026-09-25 from https://github.com/ArcInstitute/state (main): LICENSE (code, CC BY-NC-SA 4.0), MODEL_LICENSE.md (weights and outputs, Arc Research Institute State Model Non-Commercial License, last updated 2025-06-23), MODEL_ACCEPTABLE_USE_POLICY.md.

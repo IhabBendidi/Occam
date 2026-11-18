@@ -1,0 +1,80 @@
+{
+  "best_val_loss": 0.053063634235192746,
+  "decoder_config": {
+    "bottleneck_k": 1,
+    "dropout_rate": 0.3,
+    "glu_mode": false,
+    "glu_ratio": 0.667,
+    "hidden_dim": 2048,
+    "input_dim": 512,
+    "kron_rank": 0,
+    "monarch_blocks": 0,
+    "monarch_mup": false,
+    "num_blocks": 4,
+    "output_activation": "softplus",
+    "output_dim": 44728,
+    "se_reduction": 16,
+    "sparsity_24": false,
+    "sparsity_24_decay": 0.0002,
+    "weight_tie": false
+  },
+  "decoder_state_dict": {
+    "n_params": 128456385,
+    "n_tensors": 81,
+    "sha256": "55db08310b3bfad2d4b3ca3f4b587eafec2d845e449b6ab2c79b308856c980fc"
+  },
+  "encoder_config": {
+    "hidden_size": 512,
+    "model_size": "small",
+    "num_genes": 44728
+  },
+  "encoder_state_dict": {
+    "keys": [
+      "encoder.1.bias",
+      "encoder.1.weight",
+      "encoder.2.bias",
+      "encoder.2.weight",
+      "encoder.4.bias",
+      "encoder.4.weight",
+      "encoder.5.bias",
+      "encoder.5.weight",
+      "encoder.7.bias",
+      "encoder.7.weight",
+      "encoder.8.bias",
+      "encoder.8.weight",
+      "pos_weight"
+    ],
+    "n_params": 94279864,
+    "n_tensors": 13,
+    "sha256": "df60ac72e23b59567922f7c2e2b0b3c37f8031583e0af7975b71ee1552e99255"
+  },
+  "epoch": 124,
+  "gene_names_sha256": "25c3c78556161e0521e9a78f39289dff369e8af023be4bea5379c9ede05d2931",
+  "golden_recon_applies": false,
+  "model_state_dict_is_decoder": true,
+  "n_genes": 44728,
+  "profile": "release",
+  "recorded_from": "occam_small_encoder_decoder.pth",
+  "source_checkpoint_bytes": 892816810,
+  "source_checkpoint_sha256": "ef82433f8a6e20b43a830f60c6dfe5c1b0963d970a9233b9718758b67854e006",
+  "target_sum": 2000.0,
+  "top_level_keys": [
+    "best_combined_score",
+    "best_val_loss",
+    "decoder_config",
+    "decoder_state_dict",
+    "dispersion",
+    "encoder_config",
+    "encoder_state_dict",
+    "epoch",
+    "gene_names",
+    "gene_to_index",
+    "is_unified_checkpoint",
+    "loss_state_dict",
+    "model_state_dict",
+    "parent_checkpoint_path",
+    "target_sum",
+    "training_config"
+  ],
+  "torch_version": "2.4.1+cu121"
+}

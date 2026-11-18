@@ -1,0 +1,124 @@
+# PerturbDiff on Occam's `rhj_fewshot`. OUR three h5ads, OUR 6,983-gene axis, OUR splits.
+#
+# Use with: data=occam_h5ad path=occam_path cov_encoding=occam_h5ad
+#
+# Derived line-for-line from `ihabxcell_zarr.yaml`. The training hyperparameters are
+# UNCHANGED from upstream's own Replogle recipe (use_cell_set, micro_batch_size 128, lr 0.002
+# -- NOT the PBMC/Tahoe values of 256/2048); the deltas are all about where the data comes
+# from:
+#
+#   1. `data_name: OccamH5adFinetune` and `source_format: occam` -> the third store, which
+#      reads our h5ads in place through competitors/shared/occam_data.py. No zarr dump, no
+#      intermediate format, no second copy on disk.
+#   2. `pad_length: 6983` instead of 2000, ours. ⚠️ `embed_shape` interpolates
+#      `model.input_dim`, and the collate ASSERTS the two are equal, so `model.input_dim`
+#      must be overridden to 6983 as well -- the launcher does it.
+#   3. `selected_gene_file: null`. The matrix already carries exactly the frozen 6,983 genes
+#      in axis order, so a second panel could only reorder or shrink it.
+#      `get_selected_gene_vars_occam` REFUSES a non-null value rather than ignoring it.
+#   4. `toml_config_path` -> configs/manifests/occam_rhj_fewshot.toml, which has NO
+#      `[splits]` table: the frozen benchmark owns the split and it is read live.
+#
+# ⚠️ `normalize_counts: false` is REQUIRED, not a default. The data arrives already
+# normalised at `occam_target_sum` on each file's FULL source panel row sum. A second
+# normalisation would divide by the 6,983-gene row sum instead, which leaves `pearson_delta`
+# untouched but SHIFTS `mae` and moves the DE calls -- and `mae` is one of our four
+# comparison metrics. It would also break the prediction bridge's exact 10,000 -> 2,000 map.
+# See docs/rhj_competitors.md C1.
+#
+# ⚠️ The perturbation identity is a GENE SYMBOL here, not an Ensembl id. Their zarr path
+# derives an Ensembl string from canonical `gene_pert` tuples because that is what their dumps
+# carry; `rhj_fewshot` identifies perturbations by symbol throughout -- splits, exclusions,
+# the 611-perturbation cohort and cell-eval's own `target_gene` column. So
+# `cov_encoding=occam_h5ad` sets `pert_key_type: symbol` (the code's own default).
+
+data_name: OccamH5adFinetune
+
+# --- source -----------------------------------------------------------------
+source_format: occam            # OUR h5ads, read in place (src/data/occam_bridge.py)
+feature_loading: ram           # "ram" (5.15 GB for all four cell lines), "npy" (mmap), "zarr" (lazy)
+toml_config_path: ${..path.manifest_file}
+selected_gene_file: null       # REFUSED in occam mode: the axis IS the frozen 6,983 genes
+indices_cache_dir: ${..path.indices_cache_dir}
+split_idx: 0                   # fold, unless the manifest's [split_fold] overrides it
+
+# --- canonical obs columns --------------------------------------------------
+# PerturbDiff reads cell types through cell_line_key and batches through
+# perturbseq_batch_col; perturbations are derived from gene_pert, not read from
+# a column, so pert_col is only a label for the output adata.
+pert_col: target_gene
+cell_line_key: cell_type
+cell_type_key: cell_type
+perturbseq_batch_col: batch_center
+rnaseq_batch_col: null
+control_pert: empty            # the derived control sentinel
+
+# --- expression space -------------------------------------------------------
+embed_key: X_hvg
+output_space: gene
+embed_shape: ${..model.input_dim}   # must equal pad_length (collate asserts)
+pad_length: 6983
+normalize_counts: false        # already log1p(1e4) on the FULL source panel row sum
+
+# --- cell sets --------------------------------------------------------------
+use_cell_set: 16               # the FEWSHOT recipe's value, not the 32 of upstream's
+                               # general Replogle setting. reproducibility/
+                               # perturbdiff__replogle_nadig_fewshot/launch.real.train.sh
+                               # uses PD_CELL_SET=16, and the launcher passes 16, so this
+                               # line was previously dead -- a value in a config that
+                               # never applies is worse than no value at all.
+# How a cell set is defined:
+#   pert_celltype_batch -- upstream PerturbDiff. On this data the median group
+#       holds 1 cell, so ~94% of rows are replacement-drawn duplicates and the
+#       epoch inflates 16x.
+#   pert_celltype       -- STATE's sentence grouping; median 53 cells, 1.2x.
+# Both are supported so the two can be compared; see ZARR_BENCHMARK.md section 4.
+# STATE's sentence grouping, which the FEWSHOT recipe uses (PD_GROUP=pert_celltype).
+# NOT upstream's general `pert_celltype_batch`: on this data the median
+# (pert, celltype, batch) group holds 1 cell, so ~94% of rows would be
+# replacement-drawn duplicates and the epoch would inflate 16x. See ZARR_BENCHMARK.md §4.
+cell_set_group_by: pert_celltype
+optimizer_batch_size: ${..optimization.micro_batch_size}
+sample_cell_set_strategy: same_lpb
+use_fixed_pairing: true
+
+# --- control pairing --------------------------------------------------------
+basal_mapping_strategy: random
+mapping_strategy: random
+n_basal_samples: 1
+should_yield_control_cells: true
+map_controls: true
+keep_control_cell: false
+split_control: false
+
+# --- dataloader -------------------------------------------------------------
+num_workers: 4
+prefetch_factor: 16
+persistent_workers: false
+pin_memory: true
+max_open_files: 16
+
+# --- misc -------------------------------------------------------------------
+select_strategy: "sum"
+sort_gene_names: false
+skip_cached_indices: false     # grouping cache is content-hashed, so reuse is safe
+
+# Scenario filters. Read directly (not via hasattr) by the sampling helpers, so
+# they must exist even though the zarr path never sets them.
+sample_pbmc_only: false
+sample_replogle_only: false
+sample_tahoe100m_only: false
+
+# --- occam source options ---------------------------------------------------
+# The frozen benchmark: gene axis, splits, exclusions, per-file sha256s.
+occam_bench_dir: ${..path.occam_bench_dir}
+# Normalisation, applied once, in competitors/shared/occam_data.py, on the FULL panel row sum.
+occam_target_sum: 10000.0
+occam_log1p: true
+# Verify every source file's sha256 against the benchmark manifest before reading it. Leave
+# this on: it is the check that catches a source file changing under a frozen benchmark.
+occam_verify_sources: true
+# Row cap per cell line. FOR SMOKES ONLY -- subsampling makes the split assertions fail
+# legitimately (not every validation perturbation survives a truncation), so a real run
+# leaves it null.
+occam_max_cells_per_line: null

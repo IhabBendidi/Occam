@@ -1,0 +1,65 @@
+{
+ "quick_pseudobulk_check": {
+  "sum_of_singles": {
+   "additive": {
+    "n": 37,
+    "pearson_mean": 0.9382206067646796,
+    "pearson_median": 0.937764390352793,
+    "mae_delta": 0.009323719888925552
+   },
+   "nonadditive": {
+    "n": 37,
+    "pearson_mean": 0.8356566447466813,
+    "pearson_median": 0.8590171133665272,
+    "mae_delta": 0.012678411789238453
+   },
+   "all": {
+    "n": 111,
+    "pearson_mean": 0.891179830692086,
+    "pearson_median": 0.9129765809015141,
+    "mae_delta": 0.011239428073167801
+   }
+  },
+  "meanpert": {
+   "additive": {
+    "n": 37,
+    "pearson_mean": 0.615955607570245,
+    "pearson_median": 0.7165755469735626,
+    "mae_delta": 0.014841247349977493
+   },
+   "nonadditive": {
+    "n": 37,
+    "pearson_mean": 0.4712441774753827,
+    "pearson_median": 0.5630843286905437,
+    "mae_delta": 0.012453636154532433
+   },
+   "all": {
+    "n": 111,
+    "pearson_mean": 0.589240934681834,
+    "pearson_median": 0.6967611739440553,
+    "mae_delta": 0.01453258004039526
+   }
+  },
+  "ctrlmean": {
+   "additive": {
+    "n": 37,
+    "pearson_mean": NaN,
+    "pearson_median": NaN,
+    "mae_delta": 0.01842346042394638
+   },
+   "nonadditive": {
+    "n": 37,
+    "pearson_mean": NaN,
+    "pearson_median": NaN,
+    "mae_delta": 0.01423882506787777
+   },
+   "all": {
+    "n": 111,
+    "pearson_mean": NaN,
+    "pearson_median": NaN,
+    "mae_delta": 0.01768452301621437
+   }
+  }
+ },
+ "note": "pearson/MAE of the pseudobulk DELTA on the 8,000-gene axis; NOT cell-eval 0.6.0"
+}

@@ -1,0 +1,9 @@
+# RHJ SEED REPLICATES of AA03 (Q02 base, 180 ep, eta_min 7e-4) at seeds 43-46 -- user request
+# 2026-09-23: Y06 stays the official rhj run; AA03 (0.4044 at seed 42, tied with Y06 0.4043) is
+# replicated to see how it behaves across seeds (Y06: 0.3953 +- 0.0077 over seeds 42/44/45/46).
+# Rows identical to AA03 except arm name and seed (batch_size 2048 / lr 1e-3 = AA03's defaults).
+arm	loss_type	nb_weight	nb_scale	delta_cos_weight	delta_mag_weight	latent_loss_type	latent_loss_weight	latent_cos_weight	latent_cos_target	recon_split	recon_ctrl_weight	recon_delta_weight	recon_split_mode	recon_delta_target	vicreg_var_weight	vicreg_cov_weight	vicreg_gamma	vicreg_target	epochs	eta_min	base	dcos_conc_weight	radial_spread_weight	gene_var_weight	batch_size	lr	seed
+S43_AA03	smooth_l1	0	1.0	0.5	0.01363	delta_z	0.0044	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	180	7e-4	Q02	0.0	0.0	0.0	2048	1e-3	43
+S44_AA03	smooth_l1	0	1.0	0.5	0.01363	delta_z	0.0044	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	180	7e-4	Q02	0.0	0.0	0.0	2048	1e-3	44
+S45_AA03	smooth_l1	0	1.0	0.5	0.01363	delta_z	0.0044	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	180	7e-4	Q02	0.0	0.0	0.0	2048	1e-3	45
+S46_AA03	smooth_l1	0	1.0	0.5	0.01363	delta_z	0.0044	0.0	delta_z	false	1.0	1.0	cmean	cell	0.0	0.0	0.0	delta_z	180	7e-4	Q02	0.0	0.0	0.0	2048	1e-3	46

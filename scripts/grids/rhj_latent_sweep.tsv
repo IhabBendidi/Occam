@@ -1,0 +1,64 @@
+# LATENT-SPACE LOSS sweep on the two preferred bases, M03 and M06 (user direction 2026-09-20).
+#
+# WHY. Both bases now tie on pearson_delta (M03 0.3679, M06 0.3681) and differ only in the
+# mae-vs-disc_l1 trade (0.0212/0.6715 vs 0.0232/0.7047). Every lever tried so far acts in GENE
+# space. The latent losses have never been swept -- 0 runs in 540 -- and until today three of
+# the four knobs were not even reachable (F-latent2).
+#
+# QUESTION: does supervising the LATENT delta -- by MSE (position), by cosine (direction), or
+# both -- improve either base, and at what scale?
+#
+# MEASURED SCALES (F-latent2, scripts/loss_scale.py + the wiring probe). Parity = the weight at
+# which the term equals the gene-space smooth_l1:
+#   base  gene smooth_l1   latent MSE   cos(delta_z)   cos(z_hat)   w_mse    w_cos_dz  w_cos_zh
+#   M03      0.009436        0.6007       0.9733         0.0528     0.0157    0.0097    0.179
+#   M06      0.005708        1.2942       0.9654         0.1184     0.0044    0.0059    0.048
+# The latent MSE is 64-227x the gene smooth_l1, so config.py's default latent_loss_weight=1.0
+# would be ~99.5% of the loss. M06's latent MSE is 2.15x M03's, so the two bases need DIFFERENT
+# weights -- one grid cannot serve both, and that is why the columns below are not shared.
+#
+# WHAT IS VARIED: latent_loss_weight, latent_cos_weight, latent_cos_target -- at 0.1x / 1x / 10x
+# each base's own parity point. HELD FIXED per base: M03 = dcos 0.01, mag 0; M06 = dcos 0.5,
+# mag 0.01363. Everything else is arm s313 (adjacency_map, batch 2048, lr 1e-3, decoder_lr 1e-3,
+# cosine_loss_weight 0.5, film multiplicative_only, fh 256, mean-free, 30 epochs, seed 42).
+#
+# ⛔ DELIBERATELY EXCLUDED: latent_loss_type "z_hat" and "both", and every latent_loss_alpha
+# value. delta_z - delta_z_target == z_hat - z_target IDENTICALLY, so their MSEs are the same
+# function (verified: residual 2.4e-07, and 0.600705 for both on M03). Sweeping them would burn
+# GPUs for a duplicate number -- the F-loss1 shape. The ONE z_hat arm here is on the COSINE,
+# where the two targets genuinely differ (cosine is not translation-invariant): 1-cos is 0.9733
+# on delta_z vs 0.0528 on z_hat for M03, an 18.4x gap.
+#
+# READ AGAINST (test, uncalibrated, 5/5): M03 0.3679/0.0212/0.0722/0.6715 ·
+# M06 0.3681/0.0232/0.0703/0.7047 · L11 0.3415/0.0210/0.0642/0.6534.
+# ANCHORS: meanpert 0.1324 · transfer 0.2323 · experimental 0.3722 (mae 0.0257).
+# `mae` is an ERROR: LOWER IS BETTER.
+#
+# PRE-REGISTERED: a peak at 1x parity on either term -> the scale-match heuristic generalises
+# from gene space to latent space (it predicted M03 correctly). Monotone decline from 0.1x ->
+# latent supervision is simply harmful. z_hat ~ delta_z cosine despite the 18x scale gap -> the
+# weight absorbs the scale and the target choice does not matter. M03 and M06 disagreeing ->
+# latent losses are setup-dependent, as delta_mag_weight turned out to be (F-loss9).
+arm	loss_type	nb_weight	nb_scale	delta_cos_weight	delta_mag_weight	latent_loss_type	latent_loss_weight	latent_cos_weight	latent_cos_target
+P01	smooth_l1	0	1.0	0.01	0.0	delta_z	0.00157	0.0	delta_z
+P02	smooth_l1	0	1.0	0.01	0.0	delta_z	0.0157	0.0	delta_z
+P03	smooth_l1	0	1.0	0.01	0.0	delta_z	0.157	0.0	delta_z
+P04	smooth_l1	0	1.0	0.01	0.0	none	0.0	0.00097	delta_z
+P05	smooth_l1	0	1.0	0.01	0.0	none	0.0	0.0097	delta_z
+P06	smooth_l1	0	1.0	0.01	0.0	none	0.0	0.097	delta_z
+P07	smooth_l1	0	1.0	0.01	0.0	none	0.0	0.179	z_hat
+P08	smooth_l1	0	1.0	0.01	0.0	delta_z	0.0157	0.0097	delta_z
+P09	smooth_l1	0	1.0	0.01	0.0	delta_z	0.157	0.097	delta_z
+P10	smooth_l1	0	1.0	0.01	0.0	delta_z	0.157	0.0097	delta_z
+P11	smooth_l1	0	1.0	0.01	0.0	delta_z	0.00157	0.00097	delta_z
+Q01	smooth_l1	0	1.0	0.5	0.01363	delta_z	0.00044	0.0	delta_z
+Q02	smooth_l1	0	1.0	0.5	0.01363	delta_z	0.0044	0.0	delta_z
+Q03	smooth_l1	0	1.0	0.5	0.01363	delta_z	0.044	0.0	delta_z
+Q04	smooth_l1	0	1.0	0.5	0.01363	none	0.0	0.00059	delta_z
+Q05	smooth_l1	0	1.0	0.5	0.01363	none	0.0	0.0059	delta_z
+Q06	smooth_l1	0	1.0	0.5	0.01363	none	0.0	0.059	delta_z
+Q07	smooth_l1	0	1.0	0.5	0.01363	none	0.0	0.048	z_hat
+Q08	smooth_l1	0	1.0	0.5	0.01363	delta_z	0.0044	0.0059	delta_z
+Q09	smooth_l1	0	1.0	0.5	0.01363	delta_z	0.044	0.059	delta_z
+Q10	smooth_l1	0	1.0	0.5	0.01363	delta_z	0.044	0.0059	delta_z
+Q11	smooth_l1	0	1.0	0.5	0.01363	delta_z	0.00044	0.00059	delta_z

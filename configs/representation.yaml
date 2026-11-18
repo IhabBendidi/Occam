@@ -1,0 +1,207 @@
+version: 1
+name: representation
+seed: 42
+device: cuda
+paths: {}
+run:
+  root: ./runs
+  stages:
+  - pretrain
+  - finetune
+  - decoder
+  runner: inprocess
+  resume: auto
+  wandb:
+    enabled: false
+    project: occam
+    tags:
+    - representation
+data:
+  train: my_cells.h5ad
+  val: null
+  train_gene_col: null
+  val_gene_col: null
+stages:
+  pretrain:
+    model:
+      model_size: small
+      hidden_size: null
+      mae_decoder_hidden: null
+      dropout: 0.0
+    optim:
+      epochs: 100
+      batch_size: 1024
+      learning_rate: 0.0004
+      weight_decay: 1.81890136e-09
+      optimizer: adam
+      lr_scheduler: cosine
+      warmup_epochs: 15
+      warmup_start_factor: 0.001
+      gradient_clip_val: 1.0
+      early_stopping_patience: 3500
+      validation_freq: 1
+    masking:
+      mask_probability: 0.1
+      corruption_mode: swap
+      gaussian_sigma: 0.5
+      variable_masking: false
+      gene_presence_mask: false
+      presence_shift: 1.0
+    loss:
+      reconstruction_loss: nb_softplus
+      masked_data_weight: 0.75
+      mask_loss_weight: 0.7
+      mlw_schedule_start: 0.7
+      mlw_schedule_end: 0.9
+      mlw_schedule_warmup: 0.1
+      mlw_schedule_cooldown: 0.0
+      clamp_max_log1p: 5.5
+      w_mse: 1.0
+      w_pois: 0.1
+      recon_loss_scale: 1.0
+      gpl_weight: 0.0
+      loss_diagnostics: false
+    data:
+      data_mode: backed
+      target_sum: 2000.0
+      val_split: 0.1
+      scale: false
+      skip_normalize: false
+      skip_log1p: false
+      optim_chunk_size: 8192
+      optim_buffer_chunks: 4
+      min_gene_overlap_pct: null
+    runtime:
+      enable_amp: false
+      compile: false
+      use_multi_gpu: false
+      use_ddp: false
+      freeze_mask_predictor: false
+    eval:
+      enabled: false
+      scib: false
+  finetune:
+    init_from: ${stages.pretrain.artifacts.final_model}
+    unmasking:
+      mode: gradual
+      zero_at: 0.9
+      final_ratio: 0.5
+      effective_mask_prob_source: parent_checkpoint.mask_probability
+    optim:
+      epochs: 100
+      learning_rate: 0.0006
+      weight_decay: 1.81890136e-09
+      batch_size: 1024
+      optimizer: adam
+      lr_scheduler: cosine
+      warmup_epochs: 0
+      warmup_start_factor: 0.001
+      gradient_clip: 1.0
+      early_stopping: 3500
+      validation_freq: 1
+    masking:
+      mask_probability: 0.0
+      corruption_mode: null
+      gaussian_sigma: null
+    loss:
+      recon_loss: poisson
+      masked_data_weight: 0.0
+      mask_loss_weight: 0.7
+      mlw_schedule_start: 0.7
+      mlw_schedule_end: 0.0
+      mlw_schedule_warmup: 0.1
+      mlw_schedule_cooldown: 0.1
+      clamp_max_log1p: 5.5
+    runtime:
+      data_mode: backed
+      freeze_mask_predictor: null
+      enable_amp: null
+      compile: null
+    eval:
+      eval_freq: 1000000
+    load:
+      strict: false
+      expect_unexpected:
+      - _recon_loss_fn.log_theta
+      expect_missing: []
+  decoder:
+    init_from: ${stages.finetune.artifacts.final_model}
+    encoder:
+      freeze_encoder: true
+      encoder_lr: 1.0e-05
+      skip_normalize: false
+      skip_log1p: false
+    architecture:
+      decoder_size: null
+      decoder_hidden_dim: 2048
+      decoder_num_blocks: 4
+      decoder_dropout: 0.3
+      decoder_se_reduction: 16
+      decoder_output_activation: softplus
+      decoder_weight_tie: false
+      decoder_bottleneck_k: 1
+      decoder_monarch_blocks: 0
+      decoder_kron_rank: 0
+      decoder_glu: false
+      decoder_sparsity_24: false
+    optim:
+      loss_type: nb
+      lr: 5.0e-05
+      eta_min: 1.0e-07
+      weight_decay: 0.01
+      gradient_clip: 0.5
+      batch_size: 1024
+      epochs: 200
+      smooth_l1_beta: 2.0
+      weight_init: default
+      dispersion_lr: null
+      disp_theta_init: 0.0
+      zinb_pi_init: -2.0
+    data:
+      data_mode: backed
+      val_split: 0.1
+      optim_chunk_size: 8192
+      optim_buffer_chunks: 4
+      gene_presence_mask: false
+      presence_shift: 1.0
+      min_gene_overlap_pct: null
+      train_gene_col: null
+      eval_gene_col: null
+    augmentation:
+      no_augmentation: false
+      gvf_cache_dir: null
+      aug_hparams:
+        final_cov_influence_weight: 0.5
+        final_gene_jitter_strength: 0.05
+        final_gene_mask_rate: 0.0
+        final_mask_activation_threshold: 0.0
+        final_sensitivity_p: 0.25
+        final_sparsity_modulator_strength: 0.1
+        gene_jitter_prob: 0.6
+        gene_mask_prob: 0.5
+        gvf_lower_p: 0.1
+        gvf_upper_p: 0.95
+        initial_cov_influence_weight: 1.5
+        initial_gene_jitter_strength: 0.2
+        initial_gene_mask_rate: 0.05
+        initial_mask_activation_threshold: 0.5
+        initial_sensitivity_p: 2.0
+        initial_sparsity_modulator_strength: 0.75
+        max_effective_mask_rate: 0.25
+        sensitivity_p_phase1_epochs_ratio: 0.25
+    adversarial:
+      adv_loss: false
+      perc_loss: false
+      feature_extractor_checkpoint: null
+      adv_mode: frozen
+      perc_mode: frozen
+      lambda_adv: 0.1
+      lambda_perc: 0.1
+      disc_lr: 0.0002
+    eval:
+      decoder_eval_freq: 0
+      bmdb_eval_freq: 0
+      run_encoder_benchmark: false
+      log_interval: 1
+      cell_eval_enabled: false
+      eval_data: []

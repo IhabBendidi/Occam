@@ -1,0 +1,45 @@
+# MAGNITUDE-WEIGHT sweep on M03's setup (user direction 2026-09-20).
+#
+# WHY. F-loss8: delta_mag_weight at its single tested value (0.01363, on D03's config) cut test
+# `mae` 28% (0.0321 -> 0.0232) for 0.0005 of pearson_delta. F-loss5 noted the weight was set so
+# the term equals the dcos term in VALUE, and that equal value is not equal PULL, because
+# mag_loss is a ratio penalty whose gradient shrinks as the ratio grows. So the win says the
+# direction is right and the weight is probably too small.
+#
+# QUESTION: on M03's setup -- now the preferred arm -- does a larger delta_mag_weight push test
+# `mae` below M03's 0.0212 while holding pearson_delta at ~0.3679?
+#
+# MEASURED TERM SCALES ON M03 (scripts/loss_scale.py): smooth_l1 0.012512, dcos 0.9199,
+# mag_loss 40.214, magnitude ratio r = 6.584. M03's dcos TERM is only 0.01*0.9199 = 0.00920 --
+# 50x smaller than D03's -- so the same mag weight lands very differently here:
+#     0.01363 -> mag term  0.548 =    60x the dcos term,   44x smooth_l1
+#     0.1363  -> mag term  5.481 =   596x the dcos term,  438x smooth_l1
+#     0.6815  -> mag term 27.406 =  2979x the dcos term, 2190x smooth_l1
+# ⚠️ At 50x the magnitude term switches off BOTH other losses -- the exact trap F-loss5 is
+# about. Run deliberately: a collapse there is a clean answer about how much magnitude pressure
+# the model tolerates, not a wasted arm.
+#
+# WHAT IS VARIED: delta_mag_weight only. HELD FIXED: delta_cos_weight 0.01 (M03's), and arm
+# s313 throughout -- adjacency_map, batch 2048, lr 1e-3, decoder_lr 1e-3, cosine_loss_weight
+# 0.5, film multiplicative_only, fh 256, mean-free, 30 epochs, seed 42.
+#
+# N01 IS THE CONTROL AND IS NOT OPTIONAL. M06's win was measured on D03's config, so comparing
+# "10x on M03" against "1x on D03" would confound the weight with the setup. N01 puts M06's
+# exact weight on M03's setup so the 10x/50x arms have a same-setup baseline.
+#
+# READ AGAINST (test, uncalibrated, 5/5 splits):
+#   M03 dcos 0.01            pearson_delta 0.3679  mae 0.0212  ovl@N 0.0722  disc_l1 0.6715
+#   M06 dcos 0.5 + mag       0.3681                0.0232      0.0703       0.7047
+#   D03 dcos 0.5             0.3686                0.0321      0.0718       0.7263
+#   L11 pure smooth_l1       0.3415                0.0210      0.0642       0.6534
+# ANCHORS: meanpert 0.1324 · transfer 0.2323 · experimental 0.3722 (mae 0.0257).
+# `mae` is an ERROR: LOWER IS BETTER.
+#
+# PRE-REGISTERED: mae below 0.0212 with pearson_delta held -> the weight was the limit, take the
+# best arm. pearson_delta collapses at 10x or 50x -> magnitude pressure has a ceiling and M06's
+# near-balanced weight was already near-optimal. N01 ~ M06 -> the effect is weight-driven;
+# N01 != M06 -> it is setup-driven and D03's result does not transfer to M03.
+arm	loss_type	nb_weight	nb_scale	delta_cos_weight	delta_mag_weight
+N01	smooth_l1	0	1.0	0.01	0.01363
+N02	smooth_l1	0	1.0	0.01	0.1363
+N03	smooth_l1	0	1.0	0.01	0.6815

@@ -1,0 +1,5 @@
+# E1 backfill: the 60-epoch M03 arm, missing one split to the pdex shm race (F-infra1).
+# E1 is F-sched1's M03 row; at 4/5 its +0.0073 gain is not final.
+# nocal only -- calibrated arms are no longer produced.
+arm_id	tag	split	calibrate	missing_modes
+E1	smooth_l1_nbw0_nbs1.0_dcos0.01_e60_em1e-5_s42	4	none	nocal

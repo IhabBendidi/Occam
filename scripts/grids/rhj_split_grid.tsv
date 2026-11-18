@@ -1,0 +1,85 @@
+# SPLIT-RECONSTRUCTION grid: 3 modes x 2 delta targets x 2 bases, + ratio ladders.
+# User direction 2026-09-20: "launch all three modes on M03 and M06", with phase 2.
+#
+# WHY. F-recon1: smooth_l1(pred, target) is ~99.8% CONTROL RECONSTRUCTION on M03, so the
+# perturbation is supervised by ~0.2% of that term's gradient. The split weights the two
+# independently:
+#     L_ctrl  = recon(D(z_ctrl), <control reference>)
+#     L_delta = recon(pred - D(z_ctrl), <delta target>)
+#
+# TWO ORTHOGONAL AXES, both verified end-to-end on the real streaming config (3 epochs each):
+#
+#   recon_split_mode = where the GENE-SPACE CONTROL comes from. The streaming path serves 512-d
+#   pool embeddings, so there is no per-cell gene-space control unless one is materialised.
+#     raw        per-cell control expression, via a 4.74 GB CPU pool (F-recon2)
+#     cmean      the LINE control mean, already in _stream_v2_state -- free
+#     delta_only no L_ctrl at all
+#
+#   recon_delta_target = what the DELTA regresses against. THIS IS THE PHASE-2 AXIS.
+#     cell        this row's single cell, whose noise is 3-70x the effect size  (phase 1)
+#     group_mean  the denoised group mean, as dcos and delta_mag already use    (phase 2)
+#
+# ⚠️ `delta_only` is NOT phase 2. It is phase 2's DELTA term with L_ctrl dropped. Phase 2
+# PROPER keeps BOTH terms and denoises only the delta = cmean|raw + group_mean (G04/G09).
+#
+# MEASURED BALANCES (UNWEIGHTED terms, ep1 -> ep3, real config). Each combination imposes a
+# DIFFERENT balance, which is why they are separate arms and not variants of one result:
+#   raw   + cell        L_ctrl 32.5% -> 32.0%   FLAT -- the cell's own noise never becomes
+#                                               learnable, so a fixed weight = a fixed balance
+#   cmean + cell        L_ctrl 23.1% ->  6.4%   decays 4.4x; self-balances toward the delta
+#   cmean + group_mean  L_ctrl 80.4% -> 55.7%   ratio 4.09 -> 1.26 (PHASE 2)
+#   delta_only          L_ctrl  0%             by construction
+#
+# WHY THE LADDERS DIFFER PER MODE, rather than {1,3,10,30} everywhere:
+#   raw/cell   -- balance is STABLE, so the ladder does what a ladder is for. Full {1,3,10,30}.
+#   cmean/cell -- already 94% delta unaided; {1,3,10} tests pushing PAST self-balancing.
+#   delta_only -- w_delta is not a ratio (there is no L_ctrl); it scales the WHOLE recon term
+#                 against dcos. {1,3,10}.
+#   G25/G26    -- SCALE-MATCHED on raw from its MEASURED converged balance (L_ctrl 0.004457,
+#                 L_delta 0.009468): equal contribution with TOTAL recon held fixed. NOT a
+#                 point on the (1,k) line -- the ladder lets total recon grow with w_delta,
+#                 this holds it, isolating the internal split from the recon-vs-dcos balance.
+#
+# BASES, held fixed: M03 = dcos 0.01, mag 0 (G01-05, G11-13, G17-18, G21-22, G25).
+#                    M06 = dcos 0.5, mag 0.01363 (G06-10, G14-16, G19-20, G23-24, G26).
+# Everything else is arm s313: adjacency_map, batch 2048, lr 1e-3, decoder_lr 1e-3,
+# cosine_loss_weight 0.5, film multiplicative_only, fh 256, mean-free, 30 epochs, seed 42.
+#
+# READ AGAINST (test, uncalibrated, 5/5): M03 0.3679/0.0212/0.0722/0.6715 ·
+# M06 0.3681/0.0232/0.0703/0.7047 · campaign best Q02 0.3783.
+# ANCHORS: meanpert 0.1324 · transfer 0.2323 · experimental 0.3722 (mae 0.0257).
+# `mae` is an ERROR: LOWER IS BETTER.
+#
+# PRE-REGISTERED. mae falls below 0.0212 with pearson_delta held -> F-recon1 is right that mae
+# was immovable because every prior lever acted on the perturbation while mae is dominated by
+# control reconstruction. mae flat across all 26 -> F-recon1's hypothesis is wrong and mae is
+# bounded by something else. group_mean beats cell -> single-cell noise was the binding
+# constraint and phase 2 is the answer. M03 and M06 disagree -> setup-dependence again
+# (F-loss9, F-latent4), and no split result generalises across bases.
+arm	loss_type	nb_weight	nb_scale	delta_cos_weight	delta_mag_weight	latent_loss_type	latent_loss_weight	latent_cos_weight	latent_cos_target	recon_split	recon_ctrl_weight	recon_delta_weight	recon_split_mode	recon_delta_target
+G01	smooth_l1	0	1.0	0.01	0.0	none	0.0	0.0	delta_z	true	1.0	1.0	raw	cell
+G02	smooth_l1	0	1.0	0.01	0.0	none	0.0	0.0	delta_z	true	1.0	1.0	raw	group_mean
+G03	smooth_l1	0	1.0	0.01	0.0	none	0.0	0.0	delta_z	true	1.0	1.0	cmean	cell
+G04	smooth_l1	0	1.0	0.01	0.0	none	0.0	0.0	delta_z	true	1.0	1.0	cmean	group_mean
+G05	smooth_l1	0	1.0	0.01	0.0	none	0.0	0.0	delta_z	true	1.0	1.0	delta_only	group_mean
+G06	smooth_l1	0	1.0	0.5	0.01363	none	0.0	0.0	delta_z	true	1.0	1.0	raw	cell
+G07	smooth_l1	0	1.0	0.5	0.01363	none	0.0	0.0	delta_z	true	1.0	1.0	raw	group_mean
+G08	smooth_l1	0	1.0	0.5	0.01363	none	0.0	0.0	delta_z	true	1.0	1.0	cmean	cell
+G09	smooth_l1	0	1.0	0.5	0.01363	none	0.0	0.0	delta_z	true	1.0	1.0	cmean	group_mean
+G10	smooth_l1	0	1.0	0.5	0.01363	none	0.0	0.0	delta_z	true	1.0	1.0	delta_only	group_mean
+G11	smooth_l1	0	1.0	0.01	0.0	none	0.0	0.0	delta_z	true	1.0	3.0	raw	cell
+G12	smooth_l1	0	1.0	0.01	0.0	none	0.0	0.0	delta_z	true	1.0	10.0	raw	cell
+G13	smooth_l1	0	1.0	0.01	0.0	none	0.0	0.0	delta_z	true	1.0	30.0	raw	cell
+G14	smooth_l1	0	1.0	0.5	0.01363	none	0.0	0.0	delta_z	true	1.0	3.0	raw	cell
+G15	smooth_l1	0	1.0	0.5	0.01363	none	0.0	0.0	delta_z	true	1.0	10.0	raw	cell
+G16	smooth_l1	0	1.0	0.5	0.01363	none	0.0	0.0	delta_z	true	1.0	30.0	raw	cell
+G17	smooth_l1	0	1.0	0.01	0.0	none	0.0	0.0	delta_z	true	1.0	3.0	cmean	cell
+G18	smooth_l1	0	1.0	0.01	0.0	none	0.0	0.0	delta_z	true	1.0	10.0	cmean	cell
+G19	smooth_l1	0	1.0	0.5	0.01363	none	0.0	0.0	delta_z	true	1.0	3.0	cmean	cell
+G20	smooth_l1	0	1.0	0.5	0.01363	none	0.0	0.0	delta_z	true	1.0	10.0	cmean	cell
+G21	smooth_l1	0	1.0	0.01	0.0	none	0.0	0.0	delta_z	true	1.0	3.0	delta_only	group_mean
+G22	smooth_l1	0	1.0	0.01	0.0	none	0.0	0.0	delta_z	true	1.0	10.0	delta_only	group_mean
+G23	smooth_l1	0	1.0	0.5	0.01363	none	0.0	0.0	delta_z	true	1.0	3.0	delta_only	group_mean
+G24	smooth_l1	0	1.0	0.5	0.01363	none	0.0	0.0	delta_z	true	1.0	10.0	delta_only	group_mean
+G25	smooth_l1	0	1.0	0.01	0.0	none	0.0	0.0	delta_z	true	1.562	0.735	raw	cell
+G26	smooth_l1	0	1.0	0.5	0.01363	none	0.0	0.0	delta_z	true	1.562	0.735	raw	cell

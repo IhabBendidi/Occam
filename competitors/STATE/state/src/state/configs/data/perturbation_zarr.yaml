@@ -1,0 +1,29 @@
+name: ZarrPerturbationDataModule
+kwargs:
+  toml_config_path: null
+  # --- native-zarr specifics ---
+  source_format: zarr            # "zarr" (X.zarr+obs.parquet+var.parquet) or "anndata" (.h5ad)
+  feature_loading: ram           # "ram" (whole matrix in RAM; fast, like the upstream benchmark), "npy" (mmap X.npy), or "zarr" (lazy; slow)
+  selected_ensembl_gene_ids_path: null  # optional gene subset (one Ensembl id per line)
+  target_sum: null               # null + log1p=false => no-op (data already normalized)
+  log1p: false                   # raw counts: set target_sum=300000, log1p=true
+  split_idx: 0
+  pert_feature_mode: onehot      # "onehot" or precomputed "external" vectors
+  pert_feature_path: null        # .pt dictionary: perturbation ID -> 1D tensor
+  # --- canonical-schema columns (derive perts from gene_pert) ---
+  embed_key: X_hvg
+  output_space: gene
+  batch_col: batch_center
+  cell_type_key: cell_type
+  pert_col: gene                 # unused in zarr mode (perts derive from gene_pert)
+  control_pert: empty
+  # --- sampling / mapping (mirrors perturbation.yaml) ---
+  num_workers: 12
+  basal_mapping_strategy: random
+  n_basal_samples: 1
+  should_yield_control_cells: true
+  barcode: false
+  drop_last: false
+  is_log1p: true
+output_dir: null
+debug: true
